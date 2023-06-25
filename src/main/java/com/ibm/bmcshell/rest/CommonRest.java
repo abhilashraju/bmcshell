@@ -83,7 +83,7 @@ public class CommonRest  {
                 var response = client.post()
                         .uri(new URI(String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/SessionService/Sessions",machine)))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(BodyInserters.fromValue("{\"UserName\":\"service\", \"Password\":\"0penBmc0\"}"))
+                        .body(BodyInserters.fromValue(String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"}",CommonCommands.getUserName(),CommonCommands.getPasswd())))
                         .retrieve()
                         .toEntity(String.class)
                         .subscribe(resp->{

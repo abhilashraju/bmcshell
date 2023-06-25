@@ -34,7 +34,15 @@ public class CommonCommands implements ApplicationContextAware {
     String machine;
     @Autowired
     private ApplicationContext applicationContext;
+    static String userName;
+    static String passwd;
 
+    public  static  String getUserName(){
+        return userName;
+    }
+    public  static  String getPasswd(){
+        return passwd;
+    }
     CustomPromptProvider getPromptProvider(){
         return applicationContext.getBean(CustomPromptProvider.class);
     }
@@ -64,7 +72,7 @@ public class CommonCommands implements ApplicationContextAware {
 
                         .uri(new URI(String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/SessionService/Sessions",machine)))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(BodyInserters.fromValue("{\"UserName\":\"service\", \"Password\":\"0penBmc0\"}"))
+                        .body(BodyInserters.fromValue(String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"}",userName,passwd)))
                         .retrieve()
                         .toEntity(String.class)
                         .block();
@@ -278,10 +286,19 @@ public class CommonCommands implements ApplicationContextAware {
         displayCurrent();
 
     }
+    @ShellMethod(key = "username")
+    void setUserName(String u){
+
+        userName=u;
+    }
+    @ShellMethod(key = "password")
+    void setPasswd(String p){
+        passwd=p;
+    }
 
     public Availability availabilityCheck() {
-        return machine != null
+        return (machine != null && userName !=null && passwd !=null)
                 ? Availability.available()
-                : Availability.unavailable("machine is not set Eg: machine rain104bmc");
+                : Availability.unavailable("machine/username/passwd is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
     }
 }
