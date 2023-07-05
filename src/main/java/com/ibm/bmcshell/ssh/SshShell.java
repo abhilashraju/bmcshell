@@ -1,6 +1,7 @@
 package com.ibm.bmcshell.ssh;
 
 
+import com.ibm.bmcshell.CommonCommands;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.channel.ClientChannel;
 import org.apache.sshd.client.channel.ClientChannelEvent;
@@ -16,8 +17,8 @@ import java.util.EnumSet;
 @ShellComponent
 public class SshShell {
     public static void main(String[] args) throws Exception {
-        String username = "service";
-        String password = "0penBmc0";
+        String username = CommonCommands.getUserName();
+        String password = CommonCommands.getPasswd();
         String host = "rain104bmc.aus.stglabs.ibm.com";
         int port = 22;
         long defaultTimeoutSeconds = 10000l;

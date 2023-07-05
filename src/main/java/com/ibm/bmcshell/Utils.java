@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -25,7 +26,7 @@ public class Utils {
     public interface Callable<R>{
         R apply();
     }
-    public static class EndPoints
+    public static class EndPoints implements Comparable
     {
         public String url;
         public String action;
@@ -37,6 +38,12 @@ public class Utils {
         @Override
         public String toString() {
             return url + "("+action+")";
+        }
+
+        @Override
+        public int compareTo(Object o) {
+            var other=(EndPoints)o;
+            return url.compareTo(other.url);
         }
     };
     public static <R> R tryUntil(int count, Callable<R> f){
@@ -67,7 +74,10 @@ public class Utils {
     }
     public static String base(String m){
          final  String baseUrl="https://%s.aus.stglabs.ibm.com/redfish/v1/";
+//        final  String baseUrl="https://%s.aus.stglabs.ibm.com:8081/redfish/v1/";
          return String.format(baseUrl,m);
+
+
     }
     public static List<EndPoints> listOfMachines(){
         return List.of(new EndPoints("back","Get"),new EndPoints("rain104bmc","Get"),new EndPoints("rain111bmc","Get"),new EndPoints("rain127bmc","Get"),new EndPoints("rain135bmc","Get"),new EndPoints("rain136bmc","Get"));
@@ -85,6 +95,10 @@ public class Utils {
                 .forEach(a->{
                     next.add(new EndPoints(a.asText(),"Post"));
                 });
+    }
+    public static List<EndPoints> sorted(List<EndPoints> endPoints)
+    {
+        return endPoints.stream().sorted().collect(Collectors.toList());
     }
     static public List<EndPoints> buildLinksAndTargets(JsonNode ret)  {
         List<EndPoints> next=new ArrayList<>();

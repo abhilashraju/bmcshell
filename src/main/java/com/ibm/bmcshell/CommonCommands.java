@@ -15,11 +15,13 @@ import org.springframework.shell.standard.ShellOption;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Mono;
 
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -59,7 +61,13 @@ public class CommonCommands implements ApplicationContextAware {
             File file= new File("history");
             if(file.exists()){
                 BufferedInputStream bufferedInputStream= new BufferedInputStream(new FileInputStream(file));
-                machine=new String(bufferedInputStream.readAllBytes());
+                var data=new String(bufferedInputStream.readAllBytes()).split(",");
+                machine=data[0];
+                if(data.length>1){
+                    userName=data[1];
+                    passwd=data[2];
+                }
+
             }
 
         }
@@ -103,6 +111,29 @@ public class CommonCommands implements ApplicationContextAware {
     }
     String makeGetRequest(String target) throws URISyntaxException {
         var auri=new URI(base()+target);
+        var fileName=Arrays.stream(target.split("/")).filter(a->a.contains(".")).reduce((a,b)->a).orElse(null);
+        if(fileName !=null){
+            try {
+                client.get()
+                        .uri(auri)
+                        .retrieve()
+                        .bodyToMono(byte[].class)
+                        .flatMap(bytes -> Mono.fromRunnable(() -> {
+                            try {
+                                java.nio.file.Files.write(Paths.get(fileName), bytes);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }))
+                        .block();
+                return String.format("{\"file_location\":\"%s\"}",fileName);
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+            return String.format("{\"file_location\":\"not able to download\"}",fileName);
+
+        }
         return Utils.tryUntil(3, () -> {
             try {
                 var response = client.get()
@@ -169,7 +200,7 @@ public class CommonCommands implements ApplicationContextAware {
     protected void makeApiList() throws URISyntaxException, JsonProcessingException {
         ObjectMapper mapper = new ObjectMapper();
         var resp=makeGetRequest("");
-        endPoints.push(Utils.buildLinksAndTargets(mapper.readTree(resp)));
+        endPoints.push(Utils.sorted(Utils.buildLinksAndTargets(mapper.readTree(resp))));
         endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
     }
     private boolean checkMachineSelection(int index) throws IOException, URISyntaxException {
@@ -183,12 +214,23 @@ public class CommonCommands implements ApplicationContextAware {
     }
     @ShellMethod(key = "machine")
     protected String machine(String m) throws IOException {
-        FileOutputStream out = new FileOutputStream(new File("history"));
-        out.write(m.getBytes(StandardCharsets.UTF_8));
+
         token=null;
          machine=m;
          getToken();
+        serialise();
          return machine;
+    }
+
+    private  void serialise() throws IOException {
+        FileOutputStream out = new FileOutputStream(new File("history"));
+        out.write(machine.getBytes(StandardCharsets.UTF_8));
+        out.write(",".getBytes(StandardCharsets.UTF_8));
+        out.write(userName != null ?userName.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
+        out.write(",".getBytes(StandardCharsets.UTF_8));
+        out.write(passwd != null ?passwd.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
+        out.close();
+
     }
 
 
@@ -270,7 +312,7 @@ public class CommonCommands implements ApplicationContextAware {
         var resp=goTo(endPoints.peek().get(index),d,p);
         if(!resp.isEmpty()){
             System.out.println(resp);
-            endPoints.push(Utils.buildLinksAndTargets( mapper.readTree(resp)));
+            endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( mapper.readTree(resp))));
             endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
 
         }
@@ -287,13 +329,15 @@ public class CommonCommands implements ApplicationContextAware {
 
     }
     @ShellMethod(key = "username")
-    void setUserName(String u){
+    void setUserName(String u) throws IOException {
 
         userName=u;
+        serialise();
     }
     @ShellMethod(key = "password")
-    void setPasswd(String p){
+    void setPasswd(String p) throws IOException {
         passwd=p;
+        serialise();
     }
 
     public Availability availabilityCheck() {
