@@ -38,7 +38,7 @@ public class EthCommands extends CommonCommands{
     @ShellMethodAvailability("availabilityCheck")
     public String ethernet_interfaces(String name) throws URISyntaxException {
         String target = name.equals("*")?"Managers/bmc/EthernetInterfaces":"Managers/bmc/EthernetInterfaces/"+name;
-        return makeGetRequest(target);
+        return makeGetRequest(target,"");
 
     }
 

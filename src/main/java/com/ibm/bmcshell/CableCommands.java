@@ -16,13 +16,13 @@ public class CableCommands extends CommonCommands{
     @ShellMethodAvailability("availabilityCheck")
     public String cableCollection() throws URISyntaxException {
         String target = "Cables/";
-        return makeGetRequest(target);
+        return makeGetRequest(target,"");
 
     }
     @ShellMethod(key="route_cables")
     public String routeCables() throws URISyntaxException {
         String target = "Cables/<str>/";
-        return makeGetRequest(target);
+        return makeGetRequest(target,"");
     }
 
 }

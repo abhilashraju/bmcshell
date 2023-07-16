@@ -15,13 +15,19 @@ import org.springframework.shell.standard.ShellOption;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -109,29 +115,59 @@ public class CommonCommands implements ApplicationContextAware {
         }
 
     }
-    String makeGetRequest(String target) throws URISyntaxException {
+    private static Mono<Path> saveToFile(Flux<byte[]> content) {
+        Path tempFilePath;
+        try {
+            tempFilePath = Files.createTempFile("temp", null);
+        } catch (IOException e) {
+            return Mono.error(e);
+        }
+
+        return content
+                .flatMap(bytes -> Mono.fromCallable(() -> saveBytesToFile(bytes, tempFilePath)))
+                .then(Mono.just(tempFilePath));
+    }
+    private static Void saveBytesToFile(byte[] bytes, Path filePath) throws IOException {
+        try (FileChannel channel = FileChannel.open(filePath, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+            channel.write(ByteBuffer.wrap(bytes));
+        }
+        return null;
+    }
+
+    private static Path concatFiles(Path file1, Path file2) {
+        try (FileChannel channel1 = FileChannel.open(file1, StandardOpenOption.READ);
+             FileChannel channel2 = FileChannel.open(file2, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+
+            channel2.position(channel2.size());
+            channel2.transferFrom(channel1, channel2.size(), channel1.size());
+            return file2;
+        } catch (IOException e) {
+            throw new RuntimeException("Error concatenating files", e);
+        }
+    }
+    String makeGetRequest(String target,String o) throws URISyntaxException {
         var auri=new URI(base()+target);
-        var fileName=Arrays.stream(target.split("/")).filter(a->a.contains(".")).reduce((a,b)->a).orElse(null);
-        if(fileName !=null){
+        if(!o.isEmpty()){
             try {
                 client.get()
                         .uri(auri)
+                        .header("X-Auth-Token", token)
                         .retrieve()
                         .bodyToMono(byte[].class)
                         .flatMap(bytes -> Mono.fromRunnable(() -> {
                             try {
-                                java.nio.file.Files.write(Paths.get(fileName), bytes);
+                                java.nio.file.Files.write(Paths.get(o), bytes);
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
                         }))
                         .block();
-                return String.format("{\"file_location\":\"%s\"}",fileName);
+                return String.format("{\"file_location\":\"%s\"}",o);
             }
             catch (Exception e){
                 e.printStackTrace();
             }
-            return String.format("{\"file_location\":\"not able to download\"}",fileName);
+            return String.format("{\"file_location\":\"not able to download\"}",target);
 
         }
         return Utils.tryUntil(3, () -> {
@@ -199,7 +235,7 @@ public class CommonCommands implements ApplicationContextAware {
     }
     protected void makeApiList() throws URISyntaxException, JsonProcessingException {
         ObjectMapper mapper = new ObjectMapper();
-        var resp=makeGetRequest("");
+        var resp=makeGetRequest("","");
         endPoints.push(Utils.sorted(Utils.buildLinksAndTargets(mapper.readTree(resp))));
         endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
     }
@@ -262,7 +298,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key="goto")
     @ShellMethodAvailability("availabilityCheck")
-    public String goTo(Utils.EndPoints ep, String data, Boolean p) throws URISyntaxException, IOException {
+    public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
         if(ep.url.equals("back")){
             endPoints.pop();
             return "";
@@ -281,7 +317,7 @@ public class CommonCommands implements ApplicationContextAware {
                 System.out.println(data);
                 return makePatchRequest(url,data);
             }
-            return applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url));
+            return applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url,o));
 
         }catch (WebClientResponseException.BadRequest
                 | WebClientResponseException.Forbidden
@@ -298,7 +334,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key="s")
     @ShellMethodAvailability("availabilityCheck")
-    public void select(int index,@ShellOption(defaultValue="") String d ,@ShellOption(defaultValue="") String f,@ShellOption(defaultValue="false") boolean p) throws URISyntaxException, IOException {
+    public void select(int index,@ShellOption(value = {"--data", "-d"},defaultValue="") String d ,@ShellOption(value = {"--file", "-f"},defaultValue="") String f,@ShellOption(value = {"--patch", "-p"},defaultValue="false") boolean p,@ShellOption(value = {"--output", "-o"},defaultValue="") String o) throws URISyntaxException, IOException {
         if (checkMachineSelection(index)) return;
         ObjectMapper mapper=new ObjectMapper();
         if(!d.isEmpty()){
@@ -309,7 +345,7 @@ public class CommonCommands implements ApplicationContextAware {
             d = new String(stream.readAllBytes());
             stream.close();
         }
-        var resp=goTo(endPoints.peek().get(index),d,p);
+        var resp=goTo(endPoints.peek().get(index),d,p,o);
         if(!resp.isEmpty()){
             System.out.println(resp);
             endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( mapper.readTree(resp))));
@@ -341,6 +377,9 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     public Availability availabilityCheck() {
+        int maxBufferSize = 1024 * 1024 * 1024; // 10 MB
+        System.setProperty("spring.codec.max-in-memory-size", String.valueOf(maxBufferSize));
+
         return (machine != null && userName !=null && passwd !=null)
                 ? Availability.available()
                 : Availability.unavailable("machine/username/passwd is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
