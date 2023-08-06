@@ -32,6 +32,9 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
+import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
+
 public class CommonCommands implements ApplicationContextAware {
     WebClient client;
 
@@ -273,6 +276,7 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "display")
     void displayCurrent(){
         if(endPoints.empty()){
+            System.out.println("Empty");
             return;
         }
         System.out.println("\n*****************************************************\n");
@@ -354,6 +358,22 @@ public class CommonCommands implements ApplicationContextAware {
         }
         displayCurrent();
     }
+    public void select(int index) throws URISyntaxException, IOException {
+        select(index,"","",false,"");
+    }
+        @ShellMethod(key="seq")
+    @ShellMethodAvailability("availabilityCheck")
+    public void sequence(String seq){
+        Arrays.stream(seq.split(",")).forEach(a->{
+            try {
+                select(Integer.parseInt(a));
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 
 
 
@@ -375,6 +395,20 @@ public class CommonCommands implements ApplicationContextAware {
         passwd=p;
         serialise();
     }
+    @ShellMethod(key = "ssh")
+    @ShellMethodAvailability("availabilityCheck")
+    void ssh() {
+        runShell(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd);
+        System.out.println("Exited Shell");
+        displayCurrent();
+    }
+
+    @ShellMethod(key = "cmd")
+    @ShellMethodAvailability("availabilityCheck")
+    void cmd(String command) {
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,command);
+    }
+
 
     public Availability availabilityCheck() {
         int maxBufferSize = 1024 * 1024 * 1024; // 10 MB
