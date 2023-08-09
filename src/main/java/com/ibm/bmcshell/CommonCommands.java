@@ -63,7 +63,7 @@ public class CommonCommands implements ApplicationContextAware {
         this.applicationContext = applicationContext;
     }
 
-    protected Stack<List<Utils.EndPoints>> endPoints=new Stack<>();
+    protected static Stack<List<Utils.EndPoints>> endPoints=new Stack<>();
 
     protected CommonCommands() throws IOException {
         if(client ==null) {
@@ -273,6 +273,7 @@ public class CommonCommands implements ApplicationContextAware {
         out.write(userName != null ?userName.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
         out.write(",".getBytes(StandardCharsets.UTF_8));
         out.write(passwd != null ?passwd.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
+        out.write(",".getBytes(StandardCharsets.UTF_8));
         out.write(WatsonAssistant.apiKey != null ?WatsonAssistant.apiKey.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
         out.close();
 
@@ -355,10 +356,13 @@ public class CommonCommands implements ApplicationContextAware {
             d = new String(stream.readAllBytes());
             stream.close();
         }
-        var resp=goTo(endPoints.peek().get(index),d,p,o);
+        execute(endPoints.peek().get(index),d,p,o);
+    }
+    void execute(Utils.EndPoints endp,String d, boolean p, String o) throws URISyntaxException, IOException {
+        var resp=goTo(endp,d,p,o);
         if(!resp.isEmpty()){
             System.out.println(resp);
-            endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( mapper.readTree(resp))));
+            endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( new ObjectMapper().readTree(resp))));
             endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
 
         }
@@ -425,7 +429,7 @@ public class CommonCommands implements ApplicationContextAware {
         int maxBufferSize = 1024 * 1024 * 1024; // 10 MB
         System.setProperty("spring.codec.max-in-memory-size", String.valueOf(maxBufferSize));
 
-        return (machine != null && userName !=null && passwd !=null && WatsonAssistant.apiKey==null)
+        return (machine != null && userName !=null && passwd !=null && WatsonAssistant.apiKey!=null)
                 ? Availability.available()
                 : Availability.unavailable("machine/username/passwd/apikey is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
     }

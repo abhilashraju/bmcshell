@@ -39,8 +39,9 @@ public class WatsonAssistant {
      ObjectMapper mapper= new ObjectMapper();
 
      var data =mapper.readTree(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/model.json")));
+     var help =new String(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt")).readAllBytes());
      StringBuilder builder= new StringBuilder();
-     builder.append(data.get("input").asText())
+     builder.append(help)
                 .append("Input:")
                 .append(input).append("?");
      ((ObjectNode) data).put("input",builder.toString());
