@@ -1,5 +1,6 @@
 package com.ibm.bmcshell;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.ssl.SslContext;
@@ -25,7 +26,7 @@ import java.util.stream.StreamSupport;
 
 public class Utils {
     public interface Callable<R>{
-        R apply();
+        R apply() throws JsonProcessingException;
     }
     public static class EndPoints implements Comparable
     {
@@ -47,13 +48,17 @@ public class Utils {
             return url.compareTo(other.url);
         }
     };
-    public static <R> R tryUntil(int count, Callable<R> f){
+    public static <R> R tryUntil(int count, Callable<R> f)  {
         while (count>0){
             try{
                 return f.apply();
-            }catch (Exception ex){
+            }catch (Exception  ex){
                 if(--count ==0){
-                    throw ex;
+                    try {
+                        throw ex;
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
             }
         }

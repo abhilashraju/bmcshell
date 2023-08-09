@@ -2,6 +2,7 @@ package com.ibm.bmcshell;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibm.bmcshell.inferencing.WatsonAssistant;
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -72,10 +73,10 @@ public class CommonCommands implements ApplicationContextAware {
                 BufferedInputStream bufferedInputStream= new BufferedInputStream(new FileInputStream(file));
                 var data=new String(bufferedInputStream.readAllBytes()).split(",");
                 machine=data[0];
-                if(data.length>1){
-                    userName=data[1];
-                    passwd=data[2];
-                }
+                if(data.length>1)userName=data[1];
+                if(data.length>2)passwd=data[2];
+                if(data.length>3)WatsonAssistant.apiKey=data[3];
+
 
             }
 
@@ -260,6 +261,10 @@ public class CommonCommands implements ApplicationContextAware {
         serialise();
          return machine;
     }
+    @ShellMethod(key = "q")
+    protected String query(String m) throws IOException {
+        return WatsonAssistant.makeQuery(m);
+    }
 
     private  void serialise() throws IOException {
         FileOutputStream out = new FileOutputStream(new File("history"));
@@ -268,6 +273,7 @@ public class CommonCommands implements ApplicationContextAware {
         out.write(userName != null ?userName.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
         out.write(",".getBytes(StandardCharsets.UTF_8));
         out.write(passwd != null ?passwd.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
+        out.write(WatsonAssistant.apiKey != null ?WatsonAssistant.apiKey.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
         out.close();
 
     }
@@ -408,14 +414,19 @@ public class CommonCommands implements ApplicationContextAware {
     void cmd(String command) {
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,command);
     }
+    @ShellMethod(key = "apikey")
+    void key(String key) throws IOException {
+        WatsonAssistant.apiKey=key;
+        serialise();
+    }
 
 
     public Availability availabilityCheck() {
         int maxBufferSize = 1024 * 1024 * 1024; // 10 MB
         System.setProperty("spring.codec.max-in-memory-size", String.valueOf(maxBufferSize));
 
-        return (machine != null && userName !=null && passwd !=null)
+        return (machine != null && userName !=null && passwd !=null && WatsonAssistant.apiKey==null)
                 ? Availability.available()
-                : Availability.unavailable("machine/username/passwd is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
+                : Availability.unavailable("machine/username/passwd/apikey is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
     }
 }
