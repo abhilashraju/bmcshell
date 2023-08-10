@@ -9,16 +9,23 @@ import com.ibm.cloud.sdk.core.security.IamToken;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import javax.net.ssl.SSLException;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
+import java.util.stream.StreamSupport;
+
 import com.ibm.cloud.sdk.core.security.IamAuthenticator;
 
 public class WatsonAssistant {
     static WebClient client;
     static  String token;
     public static String apiKey;
+
+    public static class LastPrompt
+    {
+        String question;
+        String answer;
+
+    }
+    static LastPrompt lastPrompt=new LastPrompt();
     static String getToken(){
         IamAuthenticator authenticator = new IamAuthenticator.Builder()
                 .apikey(apiKey)
@@ -34,6 +41,17 @@ public class WatsonAssistant {
             throw new RuntimeException(e);
         }
     }
+    public static void saveLastPrompt() throws IOException {
+        FileWriter fileWriter = new FileWriter("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt", true); // The 'true' parameter indicates append mode
+        fileWriter.write("\n"+lastPrompt.question+"\n"+lastPrompt.answer);
+        fileWriter.close();
+    }
+    public static LastPrompt getLastPrompt() throws IOException {
+        return lastPrompt;
+    }
+    public static String getLastQuery() throws IOException {
+        return lastPrompt.question;
+    }
 
     public static String makeQuery(String input) throws IOException {
      ObjectMapper mapper= new ObjectMapper();
@@ -45,6 +63,8 @@ public class WatsonAssistant {
                 .append("Input:")
                 .append(input).append("?");
      ((ObjectNode) data).put("input",builder.toString());
+     lastPrompt.question=input+"?";
+     lastPrompt.answer="";
 
      return Utils.tryUntil(2,()->{
             try {
@@ -64,7 +84,11 @@ public class WatsonAssistant {
                 var res=mapper.readTree(resp).get("results");
                 if(res instanceof ArrayNode){
                     var arry=(ArrayNode)res ;
-                    return arry.get(0).get("generated_text").asText();
+                    return lastPrompt.answer= StreamSupport.stream(arry.spliterator(),false).map(a->a.get("generated_text").asText()).reduce((a,b)->
+                    {
+                        return a+ "\n"+b;
+
+                    }).orElse("Dont Know");
                 }
                 return "Don't Know";
             } catch (JsonProcessingException jx){

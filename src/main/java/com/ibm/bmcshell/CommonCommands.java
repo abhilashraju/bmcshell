@@ -261,10 +261,7 @@ public class CommonCommands implements ApplicationContextAware {
         serialise();
          return machine;
     }
-    @ShellMethod(key = "q")
-    protected String query(String m) throws IOException {
-        return WatsonAssistant.makeQuery(m);
-    }
+
 
     private  void serialise() throws IOException {
         FileOutputStream out = new FileOutputStream(new File("history"));
@@ -422,6 +419,31 @@ public class CommonCommands implements ApplicationContextAware {
     void key(String key) throws IOException {
         WatsonAssistant.apiKey=key;
         serialise();
+    }
+    @ShellMethod(key = "save")
+    void savePrompt() throws IOException {
+        WatsonAssistant.saveLastPrompt();
+
+    }
+    @ShellMethod(key = "q")
+    protected void query(String m) throws IOException, InterruptedException {
+        var res= WatsonAssistant.makeQuery(m);
+        var words=res.split(" ");
+        int currentcount=0;
+        for(var w:words){
+            System.out.print(w + " ");
+            if(currentcount++ == 10){
+                currentcount=0;
+                System.out.println("");
+            }
+            Thread.sleep(100);
+
+        }
+        System.out.println("\n");
+    }
+    @ShellMethod(key = "aq")
+    protected void aquery(String m) throws IOException, InterruptedException {
+       query(WatsonAssistant.getLastQuery()+m);
     }
 
 

@@ -75,7 +75,7 @@ public class Utils {
                 .build();
         HttpClient httpClient = HttpClient.create().secure(t -> t.sslContext(sslContext))
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-                .responseTimeout(Duration.ofMillis(5000))
+                .responseTimeout(Duration.ofMillis(30000))
                 .doOnConnected(conn ->
                         conn.addHandlerLast(new ReadTimeoutHandler(5000))
                                 .addHandlerLast(new WriteTimeoutHandler(5000)));

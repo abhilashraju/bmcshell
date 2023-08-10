@@ -1,4 +1,5 @@
 Answer the following question using only information from the article. If there is no good answer in the article, say I don't know.
+
 Article:
 ###
 BmcShell is an intelligent interactive client for managing IBM Servers.
@@ -68,4 +69,81 @@ The VMI configuration data will be persistent across the BMC reboot.
 To access VMI config  "vmi" command
 To access VMI ethernet details use "vmi_eth_interfaces" command
 To access VMI ethernet interface details use "vmi_eth_interface [your interface name ,eth0 or eth1]" command
+
+SSH Command
+Shell gives flexibility  to interact with  server using ssh protocol.
+This often required to some introspection, file and system operation during development cycle.
+There are two ways to do it
+1) ssh in to the server
+    you can use "ssh" command for that.
+2) issue Shell command directly to server
+    you can use "cmd [command to be executed] " for that.
 ###
+Answer the following question using only information from the article.
+Answer in a complete sentence, with proper capitalization and punctuation.
+If there is no good answer in the article, say "I don't know".
+If question contains words like explain, detailed out or how  or similar word , try to give brief summary.
+
+ What is bmcshell?
+ BmcShell is an intelligent interactive client for managing IBM Servers.
+Using BmcShell is very easy. You don't hava to remember the commands.
+All you have to do is type help in the console.
+Or ask me, I am you friend in need!
+
+ How does it work?
+ Under the hood, the shell uses redfish schema-based rest interfaces to interact with the server.
+
+ How the User interface looks like?
+ Shell UI is a console based menu-driven one.
+The result of a shell command will be the redfish response data followed by list of menu options to proceed.
+The menu options are derived from the server response. Basically the options are next level links and actions.
+Example Ui
+0) back
+1) chassis
+2) cable
+3) network
+
+you can use select command "s" to select the one of the option
+Syntax: s 2 [arg] [arg]
+command followed by a choice number followed by zero or more arguments.
+Arguments to selection command decided what type it is.
+Default is Get request to server.
+You can give Post and Patch request by explicitly mentioning it.
+
+ What is session management and how does bmc shell handles it?
+ To manage the BMC, HMC needs to authenticate itself over a secure channel BMC supports Redfish for the standard Redfish schema and it also supports REST interface for the IBM specific use cases.
+HMC should use the REST as well as the Redfish interface with BMC based on the required functionality.
+HMC should create the redfish session which returns the authentication token from the BMC.
+This token can be used for the subsequent Redfish and REST queries.
+Rest interface will be used for following scenarios
+1) Save Area Management
+2) Lock Management
+3) VMI IP Discovery
+4) VMI Certificate Exchange
+5) Dump Offload (if the interface doesn’t get standardized)
+Redfish interface will be used for following scenarios
+1) Firmware update
+2) Error Log
+3) System Power On/Off 4) BMC Capabilities
+5) Other Management operations 3.1 Creating Redfish Session When HMC connects to BMC for the first time, HMC should use the ‘admin’ user and admin privileges to create the initial session.
+With the valid user name and password, the session will be created, and the response header will contain the ‘X-Auth-Token’ which should be saved and used by the client for any further interaction with the server through this session.
+You don't have to worry about session expiry when you use Bmcshell to interact with servers.
+Bmcshell will automatically reclaim the session on expiry.
+However, you must enter your username and password to Bmcshell at least once.
+You can use the following command for setting your username and password.
+username  [Bmc user name]
+password  [Bmc password]
+can you explain?
+BmcShell is an intelligent interactive client for managing IBM Servers. Using BmcShell is very easy. You don't hava to remember the commands. All you have to do is type help in the console. Or ask me, I am you friend in need!
+explain vmi?
+The Hardware Management Console can directly talk to the PHYP using the Virtual Management Interface.
+how does session expiry works?
+Bmcshell will automatically reclaim the session on expiry.
+how can I use bmcshell?
+BmcShell is an intelligent interactive client for managing IBM Servers. Using BmcShell is very easy. You don't hava to remember the commands. All you have to do is type help in the console. Or ask me, I am you friend in need!
+how to get vmi details?
+To access VMI config "vmi" command To access VMI ethernet details use "vmi_eth_interfaces" command To access VMI ethernet interface details use "vmi_eth_interface [your interface name ,eth0 or eth1]" command
+how to use ssh?
+There are two ways to do it 1) ssh in to the server you can use "ssh" command for that. 2) issue Shell command directly to server you can use "cmd [command to be executed] " for that.
+ command for configuring vmi?
+To access VMI config "vmi" command
