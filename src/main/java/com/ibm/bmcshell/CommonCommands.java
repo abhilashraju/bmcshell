@@ -3,6 +3,7 @@ package com.ibm.bmcshell;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
+import com.ibm.bmcshell.Os.Cmd;
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
+import com.ibm.bmcshell.Os.Cmd;
 
 public class CommonCommands implements ApplicationContextAware {
     WebClient client;
@@ -357,11 +359,12 @@ public class CommonCommands implements ApplicationContextAware {
     }
     void execute(Utils.EndPoints endp,String d, boolean p, String o) throws URISyntaxException, IOException {
         var resp=goTo(endp,d,p,o);
-        if(!resp.isEmpty()){
+        if(resp!=null && !resp.isEmpty()){
             System.out.println(resp);
-            endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( new ObjectMapper().readTree(resp))));
-            endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
-
+            if(endp.action.equals("Get")){
+                endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( new ObjectMapper().readTree(resp))));
+                endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
+            }
         }
         displayCurrent();
     }
@@ -415,6 +418,37 @@ public class CommonCommands implements ApplicationContextAware {
     void cmd(String command) {
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,command);
     }
+    @ShellMethod(key = "os")
+    @ShellMethodAvailability("availabilityCheck")
+    void os() {
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,"cat /etc/os-release");
+    }
+    @ShellMethod(key = "system")
+    void system(String command) {
+        Cmd.execute(command,passwd);
+    }
+
+
+
+
+    @ShellMethod(key = "scp")
+    @ShellMethodAvailability("availabilityCheck")
+    void scp(String path) {
+        StringBuilder cmdBuilder=new StringBuilder();
+
+        cmdBuilder.append("scp ");
+        cmdBuilder.append("-o StrictHostKeyChecking=no ");
+        cmdBuilder.append("-o UserKnownHostsFile=/dev/null ");
+        cmdBuilder.append("-P 22 ");
+        cmdBuilder.append(path);
+        cmdBuilder.append(" ");
+        cmdBuilder.append(userName);
+        cmdBuilder.append("@");
+        cmdBuilder.append(String.format("%s.aus.stglabs.ibm.com",machine));
+        cmdBuilder.append(":/tmp/");
+
+        system(cmdBuilder.toString());
+    }
     @ShellMethod(key = "apikey")
     void key(String key) throws IOException {
         WatsonAssistant.apiKey=key;
@@ -425,19 +459,19 @@ public class CommonCommands implements ApplicationContextAware {
         WatsonAssistant.saveLastPrompt();
 
     }
+    @ShellMethod(key = "refresh")
+    void refresh() {
+        WatsonAssistant.refresh();
+    }
     @ShellMethod(key = "q")
     protected void query(String m) throws IOException, InterruptedException {
         var res= WatsonAssistant.makeQuery(m);
+        res=res.replace(".","\n");
         var words=res.split(" ");
         int currentcount=0;
         for(var w:words){
             System.out.print(w + " ");
-            if(currentcount++ == 10){
-                currentcount=0;
-                System.out.println("");
-            }
             Thread.sleep(100);
-
         }
         System.out.println("\n");
     }

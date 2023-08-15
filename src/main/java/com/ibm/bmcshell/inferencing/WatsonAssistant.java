@@ -18,6 +18,16 @@ public class WatsonAssistant {
     static WebClient client;
     static  String token;
     public static String apiKey;
+    public static String help;
+
+    static {
+        try {
+            help = new String(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt")).readAllBytes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 
     public static class LastPrompt
     {
@@ -52,12 +62,19 @@ public class WatsonAssistant {
     public static String getLastQuery() throws IOException {
         return lastPrompt.question;
     }
+    public static void refresh()
+    {
+        try {
+            help = new String(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt")).readAllBytes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static String makeQuery(String input) throws IOException {
      ObjectMapper mapper= new ObjectMapper();
 
      var data =mapper.readTree(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/model.json")));
-     var help =new String(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt")).readAllBytes());
      StringBuilder builder= new StringBuilder();
      builder.append(help)
                 .append("Input:")
@@ -84,11 +101,18 @@ public class WatsonAssistant {
                 var res=mapper.readTree(resp).get("results");
                 if(res instanceof ArrayNode){
                     var arry=(ArrayNode)res ;
-                    return lastPrompt.answer= StreamSupport.stream(arry.spliterator(),false).map(a->a.get("generated_text").asText()).reduce((a,b)->
+                    lastPrompt.answer= StreamSupport.stream(arry.spliterator(),false).map(a->a.get("generated_text").asText()).reduce((a,b)->
                     {
                         return a+ "\n"+b;
 
                     }).orElse("Dont Know");
+                    StringBuilder builder2= new StringBuilder();
+                    builder2.append(help+"\n");
+                    builder2.append(lastPrompt.question);
+                    builder2.append(lastPrompt.answer);
+                    help=builder2.toString();
+                    return lastPrompt.answer;
+
                 }
                 return "Don't Know";
             } catch (JsonProcessingException jx){
