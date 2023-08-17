@@ -308,7 +308,11 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key="goto")
     @ShellMethodAvailability("availabilityCheck")
-    public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
+    public void run(String endPoint) throws URISyntaxException, IOException {
+        var ep=new Utils.EndPoints(endPoint,"Get");
+        System.out.println(goTo(ep,"",false,""));
+    }
+        public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
         if(ep.url.equals("back")){
             endPoints.pop();
             return "";

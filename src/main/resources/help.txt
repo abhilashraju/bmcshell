@@ -15,13 +15,13 @@ In general syntax commands will be a command name followed by zero or more argum
 
 Shell UI is a console application with textual menu interface.
 Choices will be shown as list of menu item with a number attached to it.
-If you have logged in to a session you can type "api" to get first level menu.
+If you have logged in to a session you can type "apis" to get first level menu.
 If you have not logged in, then you can type "machines" to get available machines.
 Example Ui.
-0) back.
-1) chassis.
-2) cable.
-3) network.
+0) back .
+1) chassis .
+2) cable .
+3) network .
 You can use select command "s" to make your selection.
 Syntax: s 2 [arg] [arg].
 command followed by a choice number followed by zero or more arguments.
@@ -101,6 +101,26 @@ There are two ways to do it
     you can use "ssh" command for that.
 2) issue Shell command directly to server
     you can use "cmd [command to be executed] " for that.
+
+Crawling
+If you want to make a broadcasting query to all machines you can use a script file.
+For example, if you wanted to make fw version query to all available machines you can use following step
+1) Open a file and name it as per your wish.
+2) Write following content in to it.
+machine rain104bmc.
+os.
+machine rain111bmc.
+os.
+machine rain127bmc.
+os.
+machine rain135bmc.
+os.
+machine rain136bmc.
+os.
+3) Save the file.
+4) use script command by passing full path of the file created above.
+
+
 ###
 Answer the following question using only information from the article.
 Answer in a complete sentence, with proper capitalization and punctuation.

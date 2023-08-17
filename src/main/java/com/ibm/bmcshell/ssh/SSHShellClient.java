@@ -10,12 +10,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SSHShellClient {
-    public static void runShell(String host, String user, String password)
+    public static void runShell(String host,String user,String password){
+        int port = 22;
+        runShell(host,user,password,port);
+    }
+    public static void runShell(String host, String user, String password,int port)
     {
         try {
             JSch jsch = new JSch();
 
-            int port = 22;
+
 
             Session session = jsch.getSession(user, host, port);
             session.setPassword(password);

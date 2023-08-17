@@ -9,6 +9,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
+
+import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
+
 @ShellComponent
 public class VMICommands extends CommonCommands{
     protected VMICommands() throws IOException {
@@ -41,5 +44,14 @@ public class VMICommands extends CommonCommands{
         execute(new Utils.EndPoints("Systems/hypervisor/EthernetInterfaces/"+iface,"Get"),d,p,"");
 
     }
+    @ShellMethod(key="vmi.ssh")
+    @ShellMethodAvailability("availabilityCheck")
+    public void vmi_ssh(){
+        runShell(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,2201);
+        System.out.println("Exited Shell");
+        displayCurrent();
+
+    }
+
 
 }
