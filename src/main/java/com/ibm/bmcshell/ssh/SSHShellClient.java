@@ -33,7 +33,6 @@ public class SSHShellClient {
             while (!channel.isClosed()) {
                 Thread.sleep(1000);
             }
-
             channel.disconnect();
             session.disconnect();
         } catch (Exception e) {
@@ -52,14 +51,21 @@ public class SSHShellClient {
             session.setConfig("StrictHostKeyChecking", "no");
             session.connect();
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
+
+
             channel.setCommand(command);
 
             InputStream in = channel.getInputStream();
             channel.connect();
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(channel.getErrStream()));
             String line;
             while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+            System.out.println("\nStandard Error:");
+            while ((line = errorReader.readLine()) != null) {
                 System.out.println(line);
             }
             channel.disconnect();

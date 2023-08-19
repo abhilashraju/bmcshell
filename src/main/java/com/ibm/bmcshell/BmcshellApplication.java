@@ -1,7 +1,13 @@
 package com.ibm.bmcshell;
 
+import org.jline.terminal.Terminal;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.shell.standard.ShellComponent;
+import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellOption;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,6 +27,7 @@ public class BmcshellApplication {
 		SpringApplication.run(BmcshellApplication.class, args);
 		System.out.println("Exiting....");
 	}
+
 
 
 }

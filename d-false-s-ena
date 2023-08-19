@@ -1,0 +1,5 @@
+vmi_eth_interface eth1 --patch true --data '{"DHCPv4": {"DHCPEnabled": true}}'
+vmi_eth_interface eth1 --patch true --data '{"DHCPv6": {"OperatingMode":"Enabled"}}'
+vmi_eth_interface eth1 --patch true --data '{"IPv6StaticAddresses": [{"Address": "4005:db8:0:2::250","PrefixLength": 64}]}'
+vmi_eth_interface eth1
+bs.introspect xyz.openbmc_project.Network.Hypervisor /xyz/openbmc_project/network/hypervisor/eth1

@@ -10,24 +10,28 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
 
+import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
 
 @ShellComponent
 public class VMICommands extends CommonCommands{
-    protected VMICommands() throws IOException {
+    private final DbusCommnads dbusCommnads;
+
+    protected VMICommands(DbusCommnads buscommand) throws IOException {
+        dbusCommnads=buscommand;
     }
     @ShellMethod(key="vmi")
     @ShellMethodAvailability("availabilityCheck")
     public void vmi() throws URISyntaxException, IOException {
 
-        execute(new Utils.EndPoints("Systems/hypervisor","Get"),"",false,"");
+        execute(new Utils.EndPoints("Systems/hypervisor","Get"),"",false,"",false);
 
     }
     @ShellMethod(key="vmi_eth_interfaces")
     @ShellMethodAvailability("availabilityCheck")
     public void vmi_eth_interfaces() throws URISyntaxException, IOException {
 
-        execute(new Utils.EndPoints("Systems/hypervisor/EthernetInterfaces","Get"),"",false,"");
+        execute(new Utils.EndPoints("Systems/hypervisor/EthernetInterfaces","Get"),"",false,"",false);
 
     }
     @ShellMethod(key="vmi_eth_interface")
@@ -41,7 +45,7 @@ public class VMICommands extends CommonCommands{
             d = new String(stream.readAllBytes());
             stream.close();
         }
-        execute(new Utils.EndPoints("Systems/hypervisor/EthernetInterfaces/"+iface,"Get"),d,p,"");
+        execute(new Utils.EndPoints("Systems/hypervisor/EthernetInterfaces/"+iface,"Get"),d,p,"",false);
 
     }
     @ShellMethod(key="vmi.ssh")
@@ -51,6 +55,21 @@ public class VMICommands extends CommonCommands{
         System.out.println("Exited Shell");
         displayCurrent();
 
+    }
+    @ShellMethod(key="vmi.bios_introspect")
+    @ShellMethodAvailability("availabilityCheck")
+    public void bios_introspect(){
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl introspect xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager --verbose"));
+    }
+    @ShellMethod(key="vmi.bios_table")
+    @ShellMethodAvailability("availabilityCheck")
+    public void bios_table(){
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl call xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager org.freedesktop.DBus.Properties Get ss xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable --verbose"));
+    }
+    @ShellMethod(key="vmi.bios_table_property")
+    @ShellMethodAvailability("availabilityCheck")
+    public void bios_table_property(){
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl get-property xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable --verbose"));
     }
 
 

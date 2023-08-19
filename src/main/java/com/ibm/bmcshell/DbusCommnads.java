@@ -32,20 +32,16 @@ public class DbusCommnads extends CommonCommands{
     public void tree(String service){
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl tree %s",service));
     }
-    @ShellMethod(key="bs.bios_introspect")
+
+    @ShellMethod(key="bs.manged_objects")
     @ShellMethodAvailability("availabilityCheck")
-    public void bios_introspect(){
-        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl introspect xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager"));
+    public void managed_objects(String service,String path){
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl call %s %s org.freedesktop.DBus.ObjectManager GetManagedObjects --verbose",service,path));
     }
-    @ShellMethod(key="bs.bios_table")
+    @ShellMethod(key="bs.subtree")
     @ShellMethodAvailability("availabilityCheck")
-    public void bios_table(){
-        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl call xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager org.freedesktop.DBus.Properties Get ss xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable"));
-    }
-    @ShellMethod(key="bs.bios_table_property")
-    @ShellMethodAvailability("availabilityCheck")
-    public void bios_table_property(){
-        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl get-property xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable --verbose"));
+    public void subtree(String obj,int depth,String iFace){
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper %s %d %s GetSubTree --verbose",obj,depth,iFace));
     }
 
 

@@ -19,7 +19,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
+import com.ibm.bmcshell.CustomPromptProvider;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -50,7 +50,7 @@ public class CommonCommands implements ApplicationContextAware {
     private ApplicationContext applicationContext;
     static String userName;
     static String passwd;
-
+    PrintStream savedStream=System.out;
     public  static  String getUserName(){
         return userName;
     }
@@ -294,13 +294,31 @@ public class CommonCommands implements ApplicationContextAware {
                 });
         System.out.println("\n*****************************************************\n");
     }
+    @ShellMethod(key="redirect")
 
+    public void redirect(String filePath) throws  FileNotFoundException {
+        FileOutputStream fileOutputStream = new FileOutputStream(filePath);
+        // Create a PrintStream that writes to the file
+        PrintStream printStream = new PrintStream(fileOutputStream);
+        // Redirect System.out to the file PrintStream
+        System.setOut(printStream);
+    }
+    @ShellMethod(key="closeredirected")
+    public void closeredirected() throws URISyntaxException, JsonProcessingException {
+
+        System.out.close();
+        System.setOut(savedStream);
+    }
 
     @ShellMethod(key="apis")
     @ShellMethodAvailability("availabilityCheck")
     public void apis() throws URISyntaxException, JsonProcessingException {
         makeApiList();
         displayCurrent();
+    }
+    @ShellMethod(key="sleep")
+    public void apis(int sec) throws InterruptedException {
+        Thread.sleep(sec * 1000);
     }
 
 
@@ -361,16 +379,24 @@ public class CommonCommands implements ApplicationContextAware {
         }
         execute(endPoints.peek().get(index),d,p,o);
     }
-    void execute(Utils.EndPoints endp,String d, boolean p, String o) throws URISyntaxException, IOException {
+    void execute(Utils.EndPoints endp,String d, boolean p, String o,boolean showMenu) throws URISyntaxException, IOException {
         var resp=goTo(endp,d,p,o);
         if(resp!=null && !resp.isEmpty()){
             System.out.println(resp);
-            if(endp.action.equals("Get")){
-                endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( new ObjectMapper().readTree(resp))));
-                endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
+            if(showMenu) {
+                if(endp.action.equals("Get")){
+                    endPoints.push(Utils.sorted(Utils.buildLinksAndTargets( new ObjectMapper().readTree(resp))));
+                    endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
+                }
             }
         }
-        displayCurrent();
+        if(showMenu){
+            displayCurrent();
+        }
+
+    }
+    void execute(Utils.EndPoints endp,String d, boolean p, String o) throws URISyntaxException, IOException {
+        execute(endp,d,p,o,true);
     }
     public void select(int index) throws URISyntaxException, IOException {
         select(index,"","",false,"");
@@ -482,6 +508,26 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "aq")
     protected void aquery(String m) throws IOException, InterruptedException {
        query(WatsonAssistant.getLastQuery()+m);
+    }
+    @ShellMethod(key = "save_as")
+    protected String save(String scriptname, int count) throws IOException, InterruptedException {
+        FileInputStream reader = new FileInputStream(new File("spring-shell.log"));
+        var history=Arrays.stream(new String(reader.readAllBytes()).split("\n")).collect(Collectors.toList());
+        history.remove(history.size()-1);
+        var toSkip = Math.max(0,history.size()-count);
+        FileOutputStream fileOutputStream = new FileOutputStream(new File(scriptname));
+        history.stream().skip(toSkip).forEach(element->{
+            System.out.println(element);
+            var cmd =element.split(":")[1];
+            try {
+                fileOutputStream.write(cmd.getBytes(StandardCharsets.UTF_8));
+                fileOutputStream.write("\n".getBytes(StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        return "Saved to file "+scriptname;
+
     }
 
 
