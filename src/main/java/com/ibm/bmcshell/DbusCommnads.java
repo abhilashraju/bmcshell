@@ -44,6 +44,13 @@ public class DbusCommnads extends CommonCommands{
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper %s %d %s GetSubTree --verbose",obj,depth,iFace));
     }
 
+    @ShellMethod(key="bs.property")
+    @ShellMethodAvailability("availabilityCheck")
+    public void property(String service,String path,String iface, String prop,boolean verbose){
+        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl get-property %s %s %s %s %s",service,path,iface,prop,verbose?"--verbos":""));
+
+    }
+
 
 
 

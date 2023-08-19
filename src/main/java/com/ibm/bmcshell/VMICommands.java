@@ -5,16 +5,17 @@ import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.URISyntaxException;
+import java.util.Arrays;
+import java.util.function.Function;
 
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
 
 @ShellComponent
 public class VMICommands extends CommonCommands{
+
     private final DbusCommnads dbusCommnads;
 
     protected VMICommands(DbusCommnads buscommand) throws IOException {
@@ -68,8 +69,40 @@ public class VMICommands extends CommonCommands{
     }
     @ShellMethod(key="vmi.bios_table_property")
     @ShellMethodAvailability("availabilityCheck")
-    public void bios_table_property(){
-        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl get-property xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable --verbose"));
+    public void bios_table_property(@ShellOption(value = {"--search", "-s"},defaultValue="") String search){
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        redirector(outputStream,()->dbusCommnads.property("xyz.openbmc_project.BIOSConfigManager", "/xyz/openbmc_project/bios_config/manager","xyz.openbmc_project.BIOSConfig.Manager","BaseBIOSTable" ,true));
+        if(search.isEmpty()){
+            System.out.println(outputStream.toString());
+            return;
+        }
+        Arrays.stream(search.split(",")).forEach(a->{
+            printSelected(a, outputStream.toString());
+        });
+
+    }
+
+    private static void printSelected(String search, String capturedOutput) {
+        var arry= capturedOutput.split("\n");
+        int i=0;
+        while (i<arry.length){
+            if(arry[i].contains(search)){
+                break;
+            }
+            i++;
+        }
+        if(i< arry.length){
+            Arrays.stream(arry).skip(i).takeWhile((a)->!a.contains("DICT_ENTRY")).forEach((a)->System.out.println(a));
+        }
+    }
+
+    void redirector(OutputStream outputStream,Runnable runnable)
+    {
+        PrintStream customOut = new PrintStream(outputStream);
+        PrintStream originalOut = System.out;
+        System.setOut(customOut);
+        runnable.run();
+        System.setOut(originalOut);
     }
 
 
