@@ -8,9 +8,13 @@ import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.shell.Availability;
+import org.springframework.shell.boot.JLineShellAutoConfiguration;
+import org.springframework.shell.boot.StandardAPIAutoConfiguration;
+import org.springframework.shell.boot.StandardCommandsAutoConfiguration;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
@@ -261,10 +265,18 @@ public class CommonCommands implements ApplicationContextAware {
          machine=m;
          getToken();
         serialise();
+         Utils.addToMachineList(machine);
          return machine;
     }
 
-
+    void redirector(OutputStream outputStream,Runnable runnable)
+    {
+        PrintStream customOut = new PrintStream(outputStream);
+        PrintStream originalOut = System.out;
+        System.setOut(customOut);
+        runnable.run();
+        System.setOut(originalOut);
+    }
     private  void serialise() throws IOException {
         FileOutputStream out = new FileOutputStream(new File("history"));
         out.write(machine.getBytes(StandardCharsets.UTF_8));
@@ -419,7 +431,7 @@ public class CommonCommands implements ApplicationContextAware {
 
 
     @ShellMethod(key = "machines")
-    void machines(){
+    void machines() throws IOException {
          endPoints.push(Utils.listOfMachines());
         displayCurrent();
 
@@ -441,6 +453,16 @@ public class CommonCommands implements ApplicationContextAware {
         runShell(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd);
         System.out.println("Exited Shell");
         displayCurrent();
+    }
+    @ShellMethod(key = "scmd")
+    @ShellMethodAvailability("availabilityCheck")
+    void scmd(String command) {
+        var newCmd=Arrays.stream(command.split(";")).map(a->"sudo -i "+a).reduce((a,b)->a+";"+b);
+        newCmd.ifPresentOrElse(a->{
+            runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,a);
+        },()->{
+            System.out.println(command + " is invalid");
+        });
     }
 
     @ShellMethod(key = "cmd")
@@ -484,9 +506,16 @@ public class CommonCommands implements ApplicationContextAware {
         WatsonAssistant.apiKey=key;
         serialise();
     }
-    @ShellMethod(key = "save")
-    void savePrompt() throws IOException {
-        WatsonAssistant.saveLastPrompt();
+    void invokeScript(String filename)
+    {
+
+
+    }
+    @ShellMethod(key="do-while")
+    void do_while(String scrFile,String condition)
+    {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+//        redirector(outputStream,()->script(scrFile));
 
     }
     @ShellMethod(key = "refresh")
@@ -509,7 +538,7 @@ public class CommonCommands implements ApplicationContextAware {
     protected void aquery(String m) throws IOException, InterruptedException {
        query(WatsonAssistant.getLastQuery()+m);
     }
-    @ShellMethod(key = "save_as")
+    @ShellMethod(key = "save")
     protected String save(String scriptname, int count) throws IOException, InterruptedException {
         FileInputStream reader = new FileInputStream(new File("spring-shell.log"));
         var history=Arrays.stream(new String(reader.readAllBytes()).split("\n")).collect(Collectors.toList());
@@ -518,7 +547,8 @@ public class CommonCommands implements ApplicationContextAware {
         FileOutputStream fileOutputStream = new FileOutputStream(new File(scriptname));
         history.stream().skip(toSkip).forEach(element->{
             System.out.println(element);
-            var cmd =element.split(":")[1];
+            var index =element.indexOf(':');
+            var cmd = element.substring(index+1);
             try {
                 fileOutputStream.write(cmd.getBytes(StandardCharsets.UTF_8));
                 fileOutputStream.write("\n".getBytes(StandardCharsets.UTF_8));

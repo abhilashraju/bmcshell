@@ -51,8 +51,7 @@ public class CommonRest  {
     CustomPromptProvider getPromptProvider(){
         return applicationContext.getBean(CustomPromptProvider.class);
     }
-    List<String> listOfMachines()
-    {
+    List<String> listOfMachines() throws IOException {
         return Utils.listOfMachines().stream().map(a->a.url).collect(Collectors.toList());
     }
     protected Mono<ResponseEntity<String>> makeGetRequestMono(String target) throws URISyntaxException {
@@ -143,7 +142,7 @@ public class CommonRest  {
         return restApis();
     }
     @RequestMapping("/machines")
-    Mono<String> machines() throws URISyntaxException, JsonProcessingException {
+    Mono<String> machines() throws URISyntaxException, IOException {
 
         var list= listOfMachines().stream().skip(1).map(a -> {
             var r = "<a href=\"machine?m=" + a + "\">" + a + "</a>";

@@ -38,9 +38,7 @@ public class VMICommands extends CommonCommands{
     @ShellMethod(key="vmi_eth_interface")
     @ShellMethodAvailability("availabilityCheck")
     public void vmi_eth_interface(String iface, @ShellOption(value = {"--data", "-d"},defaultValue="") String d , @ShellOption(value = {"--file", "-f"},defaultValue="") String f, @ShellOption(value = {"--patch", "-p"},defaultValue="false") boolean p) throws URISyntaxException, IOException {
-        if(!d.isEmpty()){
-            d=d.substring(0,d.length()-1);///some strange , comes at end . need to remove it
-        }
+        
         if(!f.isEmpty()){
             var stream=new FileInputStream(new File(f));
             d = new String(stream.readAllBytes());
@@ -96,14 +94,7 @@ public class VMICommands extends CommonCommands{
         }
     }
 
-    void redirector(OutputStream outputStream,Runnable runnable)
-    {
-        PrintStream customOut = new PrintStream(outputStream);
-        PrintStream originalOut = System.out;
-        System.setOut(customOut);
-        runnable.run();
-        System.setOut(originalOut);
-    }
+
 
 
 }

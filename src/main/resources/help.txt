@@ -146,9 +146,9 @@ Example Ui
 2) cable
 3) network
 
-you can use select command "s" to select the one of the option
-Syntax: s 2 [arg] [arg]
-command followed by a choice number followed by zero or more arguments.
+you can use select command "s" to select the one of the option.
+Syntax: s number [arg] [arg].
+Command followed by a choice number followed by zero or more arguments.
 Arguments to selection command decided what type it is.
 Default is Get request to server.
 You can give Post and Patch request by explicitly mentioning it.
@@ -200,3 +200,5 @@ hdw do i make selection?
 You can use select command "s" to make your selection. Syntax: s 2 [arg] [arg] command followed by a choice number followed by zero or more arguments. Arguments to selection command decided what type it is. If not specified any type argument by defualt shell executes a Get request to server. You can give Post and Patch request by explicitly mentioning it.
 who are you?
 BmcShell is an intelligent interactive client for managing IBM Servers. Using BmcShell is very easy. You don't hava to remember the commands. All you have to do is type help in the console. Or ask me, I am you friend in need!
+null
+null

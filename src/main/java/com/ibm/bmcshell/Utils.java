@@ -15,16 +15,17 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.netty.http.client.HttpClient;
 
 import javax.net.ssl.SSLException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Spliterator;
-import java.util.Spliterators;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 public class Utils {
+
+
     public interface Callable<R>{
         R apply() throws JsonProcessingException;
     }
@@ -89,8 +90,33 @@ public class Utils {
 
 
     }
-    public static List<EndPoints> listOfMachines(){
-        return List.of(new EndPoints("back","Get"),new EndPoints("rain104bmc","Get"),new EndPoints("rain111bmc","Get"),new EndPoints("rain127bmc","Get"),new EndPoints("rain135bmc","Get"),new EndPoints("rain136bmc","Get"));
+    public static void addToMachineList(String machine) throws IOException {
+        var v=listOfMachines();
+
+        if(v.stream().filter(a->a.url.equals(machine)).count()==0){
+            var stream=new FileOutputStream(new File("machines"),true);
+            stream.write("\n".getBytes(StandardCharsets.UTF_8));
+            stream.write(machine.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+    public static List<EndPoints> listOfMachines() throws IOException {
+        var file= new File("machines");
+        if(!file.exists()){
+            var stream=new FileOutputStream(file);
+            stream.write("rain104bmc".getBytes(StandardCharsets.UTF_8));
+            stream.write("\n".getBytes(StandardCharsets.UTF_8));
+            stream.write("rain111bmc".getBytes(StandardCharsets.UTF_8));
+            stream.write("\n".getBytes(StandardCharsets.UTF_8));
+            stream.write("rain127bmc".getBytes(StandardCharsets.UTF_8));
+            stream.write("\n".getBytes(StandardCharsets.UTF_8));
+            stream.write("rain135bmc".getBytes(StandardCharsets.UTF_8));
+            stream.write("\n".getBytes(StandardCharsets.UTF_8));
+            stream.write("rain136bmc".getBytes(StandardCharsets.UTF_8));
+            stream.close();
+
+        }
+        var ret=Arrays.stream(new String(new FileInputStream(new File("machines")).readAllBytes()).split("\n")).map(a->new EndPoints(a,"Get")).collect(Collectors.toList());
+        return ret;
     }
     static Stream<String> getFieldNames(JsonNode node){
         return StreamSupport.stream(Spliterators.spliteratorUnknownSize(node.fieldNames(), Spliterator.ORDERED),true);

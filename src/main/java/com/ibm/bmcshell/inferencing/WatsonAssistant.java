@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.ibm.bmcshell.Utils;
 import com.ibm.cloud.sdk.core.security.IamToken;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import javax.net.ssl.SSLException;
@@ -22,7 +24,9 @@ public class WatsonAssistant {
 
     static {
         try {
-            help = new String(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt")).readAllBytes());
+            Resource resource = new ClassPathResource("help.txt");
+            help = new String(resource.getInputStream().readAllBytes());
+//            help = new String(new FileInputStream(new File("/Users/abhilashraju/work/JAVA/bmcshellnew/src/main/resources/help.txt")).readAllBytes());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
