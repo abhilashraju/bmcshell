@@ -64,7 +64,7 @@ public class SSHShellClient {
             while ((line = reader.readLine()) != null) {
                 System.out.println(line);
             }
-            System.out.println("\nStandard Error:");
+            System.out.println("\nStandard Error: ");
             while ((line = errorReader.readLine()) != null) {
                 System.out.println(line);
             }

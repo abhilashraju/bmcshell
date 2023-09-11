@@ -65,7 +65,7 @@ public class VMICommands extends CommonCommands{
     public void bios_table(){
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,String.format("busctl call xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager org.freedesktop.DBus.Properties Get ss xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable --verbose"));
     }
-    @ShellMethod(key="vmi.bios_table_property")
+    @ShellMethod(key="vmi.bios_table_property", value="eg; vmi.bios_table_property -s vmi_if1_ipv6_ipaddr,vmi_if1_ipv4_ipaddr")
     @ShellMethodAvailability("availabilityCheck")
     public void bios_table_property(@ShellOption(value = {"--search", "-s"},defaultValue="") String search){
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();

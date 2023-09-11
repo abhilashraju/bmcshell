@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
 import com.ibm.bmcshell.Os.Cmd;
+import com.ibm.bmcshell.script.ScriptRunner;
+import kotlin.Pair;
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -18,6 +20,7 @@ import org.springframework.shell.boot.StandardCommandsAutoConfiguration;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.standard.commands.Script;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -54,7 +57,10 @@ public class CommonCommands implements ApplicationContextAware {
     private ApplicationContext applicationContext;
     static String userName;
     static String passwd;
+    static String libPath="./";
     PrintStream savedStream=System.out;
+    @Autowired
+    Script script;
     public  static  String getUserName(){
         return userName;
     }
@@ -329,20 +335,32 @@ public class CommonCommands implements ApplicationContextAware {
         displayCurrent();
     }
     @ShellMethod(key="sleep")
-    public void apis(int sec) throws InterruptedException {
+    public void sleep(int sec) throws InterruptedException {
         Thread.sleep(sec * 1000);
     }
 
 
 
-
-    @ShellMethod(key="goto")
+    @ShellMethod(key="patch",value = "eg patch Systems/hypervisor/EthernetInterfaces/eth0 '{\"DHCPv4\": {\"DHCPEnabled\": false}}'")
     @ShellMethodAvailability("availabilityCheck")
-    public void run(String endPoint) throws URISyntaxException, IOException {
+    public void patch(String endPoint,String data) throws URISyntaxException, IOException {
         var ep=new Utils.EndPoints(endPoint,"Get");
-        System.out.println(goTo(ep,"",false,""));
+        System.out.println(goTo(ep,data,true,""));
     }
-        public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
+
+    @ShellMethod(key="post",value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
+    @ShellMethodAvailability("availabilityCheck")
+    public void post(String endPoint,String data) throws URISyntaxException, IOException {
+        var ep=new Utils.EndPoints(endPoint,"Post");
+        System.out.println(goTo(ep,data,false,""));
+    }
+    @ShellMethod(key="get",value = "eg get Systems/hypervisor/EthernetInterfaces/eth0 or get Systems/hypervisor/EthernetInterfaces/eth0 output-filename")
+    @ShellMethodAvailability("availabilityCheck")
+    public void get(String endPoint,@ShellOption(value = {"--output", "-o"},defaultValue="") String o) throws URISyntaxException, IOException {
+        var ep=new Utils.EndPoints(endPoint,"Get");
+        System.out.println(goTo(ep,"",false,o));
+    }
+    public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
         if(ep.url.equals("back")){
             endPoints.pop();
             return "";
@@ -376,11 +394,10 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
 
-    @ShellMethod(key="s")
+    @ShellMethod(key="s",value = "eg s 1. Selects the menu item specified")
     @ShellMethodAvailability("availabilityCheck")
     public void select(int index,@ShellOption(value = {"--data", "-d"},defaultValue="") String d ,@ShellOption(value = {"--file", "-f"},defaultValue="") String f,@ShellOption(value = {"--patch", "-p"},defaultValue="false") boolean p,@ShellOption(value = {"--output", "-o"},defaultValue="") String o) throws URISyntaxException, IOException {
         if (checkMachineSelection(index)) return;
-        ObjectMapper mapper=new ObjectMapper();
         if(!d.isEmpty()){
             d=d.substring(0,d.length()-1);///some strange , comes at end . need to remove it
         }
@@ -390,6 +407,30 @@ public class CommonCommands implements ApplicationContextAware {
             stream.close();
         }
         execute(endPoints.peek().get(index),d,p,o);
+    }
+
+    @ShellMethod(key="select_all" ,value = "select all links in the current menu level")
+    @ShellMethodAvailability("availabilityCheck")
+    public void select_all() throws URISyntaxException, IOException {
+        for(var e:endPoints.peek()){
+            if(e.url.equals("back")) {
+                continue;
+            }
+            execute(e,"",false,"",false);
+        }
+    }
+    @ShellMethod(key="select_recur" ,value = "select all links from the current menu level downwards recursively")
+    @ShellMethodAvailability("availabilityCheck")
+    public void select_recur() throws URISyntaxException, IOException {
+        ObjectMapper mapper=new ObjectMapper();
+        for(var e:endPoints.peek()){
+            if(e.url.equals("back")) {
+                continue;
+            }
+            execute(e,"",false,"",true);
+            select_recur();
+        }
+        execute(new Utils.EndPoints("back","Get"),"",false,"",true);
     }
     void execute(Utils.EndPoints endp,String d, boolean p, String o,boolean showMenu) throws URISyntaxException, IOException {
         var resp=goTo(endp,d,p,o);
@@ -447,14 +488,14 @@ public class CommonCommands implements ApplicationContextAware {
         passwd=p;
         serialise();
     }
-    @ShellMethod(key = "ssh")
+    @ShellMethod(key = "ssh" ,value = "eg: ssh . You can ssh in to the machine")
     @ShellMethodAvailability("availabilityCheck")
     void ssh() {
         runShell(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd);
         System.out.println("Exited Shell");
         displayCurrent();
     }
-    @ShellMethod(key = "scmd")
+    @ShellMethod(key = "scmd",value = "eg: scmd 'ls /tmp/' .The specified command will be executed in machine with super user privilege")
     @ShellMethodAvailability("availabilityCheck")
     void scmd(String command) {
         var newCmd=Arrays.stream(command.split(";")).map(a->"sudo -i "+a).reduce((a,b)->a+";"+b);
@@ -465,12 +506,12 @@ public class CommonCommands implements ApplicationContextAware {
         });
     }
 
-    @ShellMethod(key = "cmd")
+    @ShellMethod(key = "cmd" ,value = "eg cmd 'ls /tmp/' . Will execute the specified command in machine")
     @ShellMethodAvailability("availabilityCheck")
     void cmd(String command) {
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,command);
     }
-    @ShellMethod(key = "os")
+    @ShellMethod(key = "os" ,value = "Displays fw version details")
     @ShellMethodAvailability("availabilityCheck")
     void os() {
         runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,"cat /etc/os-release");
@@ -483,7 +524,7 @@ public class CommonCommands implements ApplicationContextAware {
 
 
 
-    @ShellMethod(key = "scp")
+    @ShellMethod(key = "scp",value = "eg: scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
     @ShellMethodAvailability("availabilityCheck")
     void scp(String path) {
         StringBuilder cmdBuilder=new StringBuilder();
@@ -512,10 +553,33 @@ public class CommonCommands implements ApplicationContextAware {
 
     }
     @ShellMethod(key="do-while")
+    @ShellMethodAvailability("availabilityCheck")
     void do_while(String scrFile,String condition)
     {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-//        redirector(outputStream,()->script(scrFile));
+        redirector(outputStream,()-> {
+            try {
+                script.script(new File(scrFile));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println(outputStream.toString());
+
+    }
+    @ShellMethod(key="repeat",value = "eg: repeat filename count. This will rung the script specifed(count) number of times")
+    @ShellMethodAvailability("availabilityCheck")
+    void repeat(String scrFile,int count) throws Exception {
+        while(count>0){
+            script.script(new File(scrFile));
+            count--;
+        }
+    }
+
+    @ShellMethod(key="r",value = "eg: r filename. This command will run the file content as script")
+    @ShellMethodAvailability("availabilityCheck")
+    void runScript(String scrFile) throws Exception {
+        script.script(new File(libPath+scrFile));
 
     }
     @ShellMethod(key = "refresh")
@@ -538,13 +602,13 @@ public class CommonCommands implements ApplicationContextAware {
     protected void aquery(String m) throws IOException, InterruptedException {
        query(WatsonAssistant.getLastQuery()+m);
     }
-    @ShellMethod(key = "save")
+    @ShellMethod(key = "save",value = "eg save filename 3 .This will save last 3 command executed in to the file as runnable script")
     protected String save(String scriptname, int count) throws IOException, InterruptedException {
         FileInputStream reader = new FileInputStream(new File("spring-shell.log"));
         var history=Arrays.stream(new String(reader.readAllBytes()).split("\n")).collect(Collectors.toList());
         history.remove(history.size()-1);
         var toSkip = Math.max(0,history.size()-count);
-        FileOutputStream fileOutputStream = new FileOutputStream(new File(scriptname));
+        FileOutputStream fileOutputStream = new FileOutputStream(new File(libPath+scriptname));
         history.stream().skip(toSkip).forEach(element->{
             System.out.println(element);
             var index =element.indexOf(':');
@@ -556,8 +620,16 @@ public class CommonCommands implements ApplicationContextAware {
                 throw new RuntimeException(e);
             }
         });
-        return "Saved to file "+scriptname;
+        return "Saved to file "+libPath+scriptname;
 
+    }
+    @ShellMethod(key = "list")
+    protected void list() throws IOException, InterruptedException {
+        system("ls "+libPath);
+    }
+    @ShellMethod(key = "libpath")
+    protected void libpath(String path) throws IOException, InterruptedException {
+        libPath=path.endsWith("/")?path:path+"/";
     }
 
 
