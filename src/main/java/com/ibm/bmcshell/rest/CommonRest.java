@@ -13,9 +13,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -27,9 +25,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @RestController
 public class CommonRest  {
@@ -124,6 +124,27 @@ public class CommonRest  {
         });
 
 
+    }
+    @PostMapping("/events")
+    public Mono<String> createResource(@RequestBody String requestData) throws JsonProcessingException {
+
+//        System.out.println(requestData);
+        ObjectMapper mapper=new ObjectMapper();
+        var tree=mapper.readTree(requestData);
+        var filtered=StreamSupport.stream(tree.get("Events").spliterator(),false)
+                .filter(a->{
+                    if(Utils.eventFilters().equals("*")){
+                        return true;
+                    }
+                    return Arrays.stream(Utils.eventFilters().split(",")).filter(f->{
+                        return a.get("OriginOfCondition").asText().contains(f);
+                    }).count()>0;
+                }).collect(Collectors.toList());
+
+        filtered.forEach(a->System.out.println(a.toPrettyString()));
+
+        String message = "Resource created successfully!";
+        return Mono.just(message);
     }
     @RequestMapping("/goto")
     Mono<String> restApis(@RequestParam String url) throws URISyntaxException, JsonProcessingException {

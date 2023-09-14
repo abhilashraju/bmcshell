@@ -71,7 +71,7 @@ public class SSHShellClient {
             channel.disconnect();
             session.disconnect();
         } catch (Exception e) {
-            e.printStackTrace();
+
         }
     }
 }

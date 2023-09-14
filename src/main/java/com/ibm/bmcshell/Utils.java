@@ -26,6 +26,8 @@ import java.util.stream.StreamSupport;
 public class Utils {
 
 
+
+
     public interface Callable<R>{
         R apply() throws JsonProcessingException;
     }
@@ -65,6 +67,7 @@ public class Utils {
         }
         return null;
     }
+    static String currentEventFilters="*";
     public static WebClient createWebClient() throws SSLException {
         SslContext sslContext = SslContextBuilder
                 .forClient()
@@ -83,11 +86,32 @@ public class Utils {
 
         return WebClient.builder().exchangeStrategies(strategies).clientConnector(new ReactorClientHttpConnector(httpClient)).build();
     }
+
+    public static String eventFilters()
+    {
+        return currentEventFilters;
+    }
+    public static void setEventFilter(String filter) {
+        currentEventFilters=filter;
+    }
     public static String base(String m){
-         final  String baseUrl="https://%s.aus.stglabs.ibm.com/redfish/v1/";
-//        final  String baseUrl="https://%s.aus.stglabs.ibm.com:8081/redfish/v1/";
+         final  String baseUrl="https://%s.aus.stglabs.ibm.com";
+//        final  String baseUrl="https://%s.aus.stglabs.ibm.com:8081";
          return String.format(baseUrl,m);
 
+    }
+    public static String normalise(String url)
+    {
+        if(url.isEmpty()){
+            return "/redfish/v1/";
+        }
+        if(url.startsWith("/")){
+            return url;
+        }
+        if(url.startsWith("/redfish/v1/")){
+            return url;
+        }
+        return "/redfish/v1/"+url;
 
     }
     public static void addToMachineList(String machine) throws IOException {

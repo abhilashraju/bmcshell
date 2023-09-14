@@ -52,7 +52,7 @@ public class CommonCommands implements ApplicationContextAware {
     public String base(){
         return Utils.base(machine);
     }
-    String machine;
+    static String machine;
     @Autowired
     private ApplicationContext applicationContext;
     static String userName;
@@ -250,8 +250,8 @@ public class CommonCommands implements ApplicationContextAware {
                 }).collect(Collectors.toList());
     }
     protected void makeApiList() throws URISyntaxException, JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
-        var resp=makeGetRequest("","");
+        var mapper = new ObjectMapper();
+        var resp=makeGetRequest(Utils.normalise(""),"");
         endPoints.push(Utils.sorted(Utils.buildLinksAndTargets(mapper.readTree(resp))));
         endPoints.peek().add(0,new Utils.EndPoints("back","Get"));
     }
@@ -312,7 +312,7 @@ public class CommonCommands implements ApplicationContextAware {
                 });
         System.out.println("\n*****************************************************\n");
     }
-    @ShellMethod(key="redirect")
+    @ShellMethod(key="redirect",value = "eg: redirect filename. Will redirect all out puts to the file")
 
     public void redirect(String filePath) throws  FileNotFoundException {
         FileOutputStream fileOutputStream = new FileOutputStream(filePath);
@@ -321,7 +321,7 @@ public class CommonCommands implements ApplicationContextAware {
         // Redirect System.out to the file PrintStream
         System.setOut(printStream);
     }
-    @ShellMethod(key="closeredirected")
+    @ShellMethod(key="closeredirected",value = "Closes the active redirection and file will be saved")
     public void closeredirected() throws URISyntaxException, JsonProcessingException {
 
         System.out.close();
@@ -356,20 +356,17 @@ public class CommonCommands implements ApplicationContextAware {
     }
     @ShellMethod(key="get",value = "eg get Systems/hypervisor/EthernetInterfaces/eth0 or get Systems/hypervisor/EthernetInterfaces/eth0 output-filename")
     @ShellMethodAvailability("availabilityCheck")
-    public void get(String endPoint,@ShellOption(value = {"--output", "-o"},defaultValue="") String o) throws URISyntaxException, IOException {
+    public void get(String endPoint,@ShellOption(value = {"--output", "-o"},defaultValue="") String o,@ShellOption(value = {"--menu", "-m"},defaultValue="false") boolean menu) throws URISyntaxException, IOException {
         var ep=new Utils.EndPoints(endPoint,"Get");
-        System.out.println(goTo(ep,"",false,o));
+        execute(ep,"",false,"",menu);
     }
     public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
         if(ep.url.equals("back")){
             endPoints.pop();
             return "";
         }
-        var index =ep.url.indexOf("redfish/v1/");
-        String url=ep.url;
-        if(index != -1){
-            url=url.substring("redfish/v1/".length()+1);
-        }
+
+        String url=Utils.normalise(ep.url);
         try {
             if(ep.action.equals("Post")){
                 System.out.println(data);
@@ -413,7 +410,7 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethodAvailability("availabilityCheck")
     public void select_all() throws URISyntaxException, IOException {
         for(var e:endPoints.peek()){
-            if(e.url.equals("back")) {
+            if(!e.action.equals("Get") ||e.url.equals("back")) {
                 continue;
             }
             execute(e,"",false,"",false);
@@ -422,9 +419,8 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key="select_recur" ,value = "select all links from the current menu level downwards recursively")
     @ShellMethodAvailability("availabilityCheck")
     public void select_recur() throws URISyntaxException, IOException {
-        ObjectMapper mapper=new ObjectMapper();
         for(var e:endPoints.peek()){
-            if(e.url.equals("back")) {
+            if(!e.action.equals("Get") ||e.url.equals("back")) {
                 continue;
             }
             execute(e,"",false,"",true);
@@ -468,16 +464,51 @@ public class CommonCommands implements ApplicationContextAware {
         });
     }
 
+    @ShellMethod(key = "subscribe",value = "eg: subscribe ipaddress . Subscribes for events")
+    void subscribe(String ipaddress,@ShellOption(value = {"--port", "-p"},defaultValue="8443")int port) throws IOException, URISyntaxException {
+        post("EventService/Subscriptions", String.format("{\"Destination\":\"https://%s:%d/events\",\"Protocol\":\"Redfish\"}",ipaddress,port));
+
+    }
+    @ShellMethod(key = "event_filters",value = "eg: event_filters hypervisor/EthernetInterfaces/eth0,hypervisor/EthernetInterfaces/eth1")
+    void event_filters(String filter){
+        Utils.setEventFilter(filter);
+    }
+    @ShellMethod(key = "uploadimage",value = "eg: uploadimage imagepath . To flash images")
+    void upload(String imagepath){
+        scp(imagepath);
+        var subpaths=imagepath.split("/");
+        scmd(String.format("mv /tmp/%s /tmp/images",subpaths[subpaths.length-1]));
+    }
+    @ShellMethod(key = "flash",value = "eg: flash . To flash images")
+    void flash() throws InterruptedException {
+
+        scmd("ls /tmp/images");
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter image id from above : ");
+        String imageid = scanner.nextLine();
+        scmd(String.format("busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",imageid));
+    }
+    @ShellMethod(key = "install",value = "eg: install service-exe-name . To install service")
+    void install(String exe)  {
+        scmd("mkdir -p /var/persist/usr ; mkdir -p /var/persist/work/usr;mount -t overlay  -o lowerdir=/usr,upperdir=/var/persist/usr,workdir=/var/persist/work/usr overlay /usr");
+        scmd(String.format("mv /tmp/%s /usr/bin",exe));
+    }
+    @ShellMethod(key = "restart",value = "eg: restart service-name . To restart the service")
+    void restart(String service)  {
+        scmd(String.format("systemctl restart %s",service));
+    }
 
 
 
-    @ShellMethod(key = "machines")
+
+
+    @ShellMethod(key = "machines",value = "List all machine names that are available or previously logged in ")
     void machines() throws IOException {
          endPoints.push(Utils.listOfMachines());
         displayCurrent();
 
     }
-    @ShellMethod(key = "username")
+    @ShellMethod(key = "username",value = "To supply bmc username")
     void setUserName(String u) throws IOException {
 
         userName=u;
@@ -637,8 +668,8 @@ public class CommonCommands implements ApplicationContextAware {
         int maxBufferSize = 1024 * 1024 * 1024; // 10 MB
         System.setProperty("spring.codec.max-in-memory-size", String.valueOf(maxBufferSize));
 
-        return (machine != null && userName !=null && passwd !=null && WatsonAssistant.apiKey!=null)
+        return (machine != null && userName !=null && passwd !=null)
                 ? Availability.available()
-                : Availability.unavailable("machine/username/passwd/apikey is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
+                : Availability.unavailable("machine/username/password is not set Eg: machine rain104bmc username \"rain username\" password \"rain passwd\"");
     }
 }
