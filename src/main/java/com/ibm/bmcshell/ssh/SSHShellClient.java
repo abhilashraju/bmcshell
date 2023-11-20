@@ -10,8 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SSHShellClient {
+    public static int port=22;
     public static void runShell(String host,String user,String password){
-        int port = 22;
+
         runShell(host,user,password,port);
     }
     public static void runShell(String host, String user, String password,int port)
@@ -44,7 +45,7 @@ public class SSHShellClient {
         try {
             JSch jsch = new JSch();
 
-            int port = 22;
+
 
             Session session = jsch.getSession(user, host, port);
             session.setPassword(password);
@@ -54,8 +55,10 @@ public class SSHShellClient {
 
 
             channel.setCommand(command);
-
+            channel.setInputStream(System.in,true);
+            channel.setOutputStream(System.out,true);
             InputStream in = channel.getInputStream();
+
             channel.connect();
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(in));

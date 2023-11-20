@@ -146,6 +146,20 @@ public class CommonRest  {
         String message = "Resource created successfully!";
         return Mono.just(message);
     }
+    @PostMapping("/testpost")
+    public Mono<String> testpost(@RequestBody String requestData) throws JsonProcessingException {
+
+        System.out.println(requestData);
+
+        return Mono.just(requestData);
+    }
+    @RequestMapping("/testget")
+    public Mono<String> testget() throws JsonProcessingException {
+
+
+
+        return Mono.just("hello");
+    }
     @RequestMapping("/goto")
     Mono<String> restApis(@RequestParam String url) throws URISyntaxException, JsonProcessingException {
 

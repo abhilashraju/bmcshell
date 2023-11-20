@@ -4,19 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
 import com.ibm.bmcshell.Os.Cmd;
-import com.ibm.bmcshell.script.ScriptRunner;
-import kotlin.Pair;
+import com.ibm.bmcshell.ssh.SSHShellClient;
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.shell.Availability;
-import org.springframework.shell.boot.JLineShellAutoConfiguration;
-import org.springframework.shell.boot.StandardAPIAutoConfiguration;
-import org.springframework.shell.boot.StandardCommandsAutoConfiguration;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
@@ -26,7 +21,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import com.ibm.bmcshell.CustomPromptProvider;
+
+import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -38,12 +36,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
-import com.ibm.bmcshell.Os.Cmd;
 
 public class CommonCommands implements ApplicationContextAware {
     WebClient client;
@@ -52,7 +50,7 @@ public class CommonCommands implements ApplicationContextAware {
     public String base(){
         return Utils.base(machine);
     }
-    static String machine;
+    static String machine="rain127bmc";
     @Autowired
     private ApplicationContext applicationContext;
     static String userName;
@@ -61,6 +59,7 @@ public class CommonCommands implements ApplicationContextAware {
     PrintStream savedStream=System.out;
     @Autowired
     Script script;
+    String lastCurlRequest;
     public  static  String getUserName(){
         return userName;
     }
@@ -100,7 +99,7 @@ public class CommonCommands implements ApplicationContextAware {
             try {
                 var response = client.post()
 
-                        .uri(new URI(String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/SessionService/Sessions",machine)))
+                        .uri(new URI(Utils.base(machine)+"/redfish/v1/SessionService/Sessions"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(BodyInserters.fromValue(String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"}",userName,passwd)))
                         .retrieve()
@@ -209,7 +208,26 @@ public class CommonCommands implements ApplicationContextAware {
                 var response = client.post()
                         .uri(auri)
                         .header("X-Auth-Token", token)
+                        .header("Content-Type", "application/json")
                         .bodyValue(data)
+                        .retrieve()
+                        .toEntity(String.class)
+                        .block();
+                return response.getBody();
+            } catch (Exception ex) {
+                resetToken();
+                throw ex;
+            }
+
+        });
+    }
+    String makeDeleteRequest(String target) throws URISyntaxException {
+        var auri=new URI(base()+target);
+        return Utils.tryUntil(3, () -> {
+            try {
+                var response = client.delete()
+                        .uri(auri)
+                        .header("X-Auth-Token", token)
                         .retrieve()
                         .toEntity(String.class)
                         .block();
@@ -327,6 +345,11 @@ public class CommonCommands implements ApplicationContextAware {
         System.out.close();
         System.setOut(savedStream);
     }
+    @ShellMethod(key="overrideport")
+    public void setOverridePort(int p)
+    {
+        Utils.targetport=p;
+    }
 
     @ShellMethod(key="apis")
     @ShellMethodAvailability("availabilityCheck")
@@ -354,23 +377,41 @@ public class CommonCommands implements ApplicationContextAware {
         var ep=new Utils.EndPoints(endPoint,"Post");
         System.out.println(goTo(ep,data,false,""));
     }
+    public void delete(String endPoint) throws URISyntaxException, IOException {
+        var ep=new Utils.EndPoints(endPoint,"Delete");
+        System.out.println(goTo(ep,"",false,""));
+    }
     @ShellMethod(key="get",value = "eg get Systems/hypervisor/EthernetInterfaces/eth0 or get Systems/hypervisor/EthernetInterfaces/eth0 output-filename")
     @ShellMethodAvailability("availabilityCheck")
     public void get(String endPoint,@ShellOption(value = {"--output", "-o"},defaultValue="") String o,@ShellOption(value = {"--menu", "-m"},defaultValue="false") boolean menu) throws URISyntaxException, IOException {
         var ep=new Utils.EndPoints(endPoint,"Get");
-        execute(ep,"",false,"",menu);
+        execute(ep,"",false,o,menu);
     }
+    @ShellMethod(key="lastcurl",value = "eg lastcurl")
+    @ShellMethodAvailability("availabilityCheck")
+    public void lastcurl() throws URISyntaxException, IOException {
+        System.out.println(lastCurlRequest);
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        // Create a StringSelection object from the text
+        StringSelection selection = new StringSelection(lastCurlRequest);
+        // Set the clipboard contents to the StringSelection
+        clipboard.setContents(selection, null);
+    }
+
     public String goTo(Utils.EndPoints ep, String data, Boolean p,String o) throws URISyntaxException, IOException {
         if(ep.url.equals("back")){
             endPoints.pop();
             return "";
         }
-
+        lastCurlRequest=String.format("curl -k -H \"X-Auth-Token: %s\" -X GET https://%s%s",token,Utils.fullMachineName(machine),Utils.normalise(ep.url));
         String url=Utils.normalise(ep.url);
         try {
             if(ep.action.equals("Post")){
                 System.out.println(data);
                 return makePostRequest(url,data);
+            }
+            if(ep.action.equals("Delete")){
+                return makeDeleteRequest(url);
             }
             if(p){
                 System.out.println(data);
@@ -463,39 +504,74 @@ public class CommonCommands implements ApplicationContextAware {
             }
         });
     }
-
+    @ShellMethod(key = "persistent_data")
+    void persistentData()
+    {
+        scmd("cat /home/root/bmcweb_persistent_data.json");
+    }
     @ShellMethod(key = "subscribe",value = "eg: subscribe ipaddress . Subscribes for events")
     void subscribe(String ipaddress,@ShellOption(value = {"--port", "-p"},defaultValue="8443")int port) throws IOException, URISyntaxException {
-        post("EventService/Subscriptions", String.format("{\"Destination\":\"https://%s:%d/events\",\"Protocol\":\"Redfish\"}",ipaddress,port));
+        post("EventService/Subscriptions", String.format("{\"Destination\":\"https://%s:%d/events\",\"Protocol\":\"Redfish\",\"DeliveryRetryPolicy\": \"RetryForever\"}",ipaddress,port));
+
+    }
+    @ShellMethod(key = "delete_subscribe",value = "eg: subscribe ipaddress . Subscribes for events")
+    void deleteSubscription(String id) throws IOException, URISyntaxException {
+        delete(String.format("EventService/Subscriptions/%s",id));
 
     }
     @ShellMethod(key = "event_filters",value = "eg: event_filters hypervisor/EthernetInterfaces/eth0,hypervisor/EthernetInterfaces/eth1")
     void event_filters(String filter){
         Utils.setEventFilter(filter);
     }
-    @ShellMethod(key = "uploadimage",value = "eg: uploadimage imagepath . To flash images")
-    void upload(String imagepath){
-        scp(imagepath);
-        var subpaths=imagepath.split("/");
-        scmd(String.format("mv /tmp/%s /tmp/images",subpaths[subpaths.length-1]));
-    }
-    @ShellMethod(key = "flash",value = "eg: flash . To flash images")
-    void flash() throws InterruptedException {
 
-        scmd("ls /tmp/images");
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter image id from above : ");
-        String imageid = scanner.nextLine();
-        scmd(String.format("busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",imageid));
-    }
-    @ShellMethod(key = "install",value = "eg: install service-exe-name . To install service")
-    void install(String exe)  {
-        scmd("mkdir -p /var/persist/usr ; mkdir -p /var/persist/work/usr;mount -t overlay  -o lowerdir=/usr,upperdir=/var/persist/usr,workdir=/var/persist/work/usr overlay /usr");
-        scmd(String.format("mv /tmp/%s /usr/bin",exe));
-    }
+
+
     @ShellMethod(key = "restart",value = "eg: restart service-name . To restart the service")
     void restart(String service)  {
         scmd(String.format("systemctl restart %s",service));
+    }
+
+    @ShellMethod(key = "journalctl",value = "eg: journalctl arg ")
+    void journalctl(@ShellOption(value = {"-u"},defaultValue="")String u,@ShellOption(value = {"-o"},defaultValue="")String o,@ShellOption(value = {"-f"},defaultValue="-f")String f ,@ShellOption(value = {"-s"},defaultValue="")String s) throws IOException {
+        var lambdaContext = new Object() {
+            String cmd = "journalctl ";
+        };
+
+        if(!u.isEmpty()){
+            lambdaContext.cmd = lambdaContext.cmd +String.format("--unit=%s ",u);
+        }
+        if(!o.isEmpty()){
+            lambdaContext.cmd = lambdaContext.cmd +String.format("-o=%s ",o);
+        }
+        if(!f.isEmpty()){
+            lambdaContext.cmd = lambdaContext.cmd +String.format("-f ");
+        }
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        if(!s.isEmpty()){
+            try {
+                redirector(outputStream,()->scmd(lambdaContext.cmd));
+            }catch (Exception e){
+
+            }
+
+
+            new FileOutputStream(new File("journalctl")).write(outputStream.toByteArray());
+            system("cat journalctl");
+            return;
+        }
+        scmd(lambdaContext.cmd);
+    }
+    @ShellMethod(key = "journalhelp",value = "eg: journalhelp")
+    void journalhelp(){
+        scmd(String.format("journalctl -h"));
+    }
+
+    @ShellMethod(key = "display_session",value = "eg: display_session")
+    void display_session(){
+
+        System.out.println("User: "+userName);
+        System.out.println("Password: "+passwd);
+        System.out.println("Token: "+token);
     }
 
 
@@ -522,16 +598,16 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "ssh" ,value = "eg: ssh . You can ssh in to the machine")
     @ShellMethodAvailability("availabilityCheck")
     void ssh() {
-        runShell(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd);
+        runShell(Utils.fullMachineName(machine),userName,passwd);
         System.out.println("Exited Shell");
         displayCurrent();
     }
     @ShellMethod(key = "scmd",value = "eg: scmd 'ls /tmp/' .The specified command will be executed in machine with super user privilege")
     @ShellMethodAvailability("availabilityCheck")
     void scmd(String command) {
-        var newCmd=Arrays.stream(command.split(";")).map(a->"sudo -i "+a).reduce((a,b)->a+";"+b);
+        var newCmd=userName.equals("root")?Optional.of(command):Arrays.stream(command.split(";")).map(a->"sudo -i "+a).reduce((a,b)->a+";"+b);
         newCmd.ifPresentOrElse(a->{
-            runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,a);
+            runCommand(Utils.fullMachineName(machine),userName,passwd,a);
         },()->{
             System.out.println(command + " is invalid");
         });
@@ -540,39 +616,25 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "cmd" ,value = "eg cmd 'ls /tmp/' . Will execute the specified command in machine")
     @ShellMethodAvailability("availabilityCheck")
     void cmd(String command) {
-        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,command);
+        runCommand(Utils.fullMachineName(machine),userName,passwd,command);
     }
     @ShellMethod(key = "os" ,value = "Displays fw version details")
     @ShellMethodAvailability("availabilityCheck")
     void os() {
-        runCommand(String.format("%s.aus.stglabs.ibm.com",machine),userName,passwd,"cat /etc/os-release");
+        runCommand(Utils.fullMachineName(machine),userName,passwd,"cat /etc/os-release");
+        runCommand(Utils.fullMachineName(machine),userName,passwd,"cat /etc/timestamp");
     }
+    @ShellMethod(key = "sshport" ,value = "eg sshport portnumber .Set default port for ssh")
+    @ShellMethodAvailability("availabilityCheck")
+    void sshport(int port) {
+        SSHShellClient.port=port;
+    }
+
     @ShellMethod(key = "system")
     void system(String command) {
         Cmd.execute(command,passwd);
     }
 
-
-
-
-    @ShellMethod(key = "scp",value = "eg: scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
-    @ShellMethodAvailability("availabilityCheck")
-    void scp(String path) {
-        StringBuilder cmdBuilder=new StringBuilder();
-
-        cmdBuilder.append("scp ");
-        cmdBuilder.append("-o StrictHostKeyChecking=no ");
-        cmdBuilder.append("-o UserKnownHostsFile=/dev/null ");
-        cmdBuilder.append("-P 22 ");
-        cmdBuilder.append(path);
-        cmdBuilder.append(" ");
-        cmdBuilder.append(userName);
-        cmdBuilder.append("@");
-        cmdBuilder.append(String.format("%s.aus.stglabs.ibm.com",machine));
-        cmdBuilder.append(":/tmp/");
-
-        system(cmdBuilder.toString());
-    }
     @ShellMethod(key = "apikey")
     void key(String key) throws IOException {
         WatsonAssistant.apiKey=key;
@@ -596,6 +658,37 @@ public class CommonCommands implements ApplicationContextAware {
             }
         });
         System.out.println(outputStream.toString());
+
+    }
+    @ShellMethod(key="verify")
+    @ShellMethodAvailability("availabilityCheck")
+    void verify(String expression) throws JsonProcessingException {
+        var tokens=expression.split("==");
+        String key=tokens[0].trim();
+        String expected=tokens[1].trim();
+        ObjectMapper mapper = new ObjectMapper();
+        var root=mapper.readTree(applicationContext.getBean(SerializeCommands.class).lastResult());
+        var node=root.at(key);
+        String SUCCESS="Passed: "+ expression;
+        String FAILED="Failed: "+ expression;
+        if(root!=null){
+            switch (node.getNodeType()){
+                case STRING:
+                    System.out.println(expected.equals(node.asText())?SUCCESS:FAILED);
+                    break;
+                case BOOLEAN:
+                    System.out.println(Boolean.parseBoolean(expected) == node.asBoolean()?SUCCESS:FAILED);
+                    break;
+                case NUMBER:
+                    System.out.println(Double.parseDouble(expected) == node.asDouble()?SUCCESS:FAILED);
+                    break;
+                default:
+                    System.out.println(FAILED);
+
+            }
+            return;
+        }
+        System.out.println(FAILED);
 
     }
     @ShellMethod(key="repeat",value = "eg: repeat filename count. This will rung the script specifed(count) number of times")

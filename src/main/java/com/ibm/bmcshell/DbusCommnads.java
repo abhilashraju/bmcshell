@@ -65,6 +65,16 @@ public class DbusCommnads extends CommonCommands{
         scmd(commd);
     }
 
+    @ShellMethod(key="bs.call" ,value = "eg: bs.call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas /xyz/openbmc_project/sensors/power/total_power 1 xyz.openbmc_project.Sensor.Value")
+    @ShellMethodAvailability("availabilityCheck")
+    public void call(String service,String path,String iFace,String method,String sig, String args){
+        var format="busctl call %s %s %s %s %s %s";
+
+        var commd = String.format(format,service,path,iFace,method,sig, args);
+        commd = commd + " --verbose";
+        scmd(commd);
+    }
+
     private void execMapperCall(String iFace, String method, String obj, int depth) {
         var format="busctl call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper %s sias %s %d %d";
         var infaces = iFace.split(",");

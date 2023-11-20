@@ -19,6 +19,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -27,7 +28,7 @@ public class Utils {
 
 
 
-
+    static int targetport=443;
     public interface Callable<R>{
         R apply() throws JsonProcessingException;
     }
@@ -94,11 +95,68 @@ public class Utils {
     public static void setEventFilter(String filter) {
         currentEventFilters=filter;
     }
-    public static String base(String m){
-         final  String baseUrl="https://%s.aus.stglabs.ibm.com";
-//        final  String baseUrl="https://%s.aus.stglabs.ibm.com:8081";
-         return String.format(baseUrl,m);
 
+
+    public static class IPAddressValidator {
+
+        private static final String IPV4_REGEX =
+                "^([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
+                        "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
+                        "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
+                        "([01]?\\d\\d?|2[0-4]\\d|25[0-5])$";
+
+        private static final String IPV6_REGEX =
+                "([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|" +
+                        "([0-9a-fA-F]{1,4}:){1,7}:|" +
+                        "([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|" +
+                        "([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|" +
+                        "([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|" +
+                        "([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|" +
+                        "([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|" +
+                        "[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|" +
+                        ":((:[0-9a-fA-F]{1,4}){1,7}|:)|" +
+                        "fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|" +
+                        "::(ffff(:0{1,4}){0,1}:){0,1}" +
+                        "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}" +
+                        "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|" +
+                        "([0-9a-fA-F]{1,4}:){1,4}:" +
+                        "((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}" +
+                        "(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])$";
+
+        private static final Pattern IPV4_PATTERN = Pattern.compile(IPV4_REGEX);
+        private static final Pattern IPV6_PATTERN = Pattern.compile(IPV6_REGEX);
+
+        public static boolean isValidIP(String ipAddress) {
+            return IPV4_PATTERN.matcher(ipAddress).matches() || IPV6_PATTERN.matcher(ipAddress).matches();
+        }
+
+    }
+
+
+    public static String base(String m){
+         final  String baseUrl="https://%s.aus.stglabs.ibm.com:%d";
+         final String localUrl="https://127.0.0.1:2443";
+
+//        final  String baseUrl="https://%s.aus.stglabs.ibm.com:18080";
+        if(IPAddressValidator.isValidIP(m)){
+            return String.format("https://%s",m);
+        }
+        if(m.startsWith("qemu")){
+            return String.format(localUrl,m);
+        }
+         return String.format(baseUrl,m,targetport);
+
+    }
+    public static String fullMachineName(String m){
+        final  String baseName="%s.aus.stglabs.ibm.com";
+        final String localName="localhost";
+        if(IPAddressValidator.isValidIP(m)){
+            return String.format("%s",m);
+        }
+        if(m.startsWith("qemu")){
+            return localName;
+        }
+        return  String.format(baseName,m);
     }
     public static String normalise(String url)
     {
