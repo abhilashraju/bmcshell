@@ -56,7 +56,9 @@ public class InstallCommands extends CommonCommands{
         Scanner scanner = new Scanner(System.in);
         System.out.print("Enter image id from above : ");
         String imageid = scanner.nextLine();
-        scmd(String.format("busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",imageid));
+        String command=String.format("busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",imageid);
+        System.out.println(command);
+        scmd(command);
     }
     @ShellMethod(key = "uploadimage",value = "eg: uploadimage imagepath . To flash images")
     void upload(String imagepath){

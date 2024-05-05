@@ -33,5 +33,9 @@ public class SystemCommands extends CommonCommands{
     protected void scpfile(String file) throws IOException, InterruptedException {
         system(String.format("scp %s abhilash@gfwa129.aus.stglabs.ibm.com:/esw/san5/abhilash/work/",file));
     }
+    @ShellMethod(key = "sys.wget")
+    protected void wget(String url) throws IOException, InterruptedException {
+        system(String.format("wget %s",url));
+    }
 
 }

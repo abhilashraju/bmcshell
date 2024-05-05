@@ -90,12 +90,17 @@ public class CommonCommands implements ApplicationContextAware {
 
 
             }
-
+            FileOutputStream stream = new FileOutputStream(new File(libPath+"clear"));
+            stream.write("clear\n".getBytes(StandardCharsets.UTF_8));
+            stream.close();
         }
     }
+    @ShellMethod(key = "token")
     public String getToken() {
 
         if(token==null){
+            String req=String.format("curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\"}'",Utils.base(machine),userName,passwd);
+            System.out.println(req);
             try {
                 var response = client.post()
 
@@ -510,8 +515,8 @@ public class CommonCommands implements ApplicationContextAware {
         scmd("cat /home/root/bmcweb_persistent_data.json");
     }
     @ShellMethod(key = "subscribe",value = "eg: subscribe ipaddress . Subscribes for events")
-    void subscribe(String ipaddress,@ShellOption(value = {"--port", "-p"},defaultValue="8443")int port) throws IOException, URISyntaxException {
-        post("EventService/Subscriptions", String.format("{\"Destination\":\"https://%s:%d/events\",\"Protocol\":\"Redfish\",\"DeliveryRetryPolicy\": \"RetryForever\"}",ipaddress,port));
+    void subscribe(String ipaddress,@ShellOption(value = {"--port", "-p"},defaultValue="8443")int port,@ShellOption(value = {"--target", "-t"},defaultValue="events") String target) throws IOException, URISyntaxException {
+        post("EventService/Subscriptions", String.format("{\"Destination\":\"https://%s:%d/%s\",\"Protocol\":\"Redfish\",\"DeliveryRetryPolicy\": \"RetryForever\"}",ipaddress,port,target));
 
     }
     @ShellMethod(key = "delete_subscribe",value = "eg: subscribe ipaddress . Subscribes for events")

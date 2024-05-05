@@ -12,6 +12,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import javax.net.ssl.SSLException;
 import java.io.*;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
 import java.util.stream.StreamSupport;
 
 import com.ibm.cloud.sdk.core.security.IamAuthenticator;
@@ -52,6 +56,8 @@ public class WatsonAssistant {
             client = Utils.createWebClient();
 
         } catch (SSLException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }

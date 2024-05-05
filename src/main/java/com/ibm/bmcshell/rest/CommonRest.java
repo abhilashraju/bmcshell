@@ -25,6 +25,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,7 +43,7 @@ public class CommonRest  {
     WebClient client;
     String token;
     String machine;
-    CommonRest() throws SSLException {
+    CommonRest() throws IOException, UnrecoverableKeyException, CertificateException, KeyStoreException, NoSuchAlgorithmException {
 
         if(client ==null) {
             client=Utils.createWebClient();
@@ -124,6 +128,12 @@ public class CommonRest  {
         });
 
 
+    }
+    @RequestMapping("/metrics")
+    Mono<String> metrics(@RequestBody String requestData) throws URISyntaxException, JsonProcessingException {
+
+        System.out.println(requestData);
+        return Mono.just("Success");
     }
     @PostMapping("/events")
     public Mono<String> createResource(@RequestBody String requestData) throws JsonProcessingException {
