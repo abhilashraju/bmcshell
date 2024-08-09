@@ -14,25 +14,20 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 
-public class WatsonAssistant {
+public class GraphQLQuery {
 
-    public  static String apiKey =
-            "kvuchkhvar::local.net+1000::d46bf568048d8ec8d4cfbf3088abbb35b9f6d559a9c268088e9ce8d1ec7d8d77";
-    public static String ask(String question,String collection) {
-        int n=5;
-        double temperature=0.3;
+    String ask(String question) throws JsonProcessingException {
+        String apiKey =
+                "kvuchkhvar::local.net+1000::d46bf568048d8ec8d4cfbf3088abbb35b9f6d559a9c268088e9ce8d1ec7d8d77";
         String url =
                 "https://kvuchkhvar.us-east-a.ibm.stepzen.net/wxflows-genai/openbmcwiki/graphql";
 
         // Construct the GraphQL query
-        String query =String.format("{\n" +
-                        "        \"query\": \"query RAG {\\n  myRag (\\n    n: %d\\n    collection: \\\"%s\\\"\\n    question: \\\"%s\\\"\\n    aiEngine: WATSONX\\n    model: \\\"ibm/granite-13b-chat-v2\\\"\\n  parameters: {max_new_tokens: 8191, temperature: %f, stop_sequences: [\\\"\\\\n\\\\n\\\\n\\\\n\\\"]}\\n    embedModel: \\\"ibm/slate-30m-english-rtrvr\\\"\\n    searchEngine: MILVUS\\n  ) {\\n    out\\n  }\\n}\"\n" +
-                        "    }",n,
-                collection,
-                question,temperature);
+        String query =String.format("{\"query\":\"query RAG {\\n  myRag (\\n    n: 10\\n    collection: \\\"%s\\\"\\n    question: \\\"%s\\\"\\n    aiEngine: WATSONX\\n    model: \\\"ibm/granite-13b-chat-v2\\\"\\n  parameters: {max_new_tokens: 1000, temperature: 0.7, stop_sequences: [\\\"\\\\n\\\\n\\\"]}\\n    searchEngine: GETTINGSTARTED\\n  ) {\\n    out\\n  }\\n}\"}",
+                "watsonxdocs",
+                question);
 //        System.out.println(query);
         // Set up the HTTP client
-        String responseBody=null;
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
             HttpPost request = new HttpPost(url);
 
@@ -48,7 +43,7 @@ public class WatsonAssistant {
                 // Check the response status code
                 if (response.getStatusLine().getStatusCode() == 200) {
                     // Parse and print the response body
-                    responseBody= EntityUtils.toString(response.getEntity(),
+                    String responseBody = EntityUtils.toString(response.getEntity(),
                             StandardCharsets.UTF_8);
 //                    System.out.println(responseBody);
                     ObjectMapper mapper = new ObjectMapper();
@@ -63,16 +58,17 @@ public class WatsonAssistant {
                             StandardCharsets.UTF_8));
                 }
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             e.printStackTrace();
-            if(responseBody!=null){
-                System.out.println(responseBody);
-            }
         }
-
         return "Error";
     }
 
-    // Replace YOUR_API_KEY with your actual API key
+    public static void main(String[] args) throws JsonProcessingException {
+        GraphQLQuery query = new GraphQLQuery();
+        String response = query.ask("What is vpd?");
+        System.out.println(response);
+    }
+        // Replace YOUR_API_KEY with your actual API key
 
 }

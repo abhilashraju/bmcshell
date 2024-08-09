@@ -75,70 +75,70 @@ public class Utils {
         return null;
     }
     static String currentEventFilters="*";
-//    public static WebClient createWebClient() throws SSLException {
-//        SslContext sslContext = SslContextBuilder
-//                .forClient()
-//                .trustManager(InsecureTrustManagerFactory.INSTANCE)
-//                .build();
-//        final int size = 1024 * 1024 * 1024;
-//        final ExchangeStrategies strategies = ExchangeStrategies.builder()
-//                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(size))
-//                .build();
-//        HttpClient httpClient = HttpClient.create().secure(t -> t.sslContext(sslContext))
-//                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-//                .responseTimeout(Duration.ofMillis(30000))
-//                .doOnConnected(conn ->
-//                        conn.addHandlerLast(new ReadTimeoutHandler(5000))
-//                                .addHandlerLast(new WriteTimeoutHandler(5000)));
-//
-//        return WebClient.builder().exchangeStrategies(strategies).clientConnector(new ReactorClientHttpConnector(httpClient)).build();
-//    }
-
     public static WebClient createWebClient() throws SSLException {
-        try{
-            String clientCertPassword = "a"; // replace with your client certificate password
-            String clientCertPath = "/Users/abhilashraju/work/cpp/bmcweb/scripts/certs/certificate.p12"; // replace with your client certificate path
+        SslContext sslContext = SslContextBuilder
+                .forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .build();
+        final int size = 1024 * 1024 * 1024;
+        final ExchangeStrategies strategies = ExchangeStrategies.builder()
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(size))
+                .build();
+        HttpClient httpClient = HttpClient.create().secure(t -> t.sslContext(sslContext))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .responseTimeout(Duration.ofMillis(30000))
+                .doOnConnected(conn ->
+                        conn.addHandlerLast(new ReadTimeoutHandler(5000))
+                                .addHandlerLast(new WriteTimeoutHandler(5000)));
 
-            KeyStore clientCertKeyStore = KeyStore.getInstance("PKCS12");
-            clientCertKeyStore.load(new FileInputStream(clientCertPath), clientCertPassword.toCharArray());
-
-// Create a KeyManagerFactory and initialize it with the KeyStore
-            KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-            keyManagerFactory.init(clientCertKeyStore, clientCertPassword.toCharArray());
-
-// Use SslContextBuilder to create a SslContext with the KeyManagerFactory
-            SslContext nettySslContext = SslContextBuilder.forClient()
-                    .sslProvider(SslProvider.JDK)
-                    .keyManager(keyManagerFactory)
-                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
-                    .build();
-
-             // Create a Reactor Netty HttpClient
-            HttpClient httpClient = HttpClient.create().secure(t -> t.sslContext(nettySslContext));
-
-            // Create a WebClient and set its HttpClient
-            WebClient client = WebClient.builder()
-                    .clientConnector(new ReactorClientHttpConnector(httpClient))
-                    .build();
-
-            return client;
-
-        } catch (UnrecoverableKeyException e) {
-            throw new RuntimeException(e);
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        } catch (CertificateException e) {
-            throw new RuntimeException(e);
-        } catch (KeyStoreException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
-        }
-
-
+        return WebClient.builder().exchangeStrategies(strategies).clientConnector(new ReactorClientHttpConnector(httpClient)).build();
     }
+
+//    public static WebClient createWebClient() throws SSLException {
+//        try{
+//            String clientCertPassword = "a"; // replace with your client certificate password
+//            String clientCertPath = "/Users/abhilashraju/work/cpp/bmcweb/scripts/certs/certificate.p12"; // replace with your client certificate path
+//
+//            KeyStore clientCertKeyStore = KeyStore.getInstance("PKCS12");
+//            clientCertKeyStore.load(new FileInputStream(clientCertPath), clientCertPassword.toCharArray());
+//
+//// Create a KeyManagerFactory and initialize it with the KeyStore
+//            KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+//            keyManagerFactory.init(clientCertKeyStore, clientCertPassword.toCharArray());
+//
+//// Use SslContextBuilder to create a SslContext with the KeyManagerFactory
+//            SslContext nettySslContext = SslContextBuilder.forClient()
+//                    .sslProvider(SslProvider.JDK)
+//                    .keyManager(keyManagerFactory)
+//                    .trustManager(InsecureTrustManagerFactory.INSTANCE)
+//                    .build();
+//
+//             // Create a Reactor Netty HttpClient
+//            HttpClient httpClient = HttpClient.create().secure(t -> t.sslContext(nettySslContext));
+//
+//            // Create a WebClient and set its HttpClient
+//            WebClient client = WebClient.builder()
+//                    .clientConnector(new ReactorClientHttpConnector(httpClient))
+//                    .build();
+//
+//            return client;
+//
+//        } catch (UnrecoverableKeyException e) {
+//            throw new RuntimeException(e);
+//        } catch (FileNotFoundException e) {
+//            throw new RuntimeException(e);
+//        } catch (CertificateException e) {
+//            throw new RuntimeException(e);
+//        } catch (KeyStoreException e) {
+//            throw new RuntimeException(e);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        } catch (NoSuchAlgorithmException e) {
+//            throw new RuntimeException(e);
+//        }
+//
+//
+//    }
 
     public static String eventFilters()
     {
@@ -186,20 +186,20 @@ public class Utils {
 
 
     public static String base(String m){
-         final  String baseUrl="https://%s.aus.stglabs.ibm.com:%d";
-         final String localUrl="https://127.0.0.1:2443";
+         final  String baseUrl="%s://%s.aus.stglabs.ibm.com:%d";
+         final String localUrl="%s://127.0.0.1:2443";
 
 //        final  String baseUrl="https://%s.aus.stglabs.ibm.com:18080";
         if(IPAddressValidator.isValidIP(m)){
             return String.format("%s://%s:%d",scheme,m,targetport);
         }
         if(m.startsWith("qemu")){
-            return String.format(localUrl,m);
+            return String.format(localUrl,scheme);
         }
         if(m.split("\\.").length>1){
-            return String.format("https://%s:%d",m,targetport);
+            return String.format("%s://%s:%d",scheme,m,targetport);
         }
-         return String.format(baseUrl,m,targetport);
+         return String.format(baseUrl,scheme,m,targetport);
 
     }
     public static String fullMachineName(String m){

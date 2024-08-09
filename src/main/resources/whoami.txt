@@ -1,0 +1,10 @@
+I am Smart Shell
+I can help you to interact with BMC using Redfish and ssh protocols
+I am not a dump terminal.You can ask me anything related to Openbmc
+I possess knowledge of various design choices made in Openbmc
+You don't have to run behind any experts developers to get information
+You can use me as a reference manual
+For example, you ask me about the error you see in Openbmc, I will provide you explanation
+You can start navigating me by typing 'help' command and follow the instructions
+Or you can ask me question using q 'your question' command
+You can start my typing "apis" in case you wanted to navigate through redfish menus

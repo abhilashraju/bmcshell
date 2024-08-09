@@ -1,0 +1,80 @@
+.popup {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.popup-content {
+    background-color: #fff;
+    padding: 20px;
+    border: 1px solid #888;
+    max-width: 90%;
+    /* Adjust max-width as needed */
+    max-height: 90%;
+    /* Adjust max-height as needed */
+    width: auto;
+    height: auto;
+    box-sizing: border-box;
+    overflow: auto;
+    /* Ensure content can scroll if it overflows */
+    position: relative;
+    /* Ensure the close button is positioned correctly */
+}
+
+#username-heading {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+#secretContainer {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    /* Space between secret and QR code container */
+}
+
+#qrCodeContainer {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* Add margin to create space between QR code and other elements */
+}
+
+#password-container {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* Add margin to create space between QR code and other elements */
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: #f44336;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+.close-button:hover {
+    background-color: #d32f2f;
+}
+
+.error {
+    color: red;
+
+}

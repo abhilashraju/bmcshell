@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Popup</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <div class="popup">
+        <div class="popup-content">
+            <h2 id="username-heading">Validate Token for </h2>
+
+            <div id="secretContainer">
+                <span id="secret">secret</span>
+            </div>
+            <div id="qrCodeContainer"></div> <!-- QR Code container -->
+            <div id="password-container">
+                <input type="password" id="totptoken" placeholder="Enter TOTP">
+                <button onclick="validateToken()">Validate</button>
+            </div>
+            <div id="error" class="error"></div>
+            <button class="close-button" id="close">Close</button>
+        </div>
+    </div>
+    <script src="qrcode.min.js"></script> <!-- Include qrcode.js library -->
+    <script src="popup.js"></script>
+</body>
+
+</html>

@@ -69,7 +69,7 @@ public class VMICommands extends CommonCommands{
     @ShellMethodAvailability("availabilityCheck")
     public void bios_table_property(@ShellOption(value = {"--search", "-s"},defaultValue="") String search){
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        redirector(outputStream,()->dbusCommnads.property("xyz.openbmc_project.BIOSConfigManager", "/xyz/openbmc_project/bios_config/manager","xyz.openbmc_project.BIOSConfig.Manager","BaseBIOSTable" ,true));
+        redirector(outputStream,()->dbusCommnads.property("xyz.openbmc_project.BIOSConfigManager", "/xyz/openbmc_project/bios_config/manager","xyz.openbmc_project.BIOSConfig.Manager","BaseBIOSTable" ));
         if(search.isEmpty()){
             System.out.println(outputStream.toString());
             return;

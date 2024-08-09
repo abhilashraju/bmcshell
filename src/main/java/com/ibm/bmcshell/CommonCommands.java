@@ -50,7 +50,7 @@ public class CommonCommands implements ApplicationContextAware {
     public String base(){
         return Utils.base(machine);
     }
-    static String machine="rain127bmc";
+    public static String machine="rain127bmc";
     @Autowired
     private ApplicationContext applicationContext;
     static String userName;
@@ -86,7 +86,7 @@ public class CommonCommands implements ApplicationContextAware {
                 machine=data[0];
                 if(data.length>1)userName=data[1];
                 if(data.length>2)passwd=data[2];
-                if(data.length>3)WatsonAssistant.apiKey=data[3];
+                    if(data.length>3)WatsonAssistant.apiKey=data[3];
 
 
             }
@@ -194,7 +194,9 @@ public class CommonCommands implements ApplicationContextAware {
             try {
                 var response = client.get()
                         .uri(auri)
+                        .header("Content-Type", "application/json")
                         .header("X-Auth-Token", token)
+
                         .retrieve()
                         .toEntity(String.class)
                         .block();
@@ -354,6 +356,11 @@ public class CommonCommands implements ApplicationContextAware {
     public void setOverridePort(int p)
     {
         Utils.targetport=p;
+    }
+    @ShellMethod(key="scheme")
+    public void setScheme(String s)
+    {
+        Utils.scheme=s;
     }
 
     @ShellMethod(key="apis")
@@ -537,7 +544,7 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "journalctl",value = "eg: journalctl arg ")
-    void journalctl(@ShellOption(value = {"-u"},defaultValue="")String u,@ShellOption(value = {"-o"},defaultValue="")String o,@ShellOption(value = {"-f"},defaultValue="-f")String f ,@ShellOption(value = {"-s"},defaultValue="")String s) throws IOException {
+    void journalctl(@ShellOption(value = {"-u"},defaultValue="")String u,@ShellOption(value = {"-o"},defaultValue="")String o,@ShellOption(value = {""},defaultValue="-f")String f ,@ShellOption(value = {"-s"},defaultValue="")String s) throws IOException {
         var lambdaContext = new Object() {
             String cmd = "journalctl ";
         };
@@ -711,15 +718,9 @@ public class CommonCommands implements ApplicationContextAware {
         script.script(new File(libPath+scrFile));
 
     }
-    @ShellMethod(key = "refresh")
-    void refresh() {
-        WatsonAssistant.refresh();
-    }
-    @ShellMethod(key = "q")
-    protected void query(String m) throws IOException, InterruptedException {
-        var res= WatsonAssistant.makeQuery(m);
-        res=res.replace(".","\n");
-        var words=res.split(" ");
+    void tell(String message) throws IOException, InterruptedException {
+        message=message.replace(".","\n");
+        var words=message.split(" ");
         int currentcount=0;
         for(var w:words){
             System.out.print(w + " ");
@@ -727,10 +728,25 @@ public class CommonCommands implements ApplicationContextAware {
         }
         System.out.println("\n");
     }
-    @ShellMethod(key = "aq")
-    protected void aquery(String m) throws IOException, InterruptedException {
-       query(WatsonAssistant.getLastQuery()+m);
+    @ShellMethod(key = "q")
+    protected void query(String m,@ShellOption(value = {"-c"},defaultValue="openbmcwiki") String c) throws IOException, InterruptedException {
+        var res= WatsonAssistant.ask(m,c);
+        tell(res);
     }
+    @ShellMethod(key = "whoami")
+    protected void whoami() throws IOException, InterruptedException {
+        InputStream resourceAsStream = getClass().getResourceAsStream("/whoami.txt");
+
+        tell(new String(resourceAsStream.readAllBytes(),StandardCharsets.UTF_8));
+    }
+    @ShellMethod(key = "efficiency?")
+    protected void efficiency() throws IOException, InterruptedException {
+        InputStream resourceAsStream = getClass().getResourceAsStream("/efficiency.txt");
+
+        tell(new String(resourceAsStream.readAllBytes(),StandardCharsets.UTF_8));
+    }
+
+
     @ShellMethod(key = "save",value = "eg save filename 3 .This will save last 3 command executed in to the file as runnable script")
     protected String save(String scriptname, int count) throws IOException, InterruptedException {
         FileInputStream reader = new FileInputStream(new File("spring-shell.log"));
