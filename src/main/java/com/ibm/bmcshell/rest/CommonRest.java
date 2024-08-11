@@ -21,6 +21,8 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
 import reactor.core.publisher.Mono;
 
 import javax.net.ssl.SSLException;
@@ -42,7 +44,9 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import reactor.util.retry.Retry;
 
+import java.time.Duration;
 @RestController
 public class CommonRest  {
      static public class CustomHttpHeaders extends HttpHeaders {
@@ -199,16 +203,15 @@ public class CommonRest  {
         return Mono.just("hello");
     }
 
-    @RequestMapping(value = {"/redfish","/redfish/**"}, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH, RequestMethod.HEAD, RequestMethod.OPTIONS, RequestMethod.TRACE})
+    @RequestMapping(value = {"/redfish", "/redfish/**"}, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.PATCH, RequestMethod.HEAD, RequestMethod.OPTIONS, RequestMethod.TRACE})
     @ResponseBody
-    public Mono<ResponseEntity<String>> forwardRedfishRequest(@RequestBody(required = false) String body) throws URISyntaxException {
+    public Mono<ResponseEntity<String>> forwardRedfishRequest(@RequestBody(required = false) String body) throws URISyntaxException, SSLException {
 
         String path = request.getRequestURI(); // Extract the path
         String queryString = request.getQueryString(); // Extract the query string
         String url = path + (queryString != null ? "?" + queryString : ""); // Recreate the full URL
 
         URI targetUri = new URI(base() + url);
-
 
         CustomHttpHeaders headers = new CustomHttpHeaders();
         Enumeration<String> headerNames = request.getHeaderNames();
@@ -217,16 +220,18 @@ public class CommonRest  {
             String headerValue = request.getHeader(headerName);
             headers.add(headerName, headerValue);
         }
-        headers.add("Content-Type", request.getContentType());
-        if(headers.get("X-Auth-Token")!=null && headers.get("X-Auth-Token").size()>0){
-            token=headers.get("X-Auth-Token").get(0);
+        System.out.println("Try forwarding with retries: " + targetUri.toString());
+        return makeRequest(targetUri.toString(), headers, body, HttpMethod.valueOf(request.getMethod()))
+                .retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(1))
+                        .filter(throwable -> throwable instanceof WebClientResponseException &&
+                                ((WebClientResponseException) throwable).getStatusCode().is5xxServerError()));
+    }
 
-        }
-        WebClient.RequestBodySpec requestSpec = client.method(HttpMethod.valueOf(request.getMethod()))
+    public Mono<ResponseEntity<String>> makeRequest(String targetUri, CustomHttpHeaders headers, Object body, HttpMethod method) throws URISyntaxException, SSLException {
+        WebClient.RequestBodySpec requestSpec = Utils.createWebClient().method(method)
                 .uri(targetUri)
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Auth-Token",token )
-                .headers(httpHeaders -> headers.addAll(headers.getOriginalHeaders()));
+                .headers(httpHeaders -> httpHeaders.addAll(headers.getOriginalHeaders()));
 
         if (body != null) {
             requestSpec.bodyValue(body);
@@ -234,9 +239,12 @@ public class CommonRest  {
 
         return requestSpec.retrieve()
                 .toEntity(String.class)
-                .map(response -> ResponseEntity.status(response.getStatusCode())
-                        .headers(response.getHeaders())
-                        .body(response.getBody()));
+                .onErrorResume(WebClientResponseException.class, ex -> {
+                    if (ex.getStatusCode().is5xxServerError()) {
+                        return Mono.error(ex);
+                    }
+                    return Mono.just(ResponseEntity.status(ex.getStatusCode()).body(ex.getResponseBodyAsString()));
+                });
     }
     @RequestMapping("/goto")
     Mono<String> restApis(@RequestParam String url) throws URISyntaxException, JsonProcessingException {

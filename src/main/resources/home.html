@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Popup</title>
+    <link rel="stylesheet" href="home.css">
+</head>
+
+<body>
+    <div class="welcome-message">
+        <h1 id="welcome-text">Welcome To BMC</h1>
+    </div>
+    <div id="popup" class="popup">
+        <div class="popup-content" id="popup-content"></div>
+    </div>
+    <div id="mfa-options">
+        <h3>Enable Multi-Factor Authentication</h3>
+        <ul>
+            <li>
+                <label>
+                    <input type="checkbox" id="google-authenticator" name="mfa-option" value="google-authenticator">
+                    Google Authenticator
+                </label>
+            </li>
+            <li>
+                <label>
+                    <input type="checkbox" id="microsoft-authenticator" name="mfa-option"
+                        value="microsoft-authenticator">
+                    Microsoft Authenticator
+                </label>
+            </li>
+        </ul>
+    </div>
+    <div class="mfa-bypass">
+        <label for="bypass-options">Select MFA Bypass Option:</label>
+        <select id="bypass-options" onchange="submitBypassOption()">
+            <option value="GoogleAuthenticator">Google Authenticator</option>
+            <option value="None" selected>None</option>
+            <option value="All">All</option>
+        </select>
+    </div>
+    <div id="error-message" style="display: none;"></div>
+    <script src="home.js"></script>
+    <script src="showpopup.js"></script>
+    <script src="createsecretkey.js"></script>
+</body>
+
+</html>

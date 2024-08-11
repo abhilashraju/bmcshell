@@ -1,6 +1,16 @@
 // Validate token
 
+
 async function validateToken() {
+  return validateTokenWithCallback((result) => {
+    popupSuccessCallback(result);
+    // if (result) {
+    //   return window.location.href =
+    //              '/home.html?username=' + localStorage.getItem('username');
+    // }
+  });
+}
+async function validateTokenWithCallback(callback) {
   const errorDiv = document.getElementById('error');
 
   errorDiv.textContent = '';  // Clear previous errors
@@ -22,8 +32,9 @@ async function validateToken() {
       console.log('Success:', response);
       const result = await response.json();
       if (result.Valid === true) {
-        window.location.href =
-            '/home.html?username=' + localStorage.getItem('username');
+        console.log('Token validation successful');
+        callback(true);
+
       } else {
         errorDiv.textContent = 'Validation failed. Please try again.';
       }

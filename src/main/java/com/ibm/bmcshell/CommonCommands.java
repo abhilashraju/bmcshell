@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static com.ibm.bmcshell.ssh.SSHShellClient.port;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
 
@@ -81,14 +82,21 @@ public class CommonCommands implements ApplicationContextAware {
             client = Utils.createWebClient();
             File file= new File("history");
             if(file.exists()){
-                BufferedInputStream bufferedInputStream= new BufferedInputStream(new FileInputStream(file));
-                var data=new String(bufferedInputStream.readAllBytes()).split(",");
-                machine=data[0];
-                if(data.length>1)userName=data[1];
-                if(data.length>2)passwd=data[2];
-                    if(data.length>3)WatsonAssistant.apiKey=data[3];
-
-
+                try {
+                    FileInputStream stream = new FileInputStream(file);
+                    var bytes = stream.readAllBytes();
+                    stream.close();
+                    var mapper = new ObjectMapper();
+                    var tree = mapper.readTree(bytes);
+                    machine = tree.get("machine").asText();
+                    userName = tree.get("userName").asText();
+                    passwd = tree.get("passwd").asText();
+                    Utils.targetport = tree.get("httpport").asInt();
+                    Utils.scheme = tree.get("scheme").asText();
+                    SSHShellClient.port = tree.get("sshport").asInt();
+                }catch (Exception ex){  //if the file is corrupted
+                    file.delete();
+                }
             }
             FileOutputStream stream = new FileOutputStream(new File(libPath+"clear"));
             stream.write("clear\n".getBytes(StandardCharsets.UTF_8));
@@ -212,6 +220,7 @@ public class CommonCommands implements ApplicationContextAware {
         var auri=new URI(base()+target);
         return Utils.tryUntil(3, () -> {
             try {
+                System.out.println("Posting"+data);
                 var response = client.post()
                         .uri(auri)
                         .header("X-Auth-Token", token)
@@ -235,6 +244,7 @@ public class CommonCommands implements ApplicationContextAware {
                 var response = client.delete()
                         .uri(auri)
                         .header("X-Auth-Token", token)
+                        .header("Content-Type", "application/json")
                         .retrieve()
                         .toEntity(String.class)
                         .block();
@@ -250,9 +260,11 @@ public class CommonCommands implements ApplicationContextAware {
         var auri=new URI(base()+target);
         return Utils.tryUntil(3, () -> {
             try {
+                System.out.println("Patching"+data);
                 var response = client.patch()
                         .uri(auri)
                         .header("X-Auth-Token", token)
+                        .header("Content-Type", "application/json")
                         .bodyValue(data)
                         .retrieve()
                         .toEntity(String.class)
@@ -310,15 +322,9 @@ public class CommonCommands implements ApplicationContextAware {
     }
     private  void serialise() throws IOException {
         FileOutputStream out = new FileOutputStream(new File("history"));
-        out.write(machine.getBytes(StandardCharsets.UTF_8));
-        out.write(",".getBytes(StandardCharsets.UTF_8));
-        out.write(userName != null ?userName.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
-        out.write(",".getBytes(StandardCharsets.UTF_8));
-        out.write(passwd != null ?passwd.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
-        out.write(",".getBytes(StandardCharsets.UTF_8));
-        out.write(WatsonAssistant.apiKey != null ?WatsonAssistant.apiKey.getBytes(StandardCharsets.UTF_8):"".getBytes(StandardCharsets.UTF_8));
+        ObjectMapper mapper = new ObjectMapper();
+        out.write(mapper.writeValueAsString(Map.of("machine",machine,"userName",userName,"passwd",passwd,"httpport",Utils.targetport,"scheme",Utils.scheme,"sshport",SSHShellClient.port)).getBytes(StandardCharsets.UTF_8));
         out.close();
-
     }
 
 

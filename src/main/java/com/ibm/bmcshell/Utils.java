@@ -14,6 +14,7 @@ import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -76,6 +77,12 @@ public class Utils {
     }
     static String currentEventFilters="*";
     public static WebClient createWebClient() throws SSLException {
+        ConnectionProvider connectionProvider = ConnectionProvider.builder("custom")
+                .maxConnections(10) // Maximum number of connections
+                .maxIdleTime(Duration.ofSeconds(30)) // Maximum idle time
+                .maxLifeTime(Duration.ofMinutes(1)) // Maximum life time
+                .build();
+
         SslContext sslContext = SslContextBuilder
                 .forClient()
                 .trustManager(InsecureTrustManagerFactory.INSTANCE)
@@ -84,12 +91,13 @@ public class Utils {
         final ExchangeStrategies strategies = ExchangeStrategies.builder()
                 .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(size))
                 .build();
-        HttpClient httpClient = HttpClient.create().secure(t -> t.sslContext(sslContext))
+        HttpClient httpClient = HttpClient.create(connectionProvider).secure(t -> t.sslContext(sslContext))
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .option(ChannelOption.SO_KEEPALIVE, false)
                 .responseTimeout(Duration.ofMillis(30000))
                 .doOnConnected(conn ->
-                        conn.addHandlerLast(new ReadTimeoutHandler(5000))
-                                .addHandlerLast(new WriteTimeoutHandler(5000)));
+                        conn.addHandlerLast(new ReadTimeoutHandler(60))
+                                .addHandlerLast(new WriteTimeoutHandler(60)));
 
         return WebClient.builder().exchangeStrategies(strategies).clientConnector(new ReactorClientHttpConnector(httpClient)).build();
     }
