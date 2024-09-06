@@ -11,40 +11,60 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 @ShellComponent
-public class SystemCommands extends CommonCommands{
+public class SystemCommands extends CommonCommands {
     protected SystemCommands() throws IOException {
     }
+
     @ShellMethod(key = "sys.ls")
-    protected void list(@ShellOption(value = {"--args", "-a"},defaultValue="") String args) throws IOException, InterruptedException {
-        system(String.format("ls -%s .",args));
+    protected void list(@ShellOption(value = { "--args", "-a" }, defaultValue = "") String args)
+            throws IOException, InterruptedException {
+        system(String.format("ls -%s .", args));
     }
+
     @ShellMethod(key = "sys.cat")
     protected void cat(String file) throws IOException, InterruptedException {
-        system(String.format("cat %s",file));
+        system(String.format("cat %s", file));
     }
+
     @ShellMethod(key = "sys.pwd")
     protected void pwd() throws IOException, InterruptedException {
         system("pwd");
     }
+
     @ShellMethod(key = "sys.ping")
     protected void ping(String machine) throws IOException, InterruptedException {
-        system(String.format("ping %s",machine));
+        system(String.format("ping %s", machine));
     }
+
     @ShellMethod(key = "sys.scpjar")
     protected void scpjar() throws IOException, InterruptedException {
         scpfile("target/bmcshell-0.0.1-SNAPSHOT.jar");
     }
+
     @ShellMethod(key = "sys.scpfile")
     protected void scpfile(String file) throws IOException, InterruptedException {
-        system(String.format("scp %s abhilash@gfwa129.aus.stglabs.ibm.com:/esw/san5/abhilash/work/",file));
+        system(String.format("scp %s abhilash@gfwa129.aus.stglabs.ibm.com:/esw/san5/abhilash/work/", file));
     }
+
+    @ShellMethod(key = "sys.scpdir")
+    protected void scpDir(String file) throws IOException, InterruptedException {
+        system(String.format("scp -r %s abhilash@gfwa129.aus.stglabs.ibm.com:/esw/san5/abhilash/work/", file));
+    }
+
+    @ShellMethod(key = "sys.deployweb")
+    protected void scpweb(String file) throws IOException, InterruptedException {
+        system(String.format("scp -r %s abhilash@gfwa129.aus.stglabs.ibm.com:/esw/san5/abhilash/work/bmcshelllibrary/",
+                file));
+    }
+
     @ShellMethod(key = "sys.wget")
     protected void wget(String url) throws IOException, InterruptedException {
-        system(String.format("wget %s",url));
+        system(String.format("wget %s", url));
     }
-    @ShellMethod(key="ts.send")
-    protected void send(String commands, @ShellOption(value = {"--id", "-i"},defaultValue="-1") String id) {
-        System.out.println("Sending to "+id);
+
+    @ShellMethod(key = "ts.send")
+    protected void send(String commands, @ShellOption(value = { "--id", "-i" }, defaultValue = "-1") String id) {
+        System.out.println("Sending to " + id);
         try {
             // Get the resource as a stream
             InputStream resourceAsStream = getClass().getResourceAsStream("/tsend.sh");

@@ -79,8 +79,14 @@ document.addEventListener('DOMContentLoaded', function() {
       })
       .then(data => {
         console.log('Account Service Data:', data);
-        microsoftCheckbox.checked = data.MicrosoftAuthenticatorEnabled;
-        googleCheckbox.checked = data.GoogleAuthenticatorEnabled;
+        MultiFactorAuth = data.MultiFactorAuth;
+        MultiFactorAuth.forEach(option => {
+          const checkbox = document.querySelector(
+              `input[name="mfa-options"][value="${option}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        });
         // Handle the data as needed
       })
       .catch(error => {
@@ -101,62 +107,140 @@ document.addEventListener('DOMContentLoaded', function() {
       })
       .then(data => {
         console.log('Account Data:', data);
-        const bypassOptions = document.getElementById('bypass-options');
-        bypassOptions.value = data.MFABypass.split('.').pop();
+        const bypassOptions =
+            data.MFABypass;  // Assuming the response is { "bypassOptions":
+                             // ["GoogleAuthenticator", "None"] }
+        bypassOptions.forEach(option => {
+          const checkbox = document.querySelector(
+              `input[name="bypass-option"][value="${option}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        });
         // Handle the data as needed
       })
       .catch(error => {
         console.error('There was a problem with the fetch operation:', error);
       });
-  googleCheckbox.addEventListener('change', function() {
-    handleMfaOptionChange('google-authenticator', googleCheckbox.checked);
-  });
+  // googleCheckbox.addEventListener('change', function() {
+  //   handleMfaOptionChange('google-authenticator', googleCheckbox.checked);
+  // });
 
-  microsoftCheckbox.addEventListener('change', function() {
-    handleMfaOptionChange('microsoft-authenticator', microsoftCheckbox.checked);
-  });
+  // microsoftCheckbox.addEventListener('change', function() {
+  //   handleMfaOptionChange('microsoft-authenticator',
+  //   microsoftCheckbox.checked);
+  // });
 
-  async function handleMfaOptionChange(option, isEnabled) {
-    let body = {};
-    if (option === 'google-authenticator') {
-      body.GoogleAuthenticator = {Enabled: isEnabled};
-    }
-    if (option === 'microsoft-authenticator') {
-      body.MicrosoftAuthenticator = {Enabled: isEnabled};
-    }
-    model = {UserName: localStorage.getItem('username')};
-    fetch('/redfish/v1/AccountService/', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Auth-Token': localStorage.getItem('xAuthToken')
-      },
-      body: JSON.stringify(body)
-    })
-        .then(response => {
-          if (!response.ok || response.status !== 204) {
-            throw new Error(response.text());
-          }
-          if (isEnabled) {
-            createSecretKey((result) => {
-              if (result) {
-                showErrorMessage('blue', 'MFA option updated successfully.');
-                return;
-              }
-              googleCheckbox = false;
-              handleMfaOptionChange(option, false);
-            });
-            return;
-          }
-          showErrorMessage('blue', 'MFA option Disabled successfully.');
-        })
-        .catch(error => {
-          console.error('Error updating MFA option:', error);
-          showErrorMessage(
-              'red', 'An error occurred while updating MFA option.');
+  //   async function handleMfaOptionChange(option, isEnabled) {
+  //     let body = {};
+  //     if (option === 'google-authenticator') {
+  //       body.GoogleAuthenticator = {Enabled: isEnabled};
+  //     }
+  //     if (option === 'microsoft-authenticator') {
+  //       body.MicrosoftAuthenticator = {Enabled: isEnabled};
+  //     }
+  //     model = {UserName: localStorage.getItem('username')};
+  //     fetch('/redfish/v1/AccountService/', {
+  //       method: 'PATCH',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'X-Auth-Token': localStorage.getItem('xAuthToken')
+  //       },
+  //       body: JSON.stringify(body)
+  //     })
+  //         .then(response => {
+  //           if (!response.ok || response.status !== 204) {
+  //             throw new Error(response.text());
+  //           }
+  //           if (isEnabled) {
+  //             createSecretKey((result) => {
+  //               if (result) {
+  //                 showErrorMessage('blue', 'MFA option updated
+  //                 successfully.'); return;
+  //               }
+  //               googleCheckbox = false;
+  //               handleMfaOptionChange(option, false);
+  //             });
+  //             return;
+  //           }
+  //           showErrorMessage('blue', 'MFA option Disabled successfully.');
+  //         })
+  //         .catch(error => {
+  //           console.error('Error updating MFA option:', error);
+  //           showErrorMessage(
+  //               'red', 'An error occurred while updating MFA option.');
+  //         });
+  //   }
+  // });
+
+  document.getElementById('submit-button')
+      .addEventListener('click', function() {
+        const selectedOptions = [];
+        const checkboxes =
+            document.querySelectorAll('input[name="mfa-option"]:checked');
+        checkboxes.forEach((checkbox) => {
+          selectedOptions.push(checkbox.value);
         });
-  }
+
+        const data = {MultiFactorAuth: selectedOptions};
+
+        console.log(JSON.stringify(data));  // For demonstration purposes
+
+        // You can send the data using fetch or any other method
+        // Example using fetch:
+        fetch('/redfish/v1/AccountService/', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Token': localStorage.getItem('xAuthToken')
+          },
+          body: JSON.stringify(data)
+        })
+            .then(response => {
+              if (!response.ok) {
+                throw new Error('Network response was not ok');
+              }
+              return console.log(response);
+            })
+            .catch((error) => {
+              console.error('Error:', error);
+            });
+      });
 });
+
+document.getElementById('submit-bypass-button')
+    .addEventListener('click', function() {
+      const selectedBypassOptions = [];
+      const checkboxes =
+          document.querySelectorAll('input[name="bypass-option"]:checked');
+      checkboxes.forEach((checkbox) => {
+        selectedBypassOptions.push(checkbox.value);
+      });
+
+      const data = {MFABypass: {BypassTypes: selectedBypassOptions}};
+
+      console.log(JSON.stringify(data));  // For demonstration purposes
+      uri = `/redfish/v1/AccountService/Accounts/${
+          localStorage.getItem('username')}`;
+      // Send the data using fetch
+      fetch(uri, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Token': localStorage.getItem('xAuthToken')
+        },
+        body: JSON.stringify(data)
+      })
+          .then(response => {
+            if (!response.ok) {
+              throw new Error('Network response was not ok');
+            }
+            return console.log(response);
+          })
+          .catch((error) => {
+            console.error('Error:', error);
+          });
+    });
 function resetPopupContent() {
   const popupContent = document.getElementById('popup-content');
   if (popupContent) {

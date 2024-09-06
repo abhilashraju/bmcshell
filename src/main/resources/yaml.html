@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YAML Editor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jsoneditor/9.5.6/jsoneditor.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsoneditor/9.5.6/jsoneditor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #yamleditor {
+            width: 100%;
+            height: 90%;
+        }
+
+        #saveButton {
+            width: 100%;
+            height: 10%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="yamleditor"></div>
+    <div id="saveButton">
+        <button onclick="saveYAML()">Save YAML</button>
+    </div>
+    <script>
+        // Function to get query parameter by name
+        function getQueryParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        async function fetchYAML(regex = '') {
+            try {
+                const response = await fetch(`/yaml/${encodeURIComponent(regex)}`);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const yamlText = await response.text();
+                return jsyaml.load(yamlText);
+            } catch (error) {
+                console.error('Error fetching YAML:', error);
+                return null;
+            }
+        }
+
+        // Initialize JSON editor for YAML
+        const container = document.getElementById('yamleditor');
+        const options = {
+            mode: 'code',
+            modes: ['code', 'text', 'tree'], // allowed modes
+            onChange: function () {
+                try {
+                    const yamlText = editor.getText();
+                    const json = jsyaml.load(yamlText);
+                    console.log('YAML parsed successfully:', json);
+                } catch (e) {
+                    console.error('Error parsing YAML:', e);
+                }
+            }
+        };
+        const editor = new JSONEditor(container, options);
+
+        // Get regex from query parameter
+        const regex = getQueryParam('regex') || getQueryParam('f') || '.*';
+
+        // Fetch and set YAML
+        fetchYAML(regex).then(yamlData => {
+            if (yamlData) {
+                editor.set(yamlData);
+            } else {
+                console.error('Failed to load YAML');
+            }
+        });
+
+        // Function to save YAML content
+        function saveYAML() {
+            try {
+                const json = editor.get();
+                const yamlText = jsyaml.dump(json);
+                const blob = new Blob([yamlText], { type: 'text/yaml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'edited.yaml';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                console.error('Error saving YAML:', e);
+            }
+        }
+    </script>
+</body>
+
+</html>

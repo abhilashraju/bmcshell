@@ -116,7 +116,20 @@
 			<artifactId>js</artifactId>
 			<version>21.2.0</version> <!-- Use the desired version -->
 		</dependency>
-
+		<dependency>
+        <groupId>javax.websocket</groupId>
+        <artifactId>javax.websocket-api</artifactId>
+        <version>1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>org.glassfish.tyrus</groupId>
+        <artifactId>tyrus-server</artifactId>
+        <version>1.13</version>
+    </dependency>
+     <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-websocket</artifactId>
+    </dependency>
 
 
 	</dependencies>
