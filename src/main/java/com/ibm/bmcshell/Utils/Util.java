@@ -83,6 +83,7 @@ public class Util {
     public static String schemaroot = "/esw/san5/rbailapu/Redfish";
     public static String yamlRoot = ".";
     public static String interfacesRoot = ".";
+    public static String secretKey = "";
 
     public static WebClient createWebClient() throws SSLException {
         ConnectionProvider connectionProvider = ConnectionProvider.builder("custom")

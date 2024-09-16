@@ -80,13 +80,12 @@ document.addEventListener('DOMContentLoaded', function() {
       .then(data => {
         console.log('Account Service Data:', data);
         MultiFactorAuth = data.MultiFactorAuth;
-        MultiFactorAuth.forEach(option => {
-          const checkbox = document.querySelector(
-              `input[name="mfa-options"][value="${option}"]`);
-          if (checkbox) {
-            checkbox.checked = true;
-          }
-        });
+        const checkbox = document.querySelector(
+            `input[name="mfa-options"][value="${MultiFactorAuth}"]`);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+
         // Handle the data as needed
       })
       .catch(error => {
@@ -110,13 +109,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const bypassOptions =
             data.MFABypass;  // Assuming the response is { "bypassOptions":
                              // ["GoogleAuthenticator", "None"] }
-        bypassOptions.forEach(option => {
-          const checkbox = document.querySelector(
-              `input[name="bypass-option"][value="${option}"]`);
-          if (checkbox) {
-            checkbox.checked = true;
-          }
-        });
+
+        const checkbox = document.querySelector(
+            `input[name="bypass-option"][value="${bypassOptions}"]`);
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+
         // Handle the data as needed
       })
       .catch(error => {
@@ -175,15 +174,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   document.getElementById('submit-button')
       .addEventListener('click', function() {
-        const selectedOptions = [];
         const checkboxes =
             document.querySelectorAll('input[name="mfa-option"]:checked');
+        const data = {MultiFactorAuth: {GoogleAuthenticator: {Enabled: false}}};
         checkboxes.forEach((checkbox) => {
-          selectedOptions.push(checkbox.value);
+          data.MultiFactorAuth[checkbox.value] = {Enabled: true};
         });
-
-        const data = {MultiFactorAuth: selectedOptions};
-
         console.log(JSON.stringify(data));  // For demonstration purposes
 
         // You can send the data using fetch or any other method
@@ -210,13 +206,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 document.getElementById('submit-bypass-button')
     .addEventListener('click', function() {
-      const selectedBypassOptions = [];
       const checkboxes =
           document.querySelectorAll('input[name="bypass-option"]:checked');
-      checkboxes.forEach((checkbox) => {
-        selectedBypassOptions.push(checkbox.value);
-      });
 
+      const selectedBypassOptions =
+          checkboxes.length > 0 ? checkboxes[0].value : 'None';
       const data = {MFABypass: {BypassTypes: selectedBypassOptions}};
 
       console.log(JSON.stringify(data));  // For demonstration purposes

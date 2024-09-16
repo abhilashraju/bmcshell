@@ -119,22 +119,7 @@ public class CommonRest {
 
         if (token == null) {
             try {
-                var response = client.post()
-                        .uri(new URI(String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/SessionService/Sessions",
-                                CommonCommands.machine)))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(BodyInserters.fromValue(String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"}",
-                                CommonCommands.getUserName(), CommonCommands.getPasswd())))
-                        .retrieve()
-                        .toEntity(String.class)
-                        .subscribe(resp -> {
-                            HttpHeaders responseHeaders = resp.getHeaders();
-
-                            List<String> headerValue = responseHeaders.get("X-Auth-Token");
-                            token = headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
-                            getPromptProvider().setShellData(
-                                    new CustomPromptProvider.ShellData(CommonCommands.machine, AttributedStyle.GREEN));
-                        });
+                token = CommonCommands.getAuthToken(client);
 
             } catch (Exception ex) {
                 System.out.println("Could not get token");

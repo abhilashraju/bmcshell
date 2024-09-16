@@ -38,6 +38,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -61,7 +63,7 @@ public class CommonCommands implements ApplicationContextAware {
     private ApplicationContext applicationContext;
     static String userName;
     static String passwd;
-    static String totp;
+
     static String libPath = "./";
     PrintStream savedStream = System.out;
     @Autowired
@@ -116,6 +118,9 @@ public class CommonCommands implements ApplicationContextAware {
                     if (tree.has("interfacesRoot")) {
                         Util.interfacesRoot = tree.get("interfacesRoot").asText();
                     }
+                    if (tree.has("secretkey")) {
+                        Util.secretKey = tree.get("secretkey").asText();
+                    }
 
                 } catch (Exception ex) { // if the file is corrupted
                     file.delete();
@@ -130,35 +135,42 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "token")
     public String getToken() {
 
-        if (token == null) {
-            String req = String.format(
-                    "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\",\"Token\":\"%s\"}'",
-                    Util.base(machine), userName, passwd, totp);
-            System.out.println(req);
-            try {
-                var response = client.post()
-
-                        .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(BodyInserters.fromValue(
-                                String.format("{\"UserName\":\"%s\", \"Password\":\"%s\",\"Token\":\"%s\"}", userName,
-                                        passwd, totp)))
-                        .retrieve()
-                        .toEntity(String.class)
-                        .block();
-
-                HttpHeaders responseHeaders = response.getHeaders();
-
-                List<String> headerValue = responseHeaders.get("X-Auth-Token");
-                token = headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
+        try {
+            if (token == null) {
+                token = getAuthToken(client);
                 getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.GREEN));
-            } catch (Exception ex) {
-                System.out.println("Could not get token");
-                getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.RED));
             }
-
+        } catch (Exception ex) {
+            System.out.println("Could not get token");
+            getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.RED));
         }
         return token;
+
+    }
+
+    public static String getAuthToken(WebClient client)
+            throws NoSuchAlgorithmException, InvalidKeyException, IOException, URISyntaxException {
+        String totp = new TotpService().loadSecretString(Util.secretKey).now(0);
+        String req = String.format(
+                "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\",\"Token\":\"%s\"}'",
+                Util.base(machine), userName, passwd, totp);
+        System.out.println(req);
+
+        var response = client.post()
+
+                .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(BodyInserters.fromValue(
+                        String.format("{\"UserName\":\"%s\", \"Password\":\"%s\",\"Token\":\"%s\"}", userName,
+                                passwd, totp)))
+                .retrieve()
+                .toEntity(String.class)
+                .block();
+
+        HttpHeaders responseHeaders = response.getHeaders();
+
+        List<String> headerValue = responseHeaders.get("X-Auth-Token");
+        return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
 
     }
 
@@ -360,11 +372,21 @@ public class CommonCommands implements ApplicationContextAware {
     private void serialise() throws IOException {
         FileOutputStream out = new FileOutputStream(new File("history"));
         ObjectMapper mapper = new ObjectMapper();
+        Map<String, Object> map = new HashMap<>();
+        map.put("machine", machine);
+        map.put("userName", userName);
+        map.put("passwd", passwd);
+        map.put("httpport", Util.targetport);
+        map.put("scheme", Util.scheme);
+        map.put("sshport", SSHShellClient.port);
+        map.put("webroot", Util.webroot);
+        map.put("schemaroot", Util.schemaroot);
+        map.put("yamlroot", Util.yamlRoot);
+        map.put("interfacesRoot", Util.interfacesRoot);
+        map.put("secretkey", Util.secretKey);
+
         out.write(mapper
-                .writeValueAsString(Map.of("machine", machine, "userName", userName, "passwd", passwd, "httpport",
-                        Util.targetport, "scheme", Util.scheme, "sshport", SSHShellClient.port, "webroot",
-                        Util.webroot, "schemaroot", Util.schemaroot, "yamlroot", Util.yamlRoot, "interfacesRoot",
-                        Util.interfacesRoot))
+                .writeValueAsString(map)
                 .getBytes(StandardCharsets.UTF_8));
         out.close();
     }
@@ -675,13 +697,6 @@ public class CommonCommands implements ApplicationContextAware {
         serialise();
     }
 
-    @ShellMethod(key = "totp", value = "To supply bmc totp")
-    void setTotp(String t) throws IOException {
-
-        totp = t;
-        serialise();
-    }
-
     @ShellMethod(key = "password")
     void setPasswd(String p) throws IOException {
         passwd = p;
@@ -752,6 +767,13 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "interfaceroot", value = "eg interfaceroot <path to root>")
     void interfaceroot(String path) throws IOException {
         Util.interfacesRoot = path;
+        serialise();
+
+    }
+
+    @ShellMethod(key = "secretkey", value = "eg secretkey key")
+    void secretkey(String k) throws IOException {
+        Util.secretKey = k;
         serialise();
 
     }
