@@ -42,4 +42,16 @@ public class AccountServiceCommand extends CommonCommands {
         patch(String.format("AccountService/Accounts/%s", name), data);
         return "Password Changed";
     }
+
+    @ShellMethod(key = "as.delete_user")
+    @ShellMethodAvailability("availabilityCheck")
+    public String delete_user(@ShellOption(value = { "--name", "-n" }) String name)
+            throws URISyntaxException, IOException {
+
+        dbusCommnads.call("xyz.openbmc_project.User.Manager",
+                "/xyz/openbmc_project/user/" + name,
+                "xyz.openbmc_project.Object.Delete",
+                "Delete", "", "");
+        return "Finished";
+    }
 }

@@ -16,7 +16,7 @@ async function validateTokenWithCallback(callback) {
   errorDiv.textContent = '';  // Clear previous errors
 
   try {
-    model = {Token: document.getElementById('totptoken').value};
+    model = {TimeBasedOneTimePassword: document.getElementById('totptoken').value};
     uri = `/redfish/v1/AccountService/Accounts/${
         localStorage.getItem(
             'username')}/Actions/ManagerAccount.VerifyTimeBasedOneTimePassword`;
@@ -31,7 +31,8 @@ async function validateTokenWithCallback(callback) {
     if (response.ok) {
       console.log('Success:', response);
       const result = await response.json();
-      if (result.Valid === true) {
+      console.log('Success Result:', result);
+      if (response.status === 200) {
         console.log('Token validation successful');
         callback(true);
 

@@ -17,11 +17,16 @@ async function createSecretKey(callback) {
       const data = await response.json();
       console.log('Response Headers:', response.headers);
 
-      console.log('Response Body:', data.GenerateSecretKeyResponse);
-
+      console.log('Response Body:', data);
+      if(!data.SecretKeyUrl){
+        const issuer = 'bmc'; // Replace with your issuer name
+        const accountName = localStorage.getItem('username'); // Assuming username is stored in localStorage
+        data.SecretKeyUrl = `otpauth://totp/${issuer}:${accountName}?secret=${data.SecretKey}&issuer=${issuer}`;
+  
+      }
       showPopup(
-          data.GenerateSecretKeyResponse.SecretKey,
-          data.GenerateSecretKeyResponse.SecretKeyUrl, callback);
+          data.SecretKey,
+          data.SecretKeyUrl, callback);
 
 
     } else {

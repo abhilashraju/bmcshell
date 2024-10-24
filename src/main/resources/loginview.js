@@ -43,7 +43,11 @@ document.getElementById('login-form')
           })
           .then(data => {
             console.log('Success:', data);
-            if (data.SecretkeyRequired === 'True') {
+            
+          if (data['@Message.ExtendedInfo'] && Array.isArray(data['@Message.ExtendedInfo']) &&
+            data['@Message.ExtendedInfo'].length > 0 &&
+            data['@Message.ExtendedInfo'][0].MessageId &&
+            data['@Message.ExtendedInfo'][0].MessageId.includes('GenerateSecretKeyRequired')) {
               return createSecretKey((response) => {
                 if (response) {
                   return showHome();

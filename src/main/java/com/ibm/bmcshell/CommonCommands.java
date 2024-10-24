@@ -12,6 +12,7 @@ import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.shell.Availability;
@@ -19,6 +20,8 @@ import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 import org.springframework.shell.standard.commands.Script;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -136,7 +139,7 @@ public class CommonCommands implements ApplicationContextAware {
     public String getToken() {
 
         try {
-            if (token == null) {
+            if (token == null || token.isEmpty()) {
                 token = getAuthToken(client);
                 getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.GREEN));
             }
@@ -150,27 +153,36 @@ public class CommonCommands implements ApplicationContextAware {
 
     public static String getAuthToken(WebClient client)
             throws NoSuchAlgorithmException, InvalidKeyException, IOException, URISyntaxException {
-        String totp = new TotpService().loadSecretString(Util.secretKey).now(0);
+        String totpString = "";
+        if (!Util.secretKey.isEmpty() && !Util.secretKey.equals(" ")) {
+            totpString = String.format(",\"Token\":\"%s\" ", new TotpService().loadSecretString(Util.secretKey).now(0));
+        }
+
         String req = String.format(
-                "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\",\"Token\":\"%s\"}'",
-                Util.base(machine), userName, passwd, totp);
+                "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\"%s}'",
+                Util.base(machine), userName, passwd, totpString);
         System.out.println(req);
+        try {
+            var response = client.post()
 
-        var response = client.post()
+                    .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(BodyInserters.fromValue(
+                            String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"%s}", userName,
+                                    passwd, totpString)))
+                    .retrieve()
+                    .toEntity(String.class)
+                    .block();
 
-                .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(BodyInserters.fromValue(
-                        String.format("{\"UserName\":\"%s\", \"Password\":\"%s\",\"Token\":\"%s\"}", userName,
-                                passwd, totp)))
-                .retrieve()
-                .toEntity(String.class)
-                .block();
+            HttpHeaders responseHeaders = response.getHeaders();
 
-        HttpHeaders responseHeaders = response.getHeaders();
-
-        List<String> headerValue = responseHeaders.get("X-Auth-Token");
-        return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
+            List<String> headerValue = responseHeaders.get("X-Auth-Token");
+            return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
+        } catch (Exception ex) {
+            System.out.println("Token generation failed");
+            System.out.println(ex.getMessage());
+            return "";
+        }
 
     }
 
@@ -259,15 +271,66 @@ public class CommonCommands implements ApplicationContextAware {
         });
     }
 
-    String makePostRequest(String target, String data) throws URISyntaxException {
+    private Map<String, String> parseFormData(String data) {
+        Map<String, String> formData = new HashMap<>();
+        String[] pairs = data.split(";");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split("=");
+            if (keyValue.length == 2) {
+                formData.put(keyValue[0], keyValue[1]);
+            }
+        }
+        return formData;
+    }
+
+    String makePostRequestWithFormData(String target, String data) throws URISyntaxException {
         var auri = new URI(base() + target);
+
         return Util.tryUntil(3, () -> {
             try {
+                Map<String, String> formData = parseFormData(data);
+                MultiValueMap<String, Object> multipartData = new LinkedMultiValueMap<String, Object>();
+                formData.forEach((k, v) -> {
+                    if (v.startsWith("@")) {
+                        // Handle file upload
+                        try {
+                            var fileResource = new FileSystemResource(v.substring(1));
+                            multipartData.add(k, fileResource);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    } else {
+                        multipartData.add(k, v);
+                    }
+                });
+                var multipartBody = BodyInserters.fromMultipartData(multipartData);
+                var response = client.post()
+                        .uri(auri)
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(multipartBody)
+                        .retrieve()
+                        .toEntity(String.class)
+                        .block();
+                return response.getBody();
+            } catch (Exception ex) {
+                resetToken();
+                throw ex;
+            }
+
+        });
+    }
+
+    String makePostRequest(String target, String data, String contType) throws URISyntaxException, IOException {
+        var auri = new URI(base() + target);
+
+        return Util.tryUntil(3, () -> {
+            try {
+
                 System.out.println("Posting" + data);
                 var response = client.post()
                         .uri(auri)
                         .header("X-Auth-Token", token)
-                        .header("Content-Type", "application/json")
+                        .header("Content-Type", contType)
                         .bodyValue(data)
                         .retrieve()
                         .toEntity(String.class)
@@ -464,6 +527,20 @@ public class CommonCommands implements ApplicationContextAware {
         System.out.println(goTo(ep, data, false, ""));
     }
 
+    @ShellMethod(key = "post_with_type", value = "eg post_with_type Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
+    @ShellMethodAvailability("availabilityCheck")
+    public void post_with_type(@ShellOption(value = { "-t", "--target" }, help = "Target URL") String target,
+            @ShellOption(value = { "-d", "--data" }, help = "Data to send", defaultValue = " ") String data,
+            @ShellOption(value = { "-c",
+                    "--content-type" }, help = "Content Type", defaultValue = "application/json") String contentType)
+            throws URISyntaxException, IOException {
+        if (contentType.equals("multipart/form-data") || contentType.equals("f")) {
+            System.out.println(makePostRequestWithFormData(target, data));
+            return;
+        }
+        makePostRequest(target, data, contentType);
+    }
+
     public void delete(String endPoint) throws URISyntaxException, IOException {
         var ep = new Util.EndPoints(endPoint, "Delete");
         System.out.println(goTo(ep, "", false, ""));
@@ -500,7 +577,7 @@ public class CommonCommands implements ApplicationContextAware {
         try {
             if (ep.action.equals("Post")) {
                 System.out.println(data);
-                return makePostRequest(url, data);
+                return makePostRequest(url, data, "application/json");
             }
             if (ep.action.equals("Delete")) {
                 return makeDeleteRequest(url);
@@ -639,35 +716,9 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "journalctl", value = "eg: journalctl arg ")
     void journalctl(@ShellOption(value = { "-u" }, defaultValue = "") String u,
-            @ShellOption(value = { "-o" }, defaultValue = "") String o,
-            @ShellOption(value = { "" }, defaultValue = "-f") String f,
-            @ShellOption(value = { "-s" }, defaultValue = "") String s) throws IOException {
-        var lambdaContext = new Object() {
-            String cmd = "journalctl ";
-        };
+            @ShellOption(value = { "-n" }, defaultValue = "20") int n) throws IOException {
+        scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
-        if (!u.isEmpty()) {
-            lambdaContext.cmd = lambdaContext.cmd + String.format("--unit=%s ", u);
-        }
-        if (!o.isEmpty()) {
-            lambdaContext.cmd = lambdaContext.cmd + String.format("-o=%s ", o);
-        }
-        if (!f.isEmpty()) {
-            lambdaContext.cmd = lambdaContext.cmd + String.format("-f ");
-        }
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        if (!s.isEmpty()) {
-            try {
-                redirector(outputStream, () -> scmd(lambdaContext.cmd));
-            } catch (Exception e) {
-
-            }
-
-            new FileOutputStream(new File("journalctl")).write(outputStream.toByteArray());
-            system("cat journalctl");
-            return;
-        }
-        scmd(lambdaContext.cmd);
     }
 
     @ShellMethod(key = "journalhelp", value = "eg: journalhelp")
