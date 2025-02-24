@@ -7,8 +7,10 @@ import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 
 import java.io.*;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Scanner;
 
 @ShellComponent
@@ -95,5 +97,23 @@ public class InstallCommands extends CommonCommands {
         cmdBuilder.append(":/tmp/");
 
         system(cmdBuilder.toString());
+    }
+
+    @ShellMethod(key = "acfupload", value = "eg: acfupload acfpath ")
+    void acfupload(String imagepath) throws URISyntaxException {
+        try {
+            File file = new File(imagepath);
+            FileInputStream fileInputStream = new FileInputStream(file);
+            byte[] fileBytes = new byte[(int) file.length()];
+            fileInputStream.read(fileBytes);
+            fileInputStream.close();
+            String encodedString = Base64.getEncoder().encodeToString(fileBytes);
+            System.out.println("Base64 Encoded String: " + encodedString);
+            patch("AccountService/Accounts/service",
+                    String.format("{\"Oem\":{\"IBM\":{\"ACF\":{\"ACFFile\":\"%s\"}}}}", encodedString));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
 }

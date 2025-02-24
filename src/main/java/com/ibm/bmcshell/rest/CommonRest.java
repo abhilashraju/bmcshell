@@ -7,6 +7,7 @@ import com.ibm.bmcshell.CommonCommands;
 import com.ibm.bmcshell.CustomPromptProvider;
 import com.ibm.bmcshell.EthCommands;
 import com.ibm.bmcshell.Utils.Util;
+import com.ibm.bmcshell.redfish.MockUpFetcher;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.jline.utils.AttributedStyle;
@@ -197,7 +198,11 @@ public class CommonRest {
 
         return Mono.just("hello");
     }
-
+    @RequestMapping("/mockup/{arg}")
+    public Mono<ResponseEntity<Map<String, JsonNode>>> getMockups(@PathVariable String arg) throws IOException {
+        Map<String, JsonNode> schemas = MockUpFetcher.fetch(arg);
+        return Mono.just(ResponseEntity.ok(schemas));
+    }
     @RequestMapping("/schemas")
     public Mono<ResponseEntity<Map<String, JsonNode>>> getSchemas() throws IOException {
         Map<String, JsonNode> schemas = readAllSchemaFiles(null);
@@ -275,7 +280,6 @@ public class CommonRest {
                         if (pattern != null) {
                             Matcher matcher = pattern.matcher(fileName);
                             boolean matches = matcher.find();
-                            System.out.println("Regex: " + regex + ", Matches: " + matches);
                             return matches;
                         }
                         return true;
@@ -335,7 +339,7 @@ public class CommonRest {
                     if (ex.getStatusCode().is5xxServerError()) {
                         return Mono.error(ex);
                     }
-                    return Mono.just(ResponseEntity.status(ex.getStatusCode()).body(ex.getResponseBodyAsString()));
+                    return Mono.just(ResponseEntity.status(ex.getStatusCode()).headers(ex.getHeaders()).body(ex.getResponseBodyAsString()));
                 });
     }
 

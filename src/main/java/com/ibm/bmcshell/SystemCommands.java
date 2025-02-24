@@ -2,6 +2,7 @@ package com.ibm.bmcshell;
 
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
 import java.io.IOException;
@@ -60,6 +61,11 @@ public class SystemCommands extends CommonCommands {
     @ShellMethod(key = "sys.wget")
     protected void wget(String url) throws IOException, InterruptedException {
         system(String.format("wget %s", url));
+    }
+
+    @ShellMethod(key = "sys.cmd", value = "eg: sy.cmd command")
+    void cmd(String cmd) {
+        system(cmd);
     }
 
     @ShellMethod(key = "ts.send")

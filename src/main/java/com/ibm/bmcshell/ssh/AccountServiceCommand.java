@@ -1,8 +1,13 @@
 package com.ibm.bmcshell.ssh;
 
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.CommonCommands;
 import com.ibm.bmcshell.DbusCommnads;
+import com.ibm.bmcshell.TotpService;
+import com.ibm.bmcshell.Utils.Util;
+import com.oracle.js.parser.ir.ObjectNode;
+
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
@@ -10,6 +15,8 @@ import org.springframework.shell.standard.ShellOption;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 
 @ShellComponent
 public class AccountServiceCommand extends CommonCommands {
@@ -22,25 +29,26 @@ public class AccountServiceCommand extends CommonCommands {
 
     @ShellMethod(key = "as.create_user")
     @ShellMethodAvailability("availabilityCheck")
-    public String createUser(@ShellOption(value = { "--name", "-n" }) String name,
-            @ShellOption(value = { "--privilege", "-p" }, defaultValue = "priv-admin") String privilege) {
+    public void createUser(@ShellOption(value = { "--name", "-n" }) String name,
+            @ShellOption(value = { "--privilege", "-p" }, defaultValue = "Administrator") String privilege) throws URISyntaxException, IOException {
 
-        String args = String.format("%s %d %s %s true", name, 2, "ssh redfish", privilege);
-        dbusCommnads.call("xyz.openbmc_project.User.Manager",
-                "/xyz/openbmc_project/user",
-                "xyz.openbmc_project.User.Manager",
-                "CreateUser",
-                "sassb", args);
-        return "Finished";
+        // String args = String.format("%s %d %s %s true", name, 2, "ssh redfish", privilege);
+        // dbusCommnads.call("xyz.openbmc_project.User.Manager",
+        //         "/xyz/openbmc_project/user",
+        //         "xyz.openbmc_project.User.Manager",
+        //         "CreateUser",
+        //         "sassb", args);
+        post("/redfish/v1/AccountService/Accounts", String.format("{\"UserName\": \"%s\", \"Password\": \"0penBmc0\", \"RoleId\": \"%s\", \"Enabled\": true}", name, privilege));
+        
     }
 
     @ShellMethod(key = "as.change_password")
     @ShellMethodAvailability("availabilityCheck")
-    public String changePassword(@ShellOption(value = { "--name", "-n" }) String name,
+    public void changePassword(@ShellOption(value = { "--name", "-n" }) String name,
             @ShellOption(value = { "--password", "-p" }) String passwString) throws URISyntaxException, IOException {
         String data = String.format("{\"Password\":\"%s\"}", passwString);
         patch(String.format("AccountService/Accounts/%s", name), data);
-        return "Password Changed";
+       
     }
 
     @ShellMethod(key = "as.delete_user")
@@ -53,5 +61,57 @@ public class AccountServiceCommand extends CommonCommands {
                 "xyz.openbmc_project.Object.Delete",
                 "Delete", "", "");
         return "Finished";
+    }
+    
+    
+    @ShellMethod(key = "as.enablemfa")
+    @ShellMethodAvailability("availabilityCheck")
+    public void enablemfa(boolean enable) throws URISyntaxException, IOException {
+
+        patch("/redfish/v1/AccountService/", toJson(new ObjectMapper().createObjectNode(),"MultiFactorAuth/GoogleAuthenticator/Enabled", (node, key) -> node.put(key, enable)));
+    }
+    @ShellMethod(key = "as.generateSecretKey")
+    @ShellMethodAvailability("availabilityCheck")
+    public void generateSecretKey(boolean enable) throws URISyntaxException, IOException {
+
+        post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.GenerateSecretKey",getUserName()),"");
+        
+    }
+    @ShellMethod(key = "as.password_expire", value = "eg: as.password_expire username ")
+    void password_expire(String id) throws IOException, URISyntaxException {
+        scmd (String.format("passwd --expire %s", id));
+        
+    }
+    @ShellMethod(key = "as.delete_session", value = "eg: delete_session session-id . Deletes the session")
+    void delete_session(String id) throws IOException, URISyntaxException {
+        delete(String.format("SessionService/Session/%s", id));
+    }
+    @ShellMethod(key = "as.delete_all_sessions", value = "eg: as.delete_all_sessions ")
+    void delete_all_sessions() throws IOException, URISyntaxException {
+        scmd ("systemctl stop bmcweb");
+        scmd("rm /home/root/bmcweb_persistent_data.json");
+        scmd ("systemctl start bmcweb");
+    }
+    @ShellMethod(key = "as.verify_secret_key")
+    @ShellMethodAvailability("availabilityCheck")
+    public void verifySecretKey(String secret) throws URISyntaxException, IOException, InvalidKeyException, NoSuchAlgorithmException {
+        String totpString = new TotpService().loadSecretString(secret).now(0);
+        String data = String.format("{\"TimeBasedOneTimePassword\":\"%s\"}",totpString);
+        post(String.format("AccountService/Accounts/%s/Actions/ManagerAccount.VerifyTimeBasedOneTimePassword", getUserName()), data);
+        secretkey(secret);
+    }
+
+    @ShellMethod(key = "as.bypass_mfa")
+    @ShellMethodAvailability("availabilityCheck")
+    public void bypassMfa(@ShellOption(value = { "--bypass", "-b" }) boolean bypass) throws URISyntaxException, IOException {
+        String data = String.format("{\"MFABypass\":{\"BypassTypes\":[\"%s\"]}}",
+        bypass?"GoogleAuthenticator"
+        :"None");
+        patch(String.format("/redfish/v1/AccountService/Accounts/%s", getUserName()), data);
+    }
+    @ShellMethod(key = "as.clear_secret_key")
+    @ShellMethodAvailability("availabilityCheck")
+    public void clearSecretKey() throws URISyntaxException, IOException {
+        post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.ClearSecretKey", getUserName()), "");
     }
 }

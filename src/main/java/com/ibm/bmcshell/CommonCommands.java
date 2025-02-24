@@ -3,11 +3,14 @@ package com.ibm.bmcshell;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
+import com.ibm.bmcshell.redfish.SchemaFetcher;
 import com.ibm.bmcshell.rest.CommonRest;
 import com.ibm.bmcshell.Os.Cmd;
 import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.Utils.ZipUtils;
 import com.ibm.bmcshell.ssh.SSHShellClient;
+import com.ibm.cloud.sdk.core.http.HttpStatus;
+
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -24,6 +27,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClient.RequestBodySpec;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -55,7 +59,7 @@ import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
 public class CommonCommands implements ApplicationContextAware {
     WebClient client;
 
-    String token;
+    static String token;
 
     public String base() {
         return Util.base(machine);
@@ -82,6 +86,23 @@ public class CommonCommands implements ApplicationContextAware {
     public static String getPasswd() {
         return passwd;
     }
+    @FunctionalInterface
+    public interface Setter {
+        void set(com.fasterxml.jackson.databind.node.ObjectNode node, String key);
+    }
+    public String toJson(com.fasterxml.jackson.databind.node.ObjectNode rootNode,String path, Setter setter){
+        var keys =path.split("/");
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode currentNode = rootNode;
+        for (int i = 0; i < keys.length - 1; i++) {
+            com.fasterxml.jackson.databind.node.ObjectNode newNode = mapper.createObjectNode();
+            currentNode.set(keys[i], newNode);
+            currentNode = newNode;
+        }
+        setter.set(currentNode, keys[keys.length - 1]);
+        return rootNode.toString();
+    } 
+
 
     CustomPromptProvider getPromptProvider() {
         return applicationContext.getBean(CustomPromptProvider.class);
@@ -145,6 +166,7 @@ public class CommonCommands implements ApplicationContextAware {
             }
         } catch (Exception ex) {
             System.out.println("Could not get token");
+            System.out.println(ex.getMessage());
             getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.RED));
         }
         return token;
@@ -162,27 +184,32 @@ public class CommonCommands implements ApplicationContextAware {
                 "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\"%s}'",
                 Util.base(machine), userName, passwd, totpString);
         System.out.println(req);
-        try {
+        try{
             var response = client.post()
-
-                    .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(BodyInserters.fromValue(
-                            String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"%s}", userName,
-                                    passwd, totpString)))
-                    .retrieve()
-                    .toEntity(String.class)
-                    .block();
-
+            .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(BodyInserters.fromValue(
+                    String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"%s}", userName,
+                            passwd, totpString)))
+            .retrieve()
+            .toEntity(String.class)
+            .block();
+            System.out.println(response.getBody());
             HttpHeaders responseHeaders = response.getHeaders();
 
             List<String> headerValue = responseHeaders.get("X-Auth-Token");
+            
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
-        } catch (Exception ex) {
-            System.out.println("Token generation failed");
-            System.out.println(ex.getMessage());
-            return "";
-        }
+        }catch (WebClientResponseException ex) {
+              
+            System.err.println(ex.getResponseBodyAsString());
+            HttpHeaders responseHeaders = ex.getHeaders();
+            List<String> headerValue = responseHeaders.get("X-Auth-Token");
+            return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
+        } 
+       
+
+        
 
     }
 
@@ -246,6 +273,11 @@ public class CommonCommands implements ApplicationContextAware {
                         }))
                         .block();
                 return String.format("{\"file_location\":\"%s\"}", o);
+            }catch (WebClientResponseException ex) {
+              
+                System.err.println("Internal Server Error  "+ex.getStatusText());
+                return ex.getResponseBodyAsString();
+                      
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -312,6 +344,11 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
+            }catch (WebClientResponseException ex) {
+              
+                System.err.println("Internal Server Error  "+ex.getStatusText());
+                return ex.getResponseBodyAsString();
+                      
             } catch (Exception ex) {
                 resetToken();
                 throw ex;
@@ -327,15 +364,24 @@ public class CommonCommands implements ApplicationContextAware {
             try {
 
                 System.out.println("Posting" + data);
-                var response = client.post()
+                var requestBodySpec = client.post()
                         .uri(auri)
                         .header("X-Auth-Token", token)
-                        .header("Content-Type", contType)
-                        .bodyValue(data)
-                        .retrieve()
+                        .header("Content-Type", contType);
+
+                if (data != null && !data.isEmpty()) {
+                    requestBodySpec = (RequestBodySpec) requestBodySpec.bodyValue(data);
+                }
+
+                var response = requestBodySpec.retrieve()
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
+            }catch (WebClientResponseException ex) {
+              
+                System.err.println("Internal Server Error  "+ex.getStatusText());
+                return ex.getResponseBodyAsString();
+                      
             } catch (Exception ex) {
                 resetToken();
                 throw ex;
@@ -356,6 +402,11 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
+            }catch (WebClientResponseException ex) {
+              
+                System.err.println("Internal Server Error  "+ex.getStatusText());
+                return ex.getResponseBodyAsString();
+                      
             } catch (Exception ex) {
                 resetToken();
                 throw ex;
@@ -378,10 +429,17 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
+            }catch (WebClientResponseException ex) {
+              
+                System.err.println("Internal Server Error  "+ex.getStatusText());
+                return ex.getResponseBodyAsString();
+                      
             } catch (Exception ex) {
+                
                 resetToken();
                 throw ex;
             }
+                        
 
         });
     }
@@ -540,6 +598,11 @@ public class CommonCommands implements ApplicationContextAware {
         }
         makePostRequest(target, data, contentType);
     }
+    @ShellMethod(key ="setDebugLevel", value = "eg setDebugLevel debug")
+    public void setDebugLevel(String level) {
+        String command = String.format("bmcweb loglevel %s", level);
+        scmd(command);  
+    }
 
     public void delete(String endPoint) throws URISyntaxException, IOException {
         var ep = new Util.EndPoints(endPoint, "Delete");
@@ -573,6 +636,7 @@ public class CommonCommands implements ApplicationContextAware {
         }
         lastCurlRequest = String.format("curl -k -H \"X-Auth-Token: %s\" -X GET https://%s%s", token,
                 Util.fullMachineName(machine), Util.normalise(ep.url));
+        System.out.println(lastCurlRequest);
         String url = Util.normalise(ep.url);
         try {
             if (ep.action.equals("Post")) {
@@ -703,7 +767,8 @@ public class CommonCommands implements ApplicationContextAware {
         delete(String.format("EventService/Subscriptions/%s", id));
 
     }
-
+   
+   
     @ShellMethod(key = "event_filters", value = "eg: event_filters hypervisor/EthernetInterfaces/eth0,hypervisor/EthernetInterfaces/eth1")
     void event_filters(String filter) {
         Util.setEventFilter(filter);
@@ -746,12 +811,15 @@ public class CommonCommands implements ApplicationContextAware {
 
         userName = u;
         serialise();
+        resetToken();
+        
     }
 
     @ShellMethod(key = "password")
     void setPasswd(String p) throws IOException {
         passwd = p;
         serialise();
+        resetToken();
     }
 
     @ShellMethod(key = "ssh", value = "eg: ssh . You can ssh in to the machine")
@@ -764,11 +832,12 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "scmd", value = "eg: scmd 'ls /tmp/' .The specified command will be executed in machine with super user privilege")
     @ShellMethodAvailability("availabilityCheck")
-    void scmd(String command) {
-        var newCmd = userName.equals("root") ? Optional.of(command)
+    public void scmd(String command) {
+        String name = userName.equals("root") ? userName : "service";
+        var newCmd = name.equals("root") ? Optional.of(command)
                 : Arrays.stream(command.split(";")).map(a -> "sudo -i " + a).reduce((a, b) -> a + ";" + b);
         newCmd.ifPresentOrElse(a -> {
-            runCommand(Util.fullMachineName(machine), userName, passwd, a);
+            runCommand(Util.fullMachineName(machine), name, passwd, a);
         }, () -> {
             System.out.println(command + " is invalid");
         });
@@ -805,6 +874,8 @@ public class CommonCommands implements ApplicationContextAware {
     void schemaroot(String path) throws IOException {
         Util.schemaroot = path;
         serialise();
+        SchemaFetcher.fetchSchemaFiles(path);
+
 
     }
 
@@ -823,7 +894,7 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "secretkey", value = "eg secretkey key")
-    void secretkey(String k) throws IOException {
+    public void secretkey(String k) throws IOException {
         Util.secretKey = k;
         serialise();
 

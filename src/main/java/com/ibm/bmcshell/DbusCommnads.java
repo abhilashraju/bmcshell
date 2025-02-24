@@ -5,6 +5,7 @@ import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.Utils.Util;
 
 import java.io.*;
@@ -19,10 +20,10 @@ public class DbusCommnads extends CommonCommands {
     String currentPath;
 
     String currentIface;
-
+   
     protected DbusCommnads() throws IOException {
     }
-
+   
     @ShellMethod(key = "bs.introspect", value = "eg: bs.introspect xyz.openbmc_project.Network.Hypervisor /xyz/openbmc_project/network/hypervisor/eth0/ipv4")
     @ShellMethodAvailability("availabilityCheck")
     public void introspect(@ShellOption(value = { "--ser", "-s" }, defaultValue = "") String service,

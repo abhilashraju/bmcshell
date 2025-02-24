@@ -28,7 +28,7 @@ document.getElementById('login-form')
         body: JSON.stringify(model)
       })
           .then(response => {
-            if (response.ok) {
+            if (response.ok || response.status === 403) {
               console.log('Response Headers:', response.headers);
               // Extract X-Auth-Token from the response header
               xAuthToken = response.headers.get('X-Auth-Token');
@@ -43,11 +43,11 @@ document.getElementById('login-form')
           })
           .then(data => {
             console.log('Success:', data);
-            
-          if (data['@Message.ExtendedInfo'] && Array.isArray(data['@Message.ExtendedInfo']) &&
-            data['@Message.ExtendedInfo'].length > 0 &&
-            data['@Message.ExtendedInfo'][0].MessageId &&
-            data['@Message.ExtendedInfo'][0].MessageId.includes('GenerateSecretKeyRequired')) {
+          var error = data['error'];
+          if (error && error['@Message.ExtendedInfo'] && Array.isArray(error['@Message.ExtendedInfo']) &&
+          error['@Message.ExtendedInfo'].length > 0 &&
+          error['@Message.ExtendedInfo'][0].MessageId &&
+          error['@Message.ExtendedInfo'][0].MessageId.includes('GenerateSecretKeyRequired')) {
               return createSecretKey((response) => {
                 if (response) {
                   return showHome();
