@@ -1,15 +1,17 @@
 package com.ibm.bmcshell;
 
-import com.ibm.bmcshell.script.ScriptRunner;
-import kotlin.Pair;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellMethodAvailability;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.stream.Collectors;
+
+import org.springframework.shell.standard.ShellComponent;
+import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellMethodAvailability;
+
+import com.ibm.bmcshell.script.ScriptRunner;
+
+import kotlin.Pair;
 
 @ShellComponent
 public class ObmcCommands extends CommonCommands{
@@ -21,6 +23,13 @@ public class ObmcCommands extends CommonCommands{
     void wait_for_host_on() throws InterruptedException {
 
         waitForObmcStatus("CurrentPowerState==\"On\"");
+
+    }
+    @ShellMethod(key="wait_for_boot_running")
+    @ShellMethodAvailability("availabilityCheck")
+    void wait_for_boot_running() throws InterruptedException {
+
+        waitForObmcStatus("BootProgress==\"OSRunning\"");
 
     }
     @ShellMethod(key="wait_for_host_off")

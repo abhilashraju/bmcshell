@@ -1,17 +1,17 @@
 package com.ibm.bmcshell;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Arrays;
+
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.Utils.Util;
-
-import java.io.*;
-import java.net.URISyntaxException;
-import java.util.Arrays;
-
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 
 @ShellComponent
@@ -118,12 +118,17 @@ public class DbusCommnads extends CommonCommands {
         var formatwitharg = "busctl call %s %s %s %s %s %s";
         var format = "busctl call %s %s %s %s";
         String commd;
-        if (args != null)
-            commd = String.format(formatwitharg, service, path, iface, method, sig, args);
+        if (args != null){
+
+            var str=Arrays.stream(args.split("\\|")).map(a->"\""+a+"\" ").reduce((a,b)->a+b).orElse("");
+            commd = String.format(formatwitharg, service, path, iface, method, sig, str);
+        }
+            
         else
             commd = String.format(format, service, path, iface, method);
 
         commd = commd + " --verbose";
+        System.err.println(commd);
         scmd(commd);
     }
 
@@ -201,5 +206,13 @@ public class DbusCommnads extends CommonCommands {
         new FileOutputStream(new File(filename)).write(outputStream.toByteArray());
         System.out.println("Content is available in " + filename);
     }
+
+    @ShellMethod(key = "bs.serial_number", value = "eg: bs.serial_number")
+    @ShellMethodAvailability("availabilityCheck")
+    public void serial_number() throws IOException {
+        String commd=" busctl get-property xyz.openbmc_project.Inventory.Manager /xyz/openbmc_project/inventory/system xyz.openbmc_project.Inventory.Decorator.Asset SerialNumber";
+        scmd(commd);
+    }
+   
 
 }

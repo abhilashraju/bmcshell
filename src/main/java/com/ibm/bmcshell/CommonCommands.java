@@ -1,15 +1,36 @@
 package com.ibm.bmcshell;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ibm.bmcshell.inferencing.WatsonAssistant;
-import com.ibm.bmcshell.redfish.SchemaFetcher;
-import com.ibm.bmcshell.rest.CommonRest;
-import com.ibm.bmcshell.Os.Cmd;
-import com.ibm.bmcshell.Utils.Util;
-import com.ibm.bmcshell.Utils.ZipUtils;
-import com.ibm.bmcshell.ssh.SSHShellClient;
-import com.ibm.cloud.sdk.core.http.HttpStatus;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Stack;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,32 +50,20 @@ import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClient.RequestBodySpec;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
-import java.awt.*;
-import java.awt.datatransfer.Clipboard;
-import java.awt.datatransfer.StringSelection;
-import java.io.*;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.util.*;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-
-import static com.ibm.bmcshell.ssh.SSHShellClient.port;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibm.bmcshell.Os.Cmd;
+import com.ibm.bmcshell.Utils.Util;
+import com.ibm.bmcshell.Utils.ZipUtils;
+import com.ibm.bmcshell.inferencing.WatsonAssistant;
+import com.ibm.bmcshell.redfish.SchemaFetcher;
+import com.ibm.bmcshell.ssh.SSHShellClient;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 public class CommonCommands implements ApplicationContextAware {
     WebClient client;
@@ -338,6 +347,7 @@ public class CommonCommands implements ApplicationContextAware {
                 var multipartBody = BodyInserters.fromMultipartData(multipartData);
                 var response = client.post()
                         .uri(auri)
+                        .header("File-Upload", "true")
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(multipartBody)
                         .retrieve()
@@ -356,7 +366,27 @@ public class CommonCommands implements ApplicationContextAware {
 
         });
     }
-
+    String makePostRequestWithFileData(String target,String filenamePath) throws Exception
+    {
+        try {
+            var auri = new URI(base() + target);
+            var fileResource = new FileSystemResource(filenamePath);
+            var fileName = fileResource.getFilename();
+             var response = client.post()
+                    .uri(auri)
+                    .header("File-Upload", "true")
+                    .header("File-Name", fileName)
+                    .header("Content-Type", "application/octet-stream")
+                    .body(BodyInserters.fromResource(fileResource))
+                    .retrieve()
+                    .toEntity(String.class)
+                    .block();
+            return response.getBody();
+        } catch (Exception ex) {
+            resetToken();
+            throw ex;
+        }
+    }
     String makePostRequest(String target, String data, String contType) throws URISyntaxException, IOException {
         var auri = new URI(base() + target);
 
@@ -366,6 +396,7 @@ public class CommonCommands implements ApplicationContextAware {
                 System.out.println("Posting" + data);
                 var requestBodySpec = client.post()
                         .uri(auri)
+                        .header("File-Upload", "true")
                         .header("X-Auth-Token", token)
                         .header("Content-Type", contType);
 
@@ -579,10 +610,31 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "post", value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
     @ShellMethodAvailability("availabilityCheck")
     public void post(@ShellOption(value = { "-t", "--target" }, help = "Target URL") String target,
-            @ShellOption(value = { "-d", "--data" }, help = "Data to send") String data)
+            @ShellOption(value = { "-d", "--data" }, help = "Data to send") String data,
+            @ShellOption(value = { "-e", "--encode" }, help = "Base64 encode",defaultValue="false") boolean  encode)
             throws URISyntaxException, IOException {
         var ep = new Util.EndPoints(target, "Post");
+        if(data.startsWith("@")){
+            data = data.substring(1);
+            File file = new File(data);
+            if (file.exists()) {
+                data = new String(Files.readAllBytes(file.toPath()));
+            } else {
+                System.out.println("File not found");
+                return;
+            }
+        }
+        if(encode==true){
+            data = Util.encodeBase64(data);
+        }
         System.out.println(goTo(ep, data, false, ""));
+    }
+    @ShellMethod(key = "postFile", value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
+    @ShellMethodAvailability("availabilityCheck")
+    public void postFile( String target,
+            String filename)
+            throws Exception {
+        makePostRequestWithFileData(target, filename);
     }
 
     @ShellMethod(key = "post_with_type", value = "eg post_with_type Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
@@ -816,10 +868,14 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "password")
-    void setPasswd(String p) throws IOException {
+    String setPasswd(@ShellOption(value = { "--password", "-p" }, defaultValue = "") String p) throws IOException {
+        if(p==null || p.isEmpty()){
+            return passwd;
+        }
         passwd = p;
         serialise();
         resetToken();
+        return passwd;
     }
 
     @ShellMethod(key = "ssh", value = "eg: ssh . You can ssh in to the machine")
@@ -967,6 +1023,21 @@ public class CommonCommands implements ApplicationContextAware {
     void repeat(String scrFile, int count) throws Exception {
         while (count > 0) {
             script.script(new File(scrFile));
+            count--;
+        }
+    }
+    @ShellMethod(key = "repeatpar", value = "eg: repeat filename count. This will rung the script specifed(count) number of times")
+    @ShellMethodAvailability("availabilityCheck")
+    void repeatpar(String scrFile, int count) throws Exception {
+        while (count > 0) {
+            Thread thread = new Thread(() -> {
+                try {
+                    script.script(new File(scrFile));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+            thread.start();
             count--;
         }
     }

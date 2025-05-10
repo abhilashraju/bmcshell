@@ -30,7 +30,7 @@ public class DumpCommands extends CommonCommands{
     @ShellMethodAvailability("availabilityCheck")
     public void bmcdump() throws URISyntaxException, IOException {
 
-        post("/redfish/v1/Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData","{\"DiagnosticDataType\" : \"Manager\",\"OEMDiagnosticDataType\": \"Manager\"}");
+        post("/redfish/v1/Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData","{\"DiagnosticDataType\" : \"Manager\"}");
     }
     @ShellMethod(key="systemdump")
     @ShellMethodAvailability("availabilityCheck")

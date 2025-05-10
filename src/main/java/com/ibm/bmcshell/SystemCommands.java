@@ -1,15 +1,14 @@
 package com.ibm.bmcshell;
 
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellMethodAvailability;
-import org.springframework.shell.standard.ShellOption;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+
+import org.springframework.shell.standard.ShellComponent;
+import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellOption;
 
 @ShellComponent
 public class SystemCommands extends CommonCommands {
@@ -38,8 +37,8 @@ public class SystemCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "sys.scpjar")
-    protected void scpjar() throws IOException, InterruptedException {
-        scpfile("target/bmcshell-0.0.1-SNAPSHOT.jar");
+    protected void scpjar(@ShellOption(value = { "--dir", "-d" }, defaultValue = "./") String dir ) throws IOException, InterruptedException {
+        scpfile(dir+"target/bmcshell-0.0.1-SNAPSHOT.jar");
     }
 
     @ShellMethod(key = "sys.scpfile")

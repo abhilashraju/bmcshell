@@ -1,22 +1,20 @@
 package com.ibm.bmcshell.ssh;
 
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ibm.bmcshell.CommonCommands;
-import com.ibm.bmcshell.DbusCommnads;
-import com.ibm.bmcshell.TotpService;
-import com.ibm.bmcshell.Utils.Util;
-import com.oracle.js.parser.ir.ObjectNode;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
-import java.io.IOException;
-import java.net.URISyntaxException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibm.bmcshell.CommonCommands;
+import com.ibm.bmcshell.DbusCommnads;
+import com.ibm.bmcshell.TotpService;
 
 @ShellComponent
 public class AccountServiceCommand extends CommonCommands {
@@ -50,7 +48,26 @@ public class AccountServiceCommand extends CommonCommands {
         patch(String.format("AccountService/Accounts/%s", name), data);
        
     }
+    @ShellMethod(key = "as.install_acf")
+    @ShellMethodAvailability("availabilityCheck")
+    public void install_acf(@ShellOption(value = { "--file", "-f" }) String filepath) throws URISyntaxException, IOException {
+        
+        String fileContent = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filepath)));
+        ObjectMapper objectMapper = new ObjectMapper();
+        String encodedContent = java.util.Base64.getEncoder().encodeToString(fileContent.getBytes());
+     
+        com.fasterxml.jackson.databind.node.ObjectNode acfFileNode = objectMapper.createObjectNode();
+        acfFileNode.put("ACFFile", encodedContent);
+        com.fasterxml.jackson.databind.node.ObjectNode oemNode = objectMapper.createObjectNode();
+        oemNode.set("ACF", acfFileNode);
+        com.fasterxml.jackson.databind.node.ObjectNode ibmNode = objectMapper.createObjectNode();
+        ibmNode.set("IBM", oemNode);
+        com.fasterxml.jackson.databind.node.ObjectNode rootNode = objectMapper.createObjectNode();
+        rootNode.set("Oem", ibmNode);
 
+        String data = objectMapper.writeValueAsString(rootNode);
+        patch("/redfish/v1/AccountService/Accounts/service", data);
+    }
     @ShellMethod(key = "as.delete_user")
     @ShellMethodAvailability("availabilityCheck")
     public String delete_user(@ShellOption(value = { "--name", "-n" }) String name)
