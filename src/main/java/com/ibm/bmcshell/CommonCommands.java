@@ -810,7 +810,7 @@ public class CommonCommands implements ApplicationContextAware {
             throws IOException, URISyntaxException {
         post("EventService/Subscriptions", String.format(
                 "{\"Destination\":\"https://%s:%d/%s\",\"Protocol\":\"Redfish\",\"DeliveryRetryPolicy\": \"RetryForever\"}",
-                ipaddress, port, target));
+                ipaddress, port, target),false);
 
     }
 

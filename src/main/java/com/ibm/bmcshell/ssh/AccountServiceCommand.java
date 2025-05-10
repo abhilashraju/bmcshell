@@ -36,7 +36,7 @@ public class AccountServiceCommand extends CommonCommands {
         //         "xyz.openbmc_project.User.Manager",
         //         "CreateUser",
         //         "sassb", args);
-        post("/redfish/v1/AccountService/Accounts", String.format("{\"UserName\": \"%s\", \"Password\": \"0penBmc0\", \"RoleId\": \"%s\", \"Enabled\": true}", name, privilege));
+        post("/redfish/v1/AccountService/Accounts", String.format("{\"UserName\": \"%s\", \"Password\": \"0penBmc0\", \"RoleId\": \"%s\", \"Enabled\": true}", name, privilege),false);
         
     }
 
@@ -91,7 +91,7 @@ public class AccountServiceCommand extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void generateSecretKey(boolean enable) throws URISyntaxException, IOException {
 
-        post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.GenerateSecretKey",getUserName()),"");
+        post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.GenerateSecretKey",getUserName()),"",false);
         
     }
     @ShellMethod(key = "as.password_expire", value = "eg: as.password_expire username ")
@@ -114,7 +114,7 @@ public class AccountServiceCommand extends CommonCommands {
     public void verifySecretKey(String secret) throws URISyntaxException, IOException, InvalidKeyException, NoSuchAlgorithmException {
         String totpString = new TotpService().loadSecretString(secret).now(0);
         String data = String.format("{\"TimeBasedOneTimePassword\":\"%s\"}",totpString);
-        post(String.format("AccountService/Accounts/%s/Actions/ManagerAccount.VerifyTimeBasedOneTimePassword", getUserName()), data);
+        post(String.format("AccountService/Accounts/%s/Actions/ManagerAccount.VerifyTimeBasedOneTimePassword", getUserName()), data,false);
         secretkey(secret);
     }
 
@@ -129,6 +129,6 @@ public class AccountServiceCommand extends CommonCommands {
     @ShellMethod(key = "as.clear_secret_key")
     @ShellMethodAvailability("availabilityCheck")
     public void clearSecretKey() throws URISyntaxException, IOException {
-        post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.ClearSecretKey", getUserName()), "");
+        post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.ClearSecretKey", getUserName()), "",false);
     }
 }

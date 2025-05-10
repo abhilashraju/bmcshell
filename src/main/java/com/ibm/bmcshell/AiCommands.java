@@ -12,9 +12,12 @@ import com.ibm.bmcshell.inferencing.LLaMA3Client;
 @ShellComponent
 public class AiCommands extends CommonCommands{
 
+    AiCommands() throws IOException, URISyntaxException {
+        super();
+    }
     @ShellMethod(key="ai.ask")
     public String getQuery(String q) throws Exception {
         System.out.println(LLaMA3Client.getAnswer(q));
-
+        return "";
     }
 }
