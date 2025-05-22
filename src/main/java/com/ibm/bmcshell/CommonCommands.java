@@ -1060,7 +1060,7 @@ public class CommonCommands implements ApplicationContextAware {
         System.out.println("\n");
     }
 
-    @ShellMethod(key = "q")
+    @ShellMethod(key = "watson.q")
     protected void query(String m, @ShellOption(value = { "-c" }, defaultValue = "openbmcwiki") String c)
             throws IOException, InterruptedException {
         var res = WatsonAssistant.ask(m, c);

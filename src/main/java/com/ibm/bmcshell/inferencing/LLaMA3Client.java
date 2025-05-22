@@ -17,14 +17,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class LLaMA3Client {
     private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
     private static final ObjectMapper mapper = new ObjectMapper();
-
-    public static String ask(String question) throws IOException {
+    public static String complete(String question,String model) throws IOException
+    {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
             HttpPost post = new HttpPost(OLLAMA_URL);
             post.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
 
             String json = mapper.createObjectNode()
-                .put("model", "llama3")
+                .put("model", model)
                 .put("prompt", question)
                 .toString();
 
@@ -45,6 +45,12 @@ public class LLaMA3Client {
                 return "DONE";
             }
         }
+    }
+    public static String ask(String question) throws IOException {
+        return complete(question,"llama3");
+    }
+    public static String suggest(String question) throws IOException {
+        return complete(question,"codellama");
     }
 
     public static void main(String[] args) throws IOException {

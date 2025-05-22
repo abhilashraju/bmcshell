@@ -12,9 +12,14 @@ public class AiCommands extends CommonCommands{
     AiCommands() throws IOException, URISyntaxException {
         super();
     }
-    @ShellMethod(key="ai.ask")
+    @ShellMethod(key="q")
     public void getQuery(String q) throws Exception {
         LLaMA3Client.ask(q);
+        System.out.println("");
+    }
+    @ShellMethod(key="c")
+    public void complete(String q) throws Exception {
+        LLaMA3Client.suggest(q);
         System.out.println("");
     }
 }
