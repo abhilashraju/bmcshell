@@ -1,13 +1,10 @@
 package com.ibm.bmcshell;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellMethodAvailability;
-
-import com.ibm.bmcshell.inferencing.LLaMA3Client;
-
-import javax.net.ssl.SSLException;
 import java.io.IOException;
 import java.net.URISyntaxException;
+
+import org.springframework.shell.standard.ShellComponent;
+import org.springframework.shell.standard.ShellMethod;
+
 import com.ibm.bmcshell.inferencing.LLaMA3Client;
 @ShellComponent
 public class AiCommands extends CommonCommands{
@@ -16,8 +13,8 @@ public class AiCommands extends CommonCommands{
         super();
     }
     @ShellMethod(key="ai.ask")
-    public String getQuery(String q) throws Exception {
-        System.out.println(LLaMA3Client.getAnswer(q));
-        return "";
+    public void getQuery(String q) throws Exception {
+        LLaMA3Client.ask(q);
+        System.out.println("");
     }
 }
