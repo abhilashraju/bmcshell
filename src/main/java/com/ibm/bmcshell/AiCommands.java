@@ -22,4 +22,9 @@ public class AiCommands extends CommonCommands{
         LLaMA3Client.suggest(q);
         System.out.println("");
     }
+    @ShellMethod(key="e")
+    public void explain() throws Exception {
+        LLaMA3Client.suggest("Explain th following \n\n"+lastCurlResponse);
+        System.out.println("");
+    }
 }

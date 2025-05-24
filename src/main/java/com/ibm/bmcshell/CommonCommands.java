@@ -84,7 +84,8 @@ public class CommonCommands implements ApplicationContextAware {
     PrintStream savedStream = System.out;
     @Autowired
     Script script;
-    String lastCurlRequest;
+    static String lastCurlRequest;
+    static String lastCurlResponse;
 
     private Stack<List<Util.EndPoints>> endPoints = new Stack<>();
 
@@ -488,6 +489,7 @@ public class CommonCommands implements ApplicationContextAware {
     protected void makeApiList() throws URISyntaxException, JsonProcessingException {
         var mapper = new ObjectMapper();
         var resp = makeGetRequest(Util.normalise(""), "");
+        lastCurlResponse = resp;
         endPoints.push(Util.sorted(Util.buildLinksAndTargets(mapper.readTree(resp))));
         endPoints.peek().add(0, new Util.EndPoints("back", "Get"));
     }
@@ -693,16 +695,16 @@ public class CommonCommands implements ApplicationContextAware {
         try {
             if (ep.action.equals("Post")) {
                 System.out.println(data);
-                return makePostRequest(url, data, "application/json");
+                return lastCurlResponse=makePostRequest(url, data, "application/json");
             }
             if (ep.action.equals("Delete")) {
-                return makeDeleteRequest(url);
+                return lastCurlResponse=makeDeleteRequest(url);
             }
             if (p) {
                 System.out.println(data);
-                return makePatchRequest(url, data);
+                return lastCurlResponse=makePatchRequest(url, data);
             }
-            return applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o));
+            return lastCurlResponse=applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o));
 
         } catch (WebClientResponseException.BadRequest
                 | WebClientResponseException.Forbidden
