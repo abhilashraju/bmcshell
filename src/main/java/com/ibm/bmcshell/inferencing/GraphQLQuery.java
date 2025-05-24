@@ -1,4 +1,5 @@
 package com.ibm.bmcshell.inferencing;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -17,16 +18,15 @@ import org.apache.http.util.EntityUtils;
 public class GraphQLQuery {
 
     String ask(String question) throws JsonProcessingException {
-        String apiKey =
-                "kvuchkhvar::local.net+1000::d46bf568048d8ec8d4cfbf3088abbb35b9f6d559a9c268088e9ce8d1ec7d8d77";
-        String url =
-                "https://kvuchkhvar.us-east-a.ibm.stepzen.net/wxflows-genai/openbmcwiki/graphql";
+        String apiKey = "";
+        String url = "https://kvuchkhvar.us-east-a.ibm.stepzen.net/wxflows-genai/openbmcwiki/graphql";
 
         // Construct the GraphQL query
-        String query =String.format("{\"query\":\"query RAG {\\n  myRag (\\n    n: 10\\n    collection: \\\"%s\\\"\\n    question: \\\"%s\\\"\\n    aiEngine: WATSONX\\n    model: \\\"ibm/granite-13b-chat-v2\\\"\\n  parameters: {max_new_tokens: 1000, temperature: 0.7, stop_sequences: [\\\"\\\\n\\\\n\\\"]}\\n    searchEngine: GETTINGSTARTED\\n  ) {\\n    out\\n  }\\n}\"}",
+        String query = String.format(
+                "{\"query\":\"query RAG {\\n  myRag (\\n    n: 10\\n    collection: \\\"%s\\\"\\n    question: \\\"%s\\\"\\n    aiEngine: WATSONX\\n    model: \\\"ibm/granite-13b-chat-v2\\\"\\n  parameters: {max_new_tokens: 1000, temperature: 0.7, stop_sequences: [\\\"\\\\n\\\\n\\\"]}\\n    searchEngine: GETTINGSTARTED\\n  ) {\\n    out\\n  }\\n}\"}",
                 "watsonxdocs",
                 question);
-//        System.out.println(query);
+        // System.out.println(query);
         // Set up the HTTP client
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
             HttpPost request = new HttpPost(url);
@@ -45,10 +45,11 @@ public class GraphQLQuery {
                     // Parse and print the response body
                     String responseBody = EntityUtils.toString(response.getEntity(),
                             StandardCharsets.UTF_8);
-//                    System.out.println(responseBody);
+                    // System.out.println(responseBody);
                     ObjectMapper mapper = new ObjectMapper();
-                    var tree=mapper.readTree(responseBody);
-                    return tree.get("data").get("myRag").get("out").get("modelResponse").get("results").get(0).get("generated_text").asText();
+                    var tree = mapper.readTree(responseBody);
+                    return tree.get("data").get("myRag").get("out").get("modelResponse").get("results").get(0)
+                            .get("generated_text").asText();
 
                 } else {
                     // Handle non-200 responses
@@ -69,6 +70,6 @@ public class GraphQLQuery {
         String response = query.ask("What is vpd?");
         System.out.println(response);
     }
-        // Replace YOUR_API_KEY with your actual API key
+    // Replace YOUR_API_KEY with your actual API key
 
 }

@@ -17,7 +17,7 @@ import org.apache.http.util.EntityUtils;
 public class WatsonAssistant {
 
     public  static String apiKey =
-            "kvuchkhvar::local.net+1000::d46bf568048d8ec8d4cfbf3088abbb35b9f6d559a9c268088e9ce8d1ec7d8d77";
+            "";
     public static String ask(String question,String collection) {
         int n=5;
         double temperature=0.3;

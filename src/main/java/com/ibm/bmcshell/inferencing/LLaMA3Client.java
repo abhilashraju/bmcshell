@@ -7,26 +7,28 @@ import java.nio.charset.StandardCharsets;
 
 import org.apache.http.HttpHeaders;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class LLaMA3Client {
     private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
     private static final ObjectMapper mapper = new ObjectMapper();
-    public static String complete(String question,String model) throws IOException
-    {
+    private static String DEFAULT_MODEL = "codellama";
+    public static String complete(String question, String model) throws IOException {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
             HttpPost post = new HttpPost(OLLAMA_URL);
             post.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
 
             String json = mapper.createObjectNode()
-                .put("model", model)
-                .put("prompt", question)
-                .toString();
+                    .put("model", model)
+                    .put("prompt", question)
+                    .toString();
 
             post.setEntity(new StringEntity(json, StandardCharsets.UTF_8));
 
@@ -36,9 +38,9 @@ public class LLaMA3Client {
                         new InputStreamReader(response.getEntity().getContent(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        var res=new ObjectMapper().readTree(line);
-                        
-                        System.out.print(res.get("response").asText());   
+                        var res = new ObjectMapper().readTree(line);
+
+                        System.out.print(res.get("response").asText());
                         // Optionally, process each line here as it arrives
                     }
                 }
@@ -46,16 +48,43 @@ public class LLaMA3Client {
             }
         }
     }
+
     public static String ask(String question) throws IOException {
-        return complete(question,"llama3");
-    }
-    public static String suggest(String question) throws IOException {
-        return complete(question,"codellama");
+        return complete(question, DEFAULT_MODEL);
     }
 
-    public static void main(String[] args) throws IOException {
-        LLaMA3Client client = new LLaMA3Client();
-        String response = client.ask("What is vpd?");
-        System.out.println(response);
+    public static String suggest(String question) throws IOException {
+        return complete(question, DEFAULT_MODEL);
     }
+    public static void setModel(String m)  {
+        DEFAULT_MODEL = m;
+    }
+
+
+    public static void listModels() {
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpGet get = new HttpGet("http://localhost:11434/api/tags");
+            get.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+            try (CloseableHttpResponse response = client.execute(get)) {
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(response.getEntity().getContent(), StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                System.out.println("Available models:");
+                JsonNode root = mapper.readTree(sb.toString());
+                JsonNode models = root.get("models");
+                for (JsonNode modelNode : models) {
+                    System.out.println(modelNode.get("model").asText());
+                }
+ 
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
 }

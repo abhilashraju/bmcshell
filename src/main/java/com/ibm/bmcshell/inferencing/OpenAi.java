@@ -18,7 +18,7 @@ public class OpenAi {
         HttpPost httpPost = new HttpPost(endpoint);
 
         // Set request headers
-        httpPost.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + "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");
+        httpPost.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + "");
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
         httpPost.setHeader("OpenAI-Organization", "org-iESAp1gTluWzkMkiaiOG8DYy");
 

@@ -31,4 +31,15 @@ public class AiCommands extends CommonCommands{
         LLaMA3Client.suggest(q);
         System.out.println("");
     }
+    @ShellMethod(key="ai.ls")
+    public void listModels() throws Exception {
+        
+        LLaMA3Client.listModels();
+        
+    }
+    @ShellMethod(key="ai.set-model")
+    public void setModel(@ShellOption(value = { "-m", "--model" }, help = "set model to use",defaultValue="codellama") String m) throws Exception {
+        LLaMA3Client.setModel(m);
+        System.out.println("Model set to "+m);
+    }
 }
