@@ -4,6 +4,7 @@ import java.net.URISyntaxException;
 
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellOption;
 
 import com.ibm.bmcshell.inferencing.LLaMA3Client;
 @ShellComponent
@@ -23,8 +24,11 @@ public class AiCommands extends CommonCommands{
         System.out.println("");
     }
     @ShellMethod(key="e")
-    public void explain() throws Exception {
-        LLaMA3Client.suggest("Explain th following \n\n"+lastCurlResponse);
+    public void explain(@ShellOption(value = { "-e", "--explain" }, help = "explain following",defaultValue="") String q) throws Exception {
+        if (q == null || q.isEmpty()) {
+            LLaMA3Client.suggest("Explain th following \n\n"+lastCurlResponse);
+        }
+        LLaMA3Client.suggest(q);
         System.out.println("");
     }
 }
