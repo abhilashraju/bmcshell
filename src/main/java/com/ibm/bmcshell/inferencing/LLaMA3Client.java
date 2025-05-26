@@ -20,6 +20,7 @@ public class LLaMA3Client {
     private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
     private static final ObjectMapper mapper = new ObjectMapper();
     private static String DEFAULT_MODEL = "codellama";
+
     public static String complete(String question, String model) throws IOException {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
             HttpPost post = new HttpPost(OLLAMA_URL);
@@ -53,13 +54,47 @@ public class LLaMA3Client {
         return complete(question, DEFAULT_MODEL);
     }
 
-    public static String suggest(String question) throws IOException {
-        return complete(question, DEFAULT_MODEL);
-    }
-    public static void setModel(String m)  {
-        DEFAULT_MODEL = m;
+    public static String suggest(String text) throws IOException {
+        // Use the AI model to get completion suggestions for the user-entered text
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(OLLAMA_URL);
+            post.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+
+            // You can adjust the prompt to instruct the model to return suggestions as a
+            // list
+            String prompt = "Suggest 1 possible completions for: \"" + text + "\" as text don't repeat the question";
+            String json = mapper.createObjectNode()
+                    .put("model", DEFAULT_MODEL)
+                    .put("prompt", prompt)
+                    .put("max_tokens", 100)
+                    .put("stream", false) // Disable streaming
+                    .toString();
+
+            post.setEntity(new StringEntity(json, StandardCharsets.UTF_8));
+
+            try (CloseableHttpResponse response = client.execute(post)) {
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(response.getEntity().getContent(), StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                JsonNode root = mapper.readTree(sb.toString());
+                String responseText = root.get("response").asText();
+                return responseText;
+            } catch (IOException e) {
+                
+            }
+
+        }
+        return "";
+
     }
 
+    public static void setModel(String m) {
+        DEFAULT_MODEL = m;
+    }
 
     public static void listModels() {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
@@ -79,7 +114,7 @@ public class LLaMA3Client {
                 for (JsonNode modelNode : models) {
                     System.out.println(modelNode.get("model").asText());
                 }
- 
+
             }
 
         } catch (IOException e) {
