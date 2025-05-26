@@ -50,4 +50,11 @@ public class AiCommands extends CommonCommands {
         LLaMA3Client.setModel(m);
         System.out.println("Model set to " + m);
     }
+    @ShellMethod(key = "ai.pull-model")
+    public void pullModel(
+        @ShellOption(value = { "-m", "--model" }, help = "model to pull") String modelName)
+        throws Exception {
+        LLaMA3Client.pullModel(modelName);
+        System.out.println("Model pulled: " + modelName);
+    }
 }

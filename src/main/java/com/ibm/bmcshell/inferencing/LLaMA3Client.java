@@ -84,7 +84,7 @@ public class LLaMA3Client {
                 String responseText = root.get("response").asText();
                 return responseText;
             } catch (IOException e) {
-                
+
             }
 
         }
@@ -96,7 +96,7 @@ public class LLaMA3Client {
         DEFAULT_MODEL = m;
     }
 
-    public static void listModels() {
+    java.util.ArrayList<String> getModels() {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
             HttpGet get = new HttpGet("http://localhost:11434/api/tags");
             get.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
@@ -108,15 +108,55 @@ public class LLaMA3Client {
                 while ((line = reader.readLine()) != null) {
                     sb.append(line);
                 }
-                System.out.println("Available models:");
+
                 JsonNode root = mapper.readTree(sb.toString());
                 JsonNode models = root.get("models");
+                var modelList = new java.util.ArrayList<String>();
                 for (JsonNode modelNode : models) {
-                    System.out.println(modelNode.get("model").asText());
+                    String modelName = modelNode.get("model").asText();
+                    modelList.add(modelName);
                 }
+                return modelList;
 
             }
 
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static void listModels() {
+        System.out.println("Available models:");
+        for (String model : new LLaMA3Client().getModels()) {
+
+            if (model.contains(DEFAULT_MODEL)) {
+                System.out.print("* ");
+            } else {
+                System.out.print("  ");
+            }
+            System.out.println(model);
+        }
+    }
+
+    public static void pullModel(String modelName) {
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost("http://localhost:11434/api/pull");
+            post.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+
+            String json = mapper.createObjectNode()
+                    .put("model", modelName)
+                    .toString();
+
+            post.setEntity(new StringEntity(json, StandardCharsets.UTF_8));
+
+            try (CloseableHttpResponse response = client.execute(post)) {
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    System.out.println("Model pulled successfully: " + modelName);
+                } else {
+                    System.out.println("Failed to pull model: " + modelName);
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
