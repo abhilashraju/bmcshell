@@ -85,6 +85,7 @@ public class CommonCommands implements ApplicationContextAware {
     @Autowired
     Script script;
     static String lastCurlRequest;
+    
     static String lastCurlResponse;
 
     private Stack<List<Util.EndPoints>> endPoints = new Stack<>();

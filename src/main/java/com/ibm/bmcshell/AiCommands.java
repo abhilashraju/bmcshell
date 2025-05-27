@@ -57,4 +57,14 @@ public class AiCommands extends CommonCommands {
         LLaMA3Client.pullModel(modelName);
         System.out.println("Model pulled: " + modelName);
     }
+    @ShellMethod(key = "ai.testcase")
+    public void testcase(@ShellOption(value = { "-f", "--framework" }, defaultValue = "gtest") String framework,
+    @ShellOption(value = { "-a", "--additional" }, defaultValue = "") String extra)
+        throws Exception {
+        
+        String testCase = "Test case for the request" + lastCurlRequest + " and response " + lastCurlResponse +
+            " using the " + framework + " framework. " +extra;
+        LLaMA3Client.ask(testCase);
+        System.out.println();
+    }
 }
