@@ -57,9 +57,7 @@ public class DumpCommands extends CommonCommands {
 
     public static class DownLoadInfo {
         static enum Status {
-            notStarted,
-            inprogress,
-            done
+            notStarted, inprogress, done
         };
 
         Status status;
@@ -87,7 +85,7 @@ public class DumpCommands extends CommonCommands {
 
     @ShellMethod(key = "bmc_dump_offload", value = "eg: bmc_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
-    public void bmc_dump_offload(String id, String filename) throws URISyntaxException, IOException {
+    public void bmc_dump_offload(String id, String filename) throws URISyntaxException, IOException, InterruptedException {
         var target = String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id);
         var auri = new URI(base() + target);
         var response = client.get()
@@ -115,23 +113,27 @@ public class DumpCommands extends CommonCommands {
 
         // System.out.println(response.getBody());
         get(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id), filename, false);
-        extract_dump(filename);
+        String absPath = new File(filename).getAbsolutePath();
+        extract_dump(absPath);
     }
 
     @ShellMethod(key = "extract_dump", value = "eg: extract_dump out_filename")
-    void extract_dump(String filename) throws IOException, URISyntaxException {
-        File file = new File(filename);
-        if (file.exists()) {
-            String pythonScript = getClass().getClassLoader().getResource("ebmcdumputil").getPath();
-            ProcessBuilder pb = new ProcessBuilder("bash", pythonScript, "-e", file.getAbsolutePath());
-            pb.inheritIO();
-            try {
-                Process process = pb.start();
-                process.waitFor();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    void extract_dump(String absPath) throws IOException, URISyntaxException, InterruptedException {
+        InputStream in = getClass().getClassLoader().getResourceAsStream("ebmcdumputil");
+        if (in == null) {
+            throw new FileNotFoundException("ebmcdumputil not found in resources");
         }
+        File tempScript = File.createTempFile("ebmcdumputil", null);
+        tempScript.setExecutable(true);
+        try (FileOutputStream out = new FileOutputStream(tempScript)) {
+            in.transferTo(out);
+        }
+        
+        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath);
+        pb.inheritIO();
+        Process process = pb.start();
+        process.waitFor();
+        tempScript.delete();
     }
 
     private void downLoadParts(DownloadData data, int max) {
