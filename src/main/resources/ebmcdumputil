@@ -1,0 +1,613 @@
+#! /bin/bash
+
+help=$"
+       ebmcdumputil extract the dump archive(xz/zstd compressed) file
+
+usage: ebmcdumputil action [filename] [options]
+
+Actions:
+  -l | --list       List contents of the specified dump file
+  -e | --extract    Extract contents of the specified dump file
+  -h | --help       Show brief description of command syntax
+
+Options:
+  -d | --dir        Dump extract output path
+                    Default:  <filename_out>
+  -I | --compress   Use compression algorithm,
+                    Default: zstd
+                    Supported types are xz and zstd
+  -L | --level      Extract level. This option is sub option
+                    for "-e" command.
+                    <0> : Standard Journal and servicable PELs
+                    <1> : Standard Journal and PELs
+                    <2> : Standard Journal and all servicable PELs
+                    <3> : Standard Journal and all PELs
+                    Default: Standard Journal and servicable PELs
+  -V | --version    Tool version information.
+  -v | —-verbose    Increase logging verbosity.
+  -q | —-quiet      Only log fatal errors to stderr
+
+Examples:
+   1) list and extract journal and servicable pels : ./ebmcdumputil -e <dump file>
+   2) List and extract journal pels :  ./ebmcdumputil -e <dump file> -L 1
+   3) List only dump contents:  ./ebmcdumputil -l <dump file>
+   4) List and extract full contents and save to custom path
+          ./ebmcdumputil -e <dump file> -d <output path> -L 3
+
+Install below Packages, if it is not available in the system
+
+  1) python3
+        scl enable rh-python36 bash
+  2) pel parser tool
+        cd /esw/san5/spinler/peltool-packages/
+        pip3 install --user -r requirements.txt
+  3) zstd
+        https://linuxconfig.org/how-to-install-and-use-zstd-compression-tool-on-linux
+
+Help link: https://github.ibm.com/openbmc/openbmc/wiki/IBM-OpenBMC-Debug
+     #how-to-extract-ebmc-dump-archived-file
+
+Any queries/improvements slack me @ojayanth
+"
+
+#CONSTANTS
+declare -rx TRUE=1
+declare -rx FALSE=0
+declare -rx TIME_STAMP="date -u"
+declare -rx VERSION=1.0
+declare -rx OUT="_out"
+declare -rx SUMMARY_LOG="summary.log"
+declare -rx EBMCDUMPUTIL_LOG="ebmcdumputil.log"
+declare -rx ACTION_NO=0
+declare -rx ACTION_LIST=1
+declare -rx ACTION_EXTRACT=2
+declare -rx ARCHIVE_NAME="archive"
+declare -rx XZ_PRG="xz"
+declare -rx ZSTD_PRG="zstd"
+declare -rx PLUGINS="plugins"
+declare -rx EXTRACT_LVL_0=0  # Extract journal and servicable PEL
+declare -rx EXTRACT_LVL_2=2  # Extract journal and all pels
+declare -rx EXTRACT_LVL_1=1  # Extract journal and servicable pel regular/archive
+declare -rx EXTRACT_LVL_3=3  # Extract journal and all pel regular/archive
+declare -rx EXTRACT_LVL_MAX=3 # update this with max value.
+
+#Error Codes
+declare -rx SUCCESS="0"
+declare -rx INTERNAL_FAILURE="1"
+declare -rx RESOURCE_UNAVAILABLE="2"
+
+#VARIABLES
+declare -x name=""
+declare -x action_type=""
+declare -x archive_path=""
+declare -x verbose=$FALSE
+declare -x quiet=$FALSE
+declare -x ebmcdumputil_log="ebmcdumputil.log"
+declare -x out_dir=""
+declare -x working_dir="$PWD"
+declare -x build_ver=""
+declare -x compress_pgm="$ZSTD_PRG"
+declare -x pel_plugin=$FALSE
+declare -x extract_lvl=$EXTRACT_LVL_0
+
+# @brief log the error message
+# @param error message
+function log_error()
+{
+    echo $($TIME_STAMP) "ERROR: $*" >> $ebmcdumputil_log
+    if ((quiet != TRUE)); then
+        echo $($TIME_STAMP) "ERROR: $*" >&2
+    fi
+}
+
+# @brief log warning message
+# @param warning message
+function log_warning()
+{
+    if ((verbose == TRUE)); then
+        echo $($TIME_STAMP) "WARNING: $*" >> $ebmcdumputil_log
+        if ((quiet != TRUE)); then
+            echo $($TIME_STAMP) "WARNING: $*" >&2
+        fi
+    fi
+}
+
+# @brief log info message
+# @param info message
+function log_info()
+{
+    if ((verbose == TRUE)); then
+        echo $($TIME_STAMP) "INFO: $*" >> $ebmcdumputil_log
+        if ((quiet != TRUE)); then
+            echo $($TIME_STAMP) "INFO: $*" >&1
+        fi
+    fi
+}
+
+# @brief log summary message
+# @param message
+function log_summary()
+{
+    echo $($TIME_STAMP) "$*" >> $summary_log
+    if ((quiet != TRUE)); then
+        echo $($TIME_STAMP) "$*" >&1
+    fi
+}
+
+init_summary()
+{
+   log_summary "Dump file name:$name"
+   log_summary "Dump extracted file path:$out_dir"
+   log_summary "File compression algorithm :$compress_pgm"
+}
+
+extract_pretty_journal() {
+   local offset=$(awk '/^__PRETTY_JOURNAL_BEGIN__$/ { print NR + 1; exit 0 }' $0)
+   tail -n+$offset $0
+}
+
+function pretty_journal {
+   extract_pretty_journal | python3 - "$@"
+}
+
+# @brief Check the validity of user inputs and initialize global
+#        variables. Create directory for temporary data collection
+# @return 0 on success, error code otherwise
+
+function initialize()
+{
+    #check valid Dump file name
+    if [ ! -f $name ]; then
+        echo "Error: Missing Dump file"
+        return $RESOURCE_UNAVAILABLE;
+    fi
+
+    if ((extract_lvl < $EXTRACT_LVL_0 || \
+         extract_lvl > $EXTRACT_LVL_MAX)); then
+        echo "Error: option '-L' Unsupported value($extract_lvl)"
+        return $RESOURCE_UNAVAILABLE;
+    fi
+
+    #get DUMP file base name
+    dump_name=$(basename "$name")
+
+    #output directory
+    #Initialize for no input case.
+    if [ -z $out_dir ]; then
+        out_dir="$PWD/$dump_name$OUT"
+    elif [[ "$out_dir" = "$PWD" ]]; then
+        out_dir="$out_dir/$dump_name$OUT"
+    #initialize for just file path ( with out full path)
+    elif [[ "$(basename $out_dir)" = "$out_dir" ]]; then
+        out_dir="$PWD/$out_dir"
+    elif [ ! -d $out_dir ]; then
+        echo "Error: Invalid output dirctory path[$out_dir]"
+        return $RESOURCE_UNAVAILABLE;
+    fi
+
+    #Output directory cleanup
+    if [ -d $out_dir ]; then
+        out_dir_bkup=$out_dir$RANDOM
+        echo "Info: Moving the existing Dump output $out_dir_bkup"
+        mv $out_dir $out_dir_bkup
+    fi
+
+    #Create output data directory.
+    mkdir -p "$out_dir"
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create the output directory : $out_dir"
+        return $RESOURCE_UNAVAILABLE;
+    fi
+
+    #ebmcdumputil log file
+    ebmcdumputil_log="$out_dir/$EBMCDUMPUTIL_LOG"
+    #summary log file
+    summary_log="$out_dir/$SUMMARY_LOG"
+
+    #create and update archive path
+    archive_path="$out_dir/$ARCHIVE_NAME"
+    mkdir -p "$archive_path"
+    if [ $? -ne 0 ]; then
+        log_error "Failed to create the archive directory : $archive_path"
+        return $RESOURCE_UNAVAILABLE;
+    fi
+
+    return $SUCCESS
+}
+
+function chk_packages()
+{
+    if [[ "$compress_pgm" == "$ZSTD_PRG" ]]; then
+        if ! [ -x "$(command -v zstd)" ]; then
+            log_error "zstd is not installed"
+            return $INTERNAL_FAILURE
+        fi
+    fi
+
+    if [[ "$compress_pgm" == "$XZ_PRG" ]]; then
+        if ! [ -x "$(command -v xz)" ]; then
+            log_error "xz is not installed"
+            return $INTERNAL_FAILURE
+        fi
+    fi
+
+    return $SUCCESS
+}
+
+function update_build_ver()
+{
+    command='grep "VERSION_ID=" $archive_path/"os-release"'
+    build_ver=$(eval $command)
+    if [ $? -ne 0 ]; then
+        log_error "Failed to get build version"
+        return $RESOURCE_UNAVAILABLE;
+    fi
+
+    log_summary $build_ver
+
+    return $SUCCESS
+}
+
+function chk_plugin()
+{
+    #check python version
+    if python3 --version 2>&1 | grep -q '^Python 3\.'; then
+        log_info "Python version : $(python3 --version)"
+    else
+        err_msg="Skipping Plugin based parsing. \
+                 Install python version 3 or above to enable this. \
+                 Fix: run command  'scl enable rh-python36 bash'"
+        log_error $err_msg
+        return $INTERNAL_FAILURE
+    fi
+
+    #checking PEL packages installed.
+    if python3 -c "import pel.peltool.peltool" &> /dev/null; then
+        log_info "PEL Plugin is already available"
+        pel_plugin=$TRUE
+    else
+        warn_msg="WARNING: PEL parser plugins packages not found. \
+                 Refer Help documentation for PEL package Installation steps"
+        log_summary $warn_msg
+        pel_plugin=$FALSE
+    fi
+
+    return $SUCCESS
+}
+
+function fileparser()
+{
+    log_info "Plugin based file parsing is in progress"
+    parse_journal
+    parse_pel
+}
+
+function parse_journal()
+{
+    #Journal log parser
+    journal_pretty=$archive_path/"journal-pretty.log"
+    journal_nopager=$archive_path/"journal-nopager.log"
+
+    #check journal log file is present
+    if [ ! -f $journal_pretty ]; then
+        log_info "Skipping: Journal-pretty.log is not available in the dump"
+        return $SUCCESS
+    fi
+
+    log_info "Processing journal-pretty.log"
+    command='pretty_journal $journal_pretty > $journal_nopager'
+    eval $command
+    if [ $? -ne 0 ]; then
+        log_error "Failed to run Journal parser"
+    else
+        log_summary "Journal No pager version: $journal_nopager"
+    fi
+
+    return $SUCCESS
+}
+
+function parse_pel()
+{
+    #Check PEL plugins installed in the system
+    if ((pel_plugin != TRUE)); then
+        log_error "Missing PEL plugin, skipping PEL parser"
+        return $INTERNAL_FAILURE
+    fi
+
+    # regular log path
+    logs_path=""
+    # Archive log path
+    logs_path_archive=""
+    # regular log parsed output path
+    pel_detail=""
+    # archive log parsed output path
+    pel_detail_archive=""
+    # pel parser command
+    cmd=""
+    # iterator variable used in command.
+    iter=""
+
+    case $extract_lvl in
+        $EXTRACT_LVL_0)
+            log_summary "Extracting Servicable PEL"
+            logs_path=$archive_path/"logs"
+            pel_detail=$archive_path/"pel_detailed.log"
+            cmd='python3 -m pel.peltool.peltool -s -f $iter'
+            ;;
+        $EXTRACT_LVL_1)
+            log_summary "Extracting PEL"
+            logs_path=$archive_path/"logs"
+            pel_detail=$archive_path/"pel_detailed.log"
+            cmd='python3 -m pel.peltool.peltool -f $iter'
+            ;;
+        $EXTRACT_LVL_2)
+            log_summary "Extracting all Servicable PEL"
+            logs_path=$archive_path/"logs"
+            logs_path_archive=$archive_path/"logs"/"archive"
+            pel_detail=$archive_path/"pel_detailed.log"
+            pel_detail_archive=$archive_path/"pel_detailed_archive.log"
+            cmd='python3 -m pel.peltool.peltool -s -f $iter'
+            ;;
+        $EXTRACT_LVL_3)
+            log_summary "Extracting Servicable all PEL"
+            logs_path=$archive_path/"logs"
+            logs_path_archive=$archive_path/"logs"/"archive"
+            pel_detail=$archive_path/"pel_detailed.log"
+            pel_detail_archive=$archive_path/"pel_detailed_archive.log"
+            cmd='python3 -m pel.peltool.peltool -f $iter'
+            ;;
+        *) # unknown option
+            echo "Skipping Skipping PEL extraction level($extract_lvl)"
+            ;;
+    esac
+
+    if [ -d "$logs_path" ]; then
+        touch $pel_detail
+        num_files=$(ls $logs_path | wc -l)
+        log_summary "Processing $num_files PEL logs is in progress, may take few minutes"
+        for iter in $logs_path/* ; do
+            if [ -f $iter ];then
+                eval $cmd >> "$pel_detail"
+            fi
+        done
+        log_summary "PEL logs path: $pel_detail"
+    fi
+
+    #PEL archived logs
+    if [ -d "$logs_path_archive" ]; then
+        touch $pel_detail_archive
+        num_files=$(ls $logs_path_archive | wc -l)
+        log_summary "Processing $num_files PEL logs(archived) is in progress, may take few minutes"
+        for iter in $logs_path_archive/* ; do
+            if [ -f $iter ];then
+                eval $cmd >> "$pel_detail_archive"
+            fi
+        done
+        log_summary "PEL logs(archived) path: $pel_detail_archive"
+    fi
+
+    return $SUCCESS
+}
+
+function extractfiles()
+{
+    #Tar file path without header
+    tmp_tarfile=$out_dir
+    tmp_tarfile+="/output.tar"
+
+    # Remove Header
+    command="tail -c +$((0x275)) $name > $tmp_tarfile"
+    eval $command
+    if [ $? -ne 0 ]; then
+        log_error "Failed to execute command: $command"
+        return $INTERNAL_FAILURE
+    fi
+
+    if [[ "$compress_pgm" == "$ZSTD_PRG" ]]; then
+        command="tar -I zstd -xf $tmp_tarfile -C $archive_path \
+                 --strip-components 1"
+    elif [[ "$compress_pgm" == "$XZ_PRG" ]]; then
+        command="tar -xf $tmp_tarfile -C $archive_path \
+                 --strip-components 1"
+    else
+        log_error " Unsupported compression type [$compress_pgm]"
+        return $INTERNAL_FAILURE
+    fi
+
+    eval $command
+    if [ $? -ne 0 ]; then
+        log_error "provide correct file compression type using -I option"
+        rm $tmp_tarfile
+        return $INTERNAL_FAILURE
+    fi
+
+    rm $tmp_tarfile
+    log_info "Dump extracted files are available in $archive_path"
+
+    return $SUCCESS
+}
+
+function listfiles()
+{
+    #extract dump files
+    extractfiles
+    result=$?
+    if [[ ${result} -ne $SUCCESS ]]; then
+        return $INTERNAL_FAILURE;
+    fi
+
+    #display the dump files
+    ls -hs1 $archive_path
+
+    return $SUCCESS
+}
+function execute()
+{
+    case $action_type in
+        $ACTION_LIST)
+            chk_packages
+            result=$?
+            if [[ ${result} -ne $SUCCESS ]]; then
+               return $INTERNAL_FAILURE;
+            fi
+
+            log_info "Dump Listing is in progress, may take few seconds"
+            listfiles
+            result=$?
+            if [[ ${result} -ne $SUCCESS ]]; then
+               return $INTERNAL_FAILURE;
+            fi
+            ;;
+        $ACTION_EXTRACT)
+            chk_packages
+            result=$?
+            if [[ ${result} -ne $SUCCESS ]]; then
+               return $INTERNAL_FAILURE;
+            fi
+
+            log_info "Dump extraction is in progress"
+            extractfiles
+            result=$?
+            if [[ ${result} -ne $SUCCESS ]]; then
+               return $INTERNAL_FAILURE;
+            fi
+
+            chk_plugin
+            result=$?
+            if [[ ${result} -ne $SUCCESS ]]; then
+               return $INTERNAL_FAILURE;
+            fi
+
+            fileparser
+            result=$?
+            if [[ ${result} -ne $SUCCESS ]]; then
+               return $INTERNAL_FAILURE;
+            fi
+            ;;
+        *) # unknown option
+            echo "Skipping Unknown action Requested:  $action_type"
+            echo "$help"
+            return $INTERNAL_FAILURE
+            ;;
+    esac
+
+    return $SUCCESS
+}
+function main()
+{
+    #initialize the global variables and
+    #create temporary storage locations
+    initialize
+    result=$?
+    if [[ ${result} -ne $SUCCESS ]]; then
+        echo "Error: Failed to initialize, Exiting"
+        echo "$help"
+        exit;
+    fi
+
+    #Initialize the summary log
+    init_summary
+
+    #execute command based on input type
+    execute
+    result=$?
+    if [[ ${result} -ne $SUCCESS ]]; then
+        exit;
+    fi
+
+    #update build version
+    update_build_ver
+}
+
+TEMP=`getopt -o l:e:d:I:L:vVqh \
+      --long list:,extract:,dir:,compress:,level:,type:,verbose,version,quiet,help \
+      -- "$@"`
+
+if [ $# -eq 0 ];then
+    echo "$help"
+    exit 1
+fi
+
+if [ $? -ne 0 ]; then
+    echo "Error: Invalid options"
+    exit 1
+fi
+
+eval set -- "$TEMP"
+
+while [[ $# -gt 1 ]]; do
+    key="$1"
+    case $key in
+        -l|--list)
+            name=$2
+            action_type=$ACTION_LIST;
+            shift 2;;
+        -e|--extract)
+            name=$2
+            action_type=$ACTION_EXTRACT;
+            shift 2;;
+        -d|--dir)
+            out_dir=$2
+            shift 2;;
+        -I|--compress)
+            compress_pgm=$2
+            shift 2;;
+        -L|--level)
+            extract_lvl=$2
+            shift 2;;
+        -v|—-verbose)
+            verbose=$TRUE
+            shift;;
+        -V|--version)
+            echo "$VERSION"
+            exit;;
+        -q|—-quiet)
+            quiet=$TRUE
+            shift;;
+        -h|--help)
+            echo "$help"
+            exit;;
+        *) # unknown option
+            log_error "Unknown argument: $1"
+            log_info "$help"
+            exit 1;;
+    esac
+done
+
+main #main program
+exit $?
+
+# pretty_journal command:
+#     This script which will convert the
+#     json output (journalctl -o json-pretty)
+#     into the standard journalctl output
+
+__PRETTY_JOURNAL_BEGIN__
+
+import json
+import re
+import time
+import os
+import sys
+
+if __name__ == '__main__':
+        args = sys.argv[1]
+        print ("Python: Argument: " + args)
+
+        with open(args) as fd:
+                buf = fd.read()
+                entries = []
+
+                for entry in re.findall('^{$(.+?)^}$', buf, re.DOTALL | re.MULTILINE):
+                        entries += [json.loads('{{{}}}'.format(entry))]
+
+                entries = sorted(entries, key=lambda k: k['__REALTIME_TIMESTAMP'])
+
+                for e in entries:
+                        e['ts'] = time.asctime(time.gmtime(
+                                float(e['__REALTIME_TIMESTAMP']) / 1000000))
+                        try:
+                                print ('{ts} {_HOSTNAME} {SYSLOG_IDENTIFIER}: {MESSAGE}'.format(**e))
+                        except:
+                                print ("Unable to parse msg: " + str(e))
+                                continue
