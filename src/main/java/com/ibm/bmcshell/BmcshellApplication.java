@@ -57,7 +57,6 @@ public class BmcshellApplication {
 	
 	static void clear_buffer() {
 		circularBuffer.reset();
-		System.out.println("Buffer cleared");
 		System.out.flush();
 		circularPrintStream.flush();
 		System.err.flush();
