@@ -10,16 +10,57 @@ import org.springframework.core.annotation.Order;
 import org.springframework.shell.command.CommandExceptionResolver;
 import org.springframework.shell.command.CommandHandlingResult;
 import org.springframework.shell.standard.commands.Script;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @SpringBootApplication
 public class BmcshellApplication {
 
-	@RequestMapping("/hello")
-	String home() {
-		return "Hello World!";
+	
+	public static class CircularBuffer extends java.io.ByteArrayOutputStream {
+		private final int bufferSize;
+
+		public CircularBuffer(int bufferSize) {
+			super(bufferSize);
+			this.bufferSize = bufferSize;
+		}
+
+		@Override
+		public synchronized void write(byte[] b, int off, int len) {
+			if (count + len > bufferSize) {
+				int overflow = (count + len) - bufferSize;
+				System.arraycopy(buf, overflow, buf, 0, count - overflow);
+				count -= overflow;
+			}
+			super.write(b, off, len);
+		}
+
+		@Override
+		public synchronized void write(int b) {
+			if (count == bufferSize) {
+				System.arraycopy(buf, 1, buf, 0, bufferSize - 1);
+				count--;
+			}
+			super.write(b);
+		}
+		String getContent() {
+			return new String(buf, 0, count);
+		}
+	}
+	final static int BUFFER_SIZE = 8192;
+
+	static final CircularBuffer circularBuffer = new CircularBuffer(BUFFER_SIZE);
+	static java.io.PrintStream circularPrintStream = new java.io.PrintStream(circularBuffer, true);
+	static String getCircularBufferContent() {
+		return circularBuffer.getContent();
+	}
+	
+	static void clear_buffer() {
+		circularBuffer.reset();
+		System.out.println("Buffer cleared");
+		System.out.flush();
+		circularPrintStream.flush();
+		System.err.flush();
 	}
 	
 	public static void main(String[] args) {
@@ -27,27 +68,7 @@ public class BmcshellApplication {
 //		String[] fullArgs = StringUtils.concatenateStringArrays(args, disabledCommands);
 
 		// Create a circular buffer for capturing output
-		final int BUFFER_SIZE = 8192;
-		java.io.ByteArrayOutputStream circularBuffer = new java.io.ByteArrayOutputStream(BUFFER_SIZE) {
-			@Override
-			public synchronized void write(byte[] b, int off, int len) {
-				if (count + len > BUFFER_SIZE) {
-					int overflow = (count + len) - BUFFER_SIZE;
-					System.arraycopy(buf, overflow, buf, 0, count - overflow);
-					count -= overflow;
-				}
-				super.write(b, off, len);
-			}
-			@Override
-			public synchronized void write(int b) {
-				if (count == BUFFER_SIZE) {
-					System.arraycopy(buf, 1, buf, 0, BUFFER_SIZE - 1);
-					count--;
-				}
-				super.write(b);
-			}
-		};
-		java.io.PrintStream circularPrintStream = new java.io.PrintStream(circularBuffer, true);
+		
 
 				// Create a PrintStream that writes to both the circular buffer and System.err
 		PrintStream dualStream = new PrintStream(new java.io.OutputStream() {

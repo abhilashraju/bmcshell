@@ -16,7 +16,6 @@ public class AiCommands extends CommonCommands {
         super();
     }
 
-
     @ShellMethod(key = "c")
     public void complete(String q) throws Exception {
         LLaMA3Client.suggest(q);
@@ -26,7 +25,8 @@ public class AiCommands extends CommonCommands {
     @ShellMethod(key = "q")
     public void explain(@ShellOption(valueProvider = MyCustomValueProvider.class) String q)
             throws Exception {
-        LLaMA3Client.ask(q);
+        String bufferContent = BmcshellApplication.getCircularBufferContent();
+        LLaMA3Client.ask(q + "\n\nContext:\n" + bufferContent);
         System.out.println("");
     }
 
@@ -43,6 +43,11 @@ public class AiCommands extends CommonCommands {
 
     }
 
+    @ShellMethod(key = "ai.clear")
+    public void clear_buffer() {
+        BmcshellApplication.clear_buffer();
+    }
+
     @ShellMethod(key = "ai.set-model")
     public void setModel(
             @ShellOption(value = { "-m", "--model" }, help = "set model to use", defaultValue = "codellama") String m)
@@ -50,20 +55,21 @@ public class AiCommands extends CommonCommands {
         LLaMA3Client.setModel(m);
         System.out.println("Model set to " + m);
     }
+
     @ShellMethod(key = "ai.pull-model")
     public void pullModel(
-        @ShellOption(value = { "-m", "--model" }, help = "model to pull") String modelName)
-        throws Exception {
+            @ShellOption(value = { "-m", "--model" }, help = "model to pull") String modelName)
+            throws Exception {
         LLaMA3Client.pullModel(modelName);
         System.out.println("Model pulled: " + modelName);
     }
+
     @ShellMethod(key = "ai.testcase")
-    public void testcase(@ShellOption(value = { "-f", "--framework" }, defaultValue = "gtest") String framework,
-    @ShellOption(value = { "-a", "--additional" }, defaultValue = "") String extra)
-        throws Exception {
-        
-        String testCase = "Test case for the request" + lastCurlRequest + " and response " + lastCurlResponse +
-            " using the " + framework + " framework. " +extra;
+    public void testcase(
+            @ShellOption(value = { "-f", "--framework" }, defaultValue = " using gtest framework") String extra)
+            throws IOException {
+
+        String testCase = "Test case for the request" + lastCurlRequest + " and response " + lastCurlResponse + extra;
         LLaMA3Client.ask(testCase);
         System.out.println();
     }
