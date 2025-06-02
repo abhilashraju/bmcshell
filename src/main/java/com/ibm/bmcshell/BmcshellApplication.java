@@ -1,5 +1,7 @@
 package com.ibm.bmcshell;
 
+import java.io.PrintStream;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -19,9 +21,51 @@ public class BmcshellApplication {
 	String home() {
 		return "Hello World!";
 	}
+	
 	public static void main(String[] args) {
 //		String[] disabledCommands = {"--spring.shell.command.help.enabled=false"};
 //		String[] fullArgs = StringUtils.concatenateStringArrays(args, disabledCommands);
+
+		// Create a circular buffer for capturing output
+		final int BUFFER_SIZE = 8192;
+		java.io.ByteArrayOutputStream circularBuffer = new java.io.ByteArrayOutputStream(BUFFER_SIZE) {
+			@Override
+			public synchronized void write(byte[] b, int off, int len) {
+				if (count + len > BUFFER_SIZE) {
+					int overflow = (count + len) - BUFFER_SIZE;
+					System.arraycopy(buf, overflow, buf, 0, count - overflow);
+					count -= overflow;
+				}
+				super.write(b, off, len);
+			}
+			@Override
+			public synchronized void write(int b) {
+				if (count == BUFFER_SIZE) {
+					System.arraycopy(buf, 1, buf, 0, BUFFER_SIZE - 1);
+					count--;
+				}
+				super.write(b);
+			}
+		};
+		java.io.PrintStream circularPrintStream = new java.io.PrintStream(circularBuffer, true);
+
+				// Create a PrintStream that writes to both the circular buffer and System.err
+		PrintStream dualStream = new PrintStream(new java.io.OutputStream() {
+			@Override
+			public void write(int b) {
+				circularPrintStream.write(b);
+				System.err.write(b);
+			}
+			@Override
+			public void write(byte[] b, int off, int len) {
+				circularPrintStream.write(b, off, len);
+				System.err.write(b, off, len);
+			}
+		}, true);
+		
+		// Redirect System.out to dualStream
+		System.setOut(dualStream);
+		// System.setErr(dualStream);
 
 		SpringApplication.run(BmcshellApplication.class, args);
 		System.out.println("Exiting....");
