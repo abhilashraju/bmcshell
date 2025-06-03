@@ -1,7 +1,11 @@
 package com.ibm.bmcshell;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URISyntaxException;
 
 import org.springframework.shell.standard.ShellComponent;
@@ -47,9 +51,18 @@ public class AiCommands extends CommonCommands {
     @ShellMethod(key = "clearall")
     public void clear_buffer() throws IOException, Exception {
         BmcshellApplication.clear_buffer();
-        File clearFile = new File(getClass().getClassLoader().getResource("clear").toURI());
-        script.script(clearFile);
-        
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream("clear")) {
+            if (is == null) {
+                throw new FileNotFoundException("Resource 'clear' not found");
+            }
+            // If your script expects a File, you need to copy it to a temp file:
+            File tempScript = File.createTempFile("clear", null);
+            tempScript.deleteOnExit();
+            try (OutputStream os = new FileOutputStream(tempScript)) {
+                is.transferTo(os);
+            }
+            script.script(tempScript);
+        }
     }
 
     @ShellMethod(key = "ai.set-model")
