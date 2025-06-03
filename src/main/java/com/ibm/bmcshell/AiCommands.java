@@ -1,5 +1,6 @@
 package com.ibm.bmcshell;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 
@@ -43,9 +44,12 @@ public class AiCommands extends CommonCommands {
 
     }
 
-    @ShellMethod(key = "ai.clear")
-    public void clear_buffer() {
+    @ShellMethod(key = "clearall")
+    public void clear_buffer() throws IOException, Exception {
         BmcshellApplication.clear_buffer();
+        File clearFile = new File(getClass().getClassLoader().getResource("clear").toURI());
+        script.script(clearFile);
+        
     }
 
     @ShellMethod(key = "ai.set-model")

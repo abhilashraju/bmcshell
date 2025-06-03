@@ -84,6 +84,7 @@ public class CommonCommands implements ApplicationContextAware {
     PrintStream savedStream = System.out;
     @Autowired
     Script script;
+    
     static String lastCurlRequest;
     
     static String lastCurlResponse;
