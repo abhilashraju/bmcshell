@@ -31,7 +31,7 @@ public class AiCommands extends CommonCommands {
     public void explain(@ShellOption(valueProvider = MyCustomValueProvider.class) String q)
             throws Exception {
         String bufferContent = BmcshellApplication.getCircularBufferContent();
-        LLaMA3Client.ask(q + "\n\nContext:\n" + bufferContent);
+        LLaMA3Client.ask(q + "\n\n Dont limit to the usage of context alone \n\nContext:\n" + bufferContent);
         System.out.println("");
     }
 
