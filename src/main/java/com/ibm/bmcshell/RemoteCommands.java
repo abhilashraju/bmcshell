@@ -46,8 +46,11 @@ public class RemoteCommands extends CommonCommands {
     }
     @ShellMethod(key = "ro.service_show", value = "eg: ro.service_show servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_show(String s) {
-        scmd(String.format("systemctl show %s", s));
+    void service_show(String s,
+                      @ShellOption(value = { "--reg", "-r" }, defaultValue = ".") String reg) {
+        
+        scmd(String.format("systemctl show %s |grep %s", s,reg));
+        
     }
     @ShellMethod(key = "ro.service_status", value = "eg: ro.service_status servicename")
     @ShellMethodAvailability("availabilityCheck")
@@ -64,6 +67,11 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     void service_stop(String s) {
         scmd(String.format("systemctl stop %s", s));
+    }
+    @ShellMethod(key = "ro.service_restart", value = "eg: ro.service_stop servicename")
+    @ShellMethodAvailability("availabilityCheck")
+    void service_restart(String s) {
+        scmd(String.format("systemctl restart %s", s));
     }
 
     @ShellMethod(key = "ro.service_log", value = "eg: ro.service_log servicename")

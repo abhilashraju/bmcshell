@@ -16,9 +16,9 @@ public class SystemCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "sys.ls")
-    protected void list(@ShellOption(value = { "--args", "-a" }, defaultValue = "") String args)
+    protected void list(@ShellOption(value = { "--args", "-a" }, defaultValue = ".") String args)
             throws IOException, InterruptedException {
-        system(String.format("ls -%s .", args));
+        system(String.format("ls %s", args));
     }
 
     @ShellMethod(key = "sys.cat")
