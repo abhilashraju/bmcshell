@@ -1,17 +1,21 @@
 package com.ibm.bmcshell;
 
-import com.ibm.bmcshell.Utils.Util;
-import com.ibm.bmcshell.ssh.SSHShellClient;
-import org.springframework.shell.standard.ShellComponent;
-import org.springframework.shell.standard.ShellMethod;
-import org.springframework.shell.standard.ShellMethodAvailability;
-
-import java.io.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
+
+import org.springframework.shell.standard.ShellComponent;
+import org.springframework.shell.standard.ShellMethod;
+import org.springframework.shell.standard.ShellMethodAvailability;
+
+import com.ibm.bmcshell.Utils.Util;
+import com.ibm.bmcshell.ssh.SSHShellClient;
 
 @ShellComponent
 public class InstallCommands extends CommonCommands {
@@ -61,7 +65,7 @@ public class InstallCommands extends CommonCommands {
 
     @ShellMethod(key = "flash", value = "eg: flash . To flash images")
     void flash() throws InterruptedException {
-
+        scmd("mv /tmp/obmc-phosphor-image-p10bmc.ext4.mmc.tar /tmp/images");
         scmd("ls /tmp/images");
         Scanner scanner = new Scanner(System.in);
         System.out.print("Enter image id from above : ");
