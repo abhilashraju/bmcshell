@@ -26,7 +26,7 @@ public class DumpCommands extends CommonCommands {
     protected DumpCommands() throws IOException {
     }
 
-    @ShellMethod(key = "bmcdump")
+    @ShellMethod(key = "dump.bmc.create")
     @ShellMethodAvailability("availabilityCheck")
     public void bmcdump() throws URISyntaxException, IOException {
 
@@ -34,7 +34,7 @@ public class DumpCommands extends CommonCommands {
                 "{\"DiagnosticDataType\" : \"Manager\"}", false);
     }
 
-    @ShellMethod(key = "systemdump")
+    @ShellMethod(key = "dump.system.create")
     @ShellMethodAvailability("availabilityCheck")
     public void systemdump() throws URISyntaxException, IOException {
 
@@ -42,14 +42,14 @@ public class DumpCommands extends CommonCommands {
                 "{\"DiagnosticDataType\":\"OEM\", \"OEMDiagnosticDataType\":\"System\"}", false);
     }
 
-    @ShellMethod(key = "list_systemdump")
+    @ShellMethod(key = "dump.system.list")
     @ShellMethodAvailability("availabilityCheck")
     public void list_systemdump() throws URISyntaxException, IOException {
 
         get("/redfish/v1/Systems/system/LogServices/Dump/Entries", "", true);
     }
 
-    @ShellMethod(key = "list_bmcdump")
+    @ShellMethod(key = "dump.bmc.list")
     @ShellMethodAvailability("availabilityCheck")
     public void list_bmcdump() throws URISyntaxException, IOException {
         get("/redfish/v1/Managers/bmc/LogServices/Dump/Entries", "", true);
@@ -83,7 +83,7 @@ public class DumpCommands extends CommonCommands {
 
     }
 
-    @ShellMethod(key = "bmc_dump_offload", value = "eg: bmc_dump_offload 4 out_filename")
+    @ShellMethod(key = "dump.bmc.offload", value = "eg: bmc_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void bmc_dump_offload(String id, String filename) throws URISyntaxException, IOException, InterruptedException {
         var target = String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id);
@@ -117,7 +117,7 @@ public class DumpCommands extends CommonCommands {
         extract_dump(absPath);
     }
 
-    @ShellMethod(key = "extract_dump", value = "eg: extract_dump out_filename")
+    @ShellMethod(key = "dump.extract", value = "eg: extract_dump out_filename")
     void extract_dump(String absPath) throws IOException, URISyntaxException, InterruptedException {
         InputStream in = getClass().getClassLoader().getResourceAsStream("ebmcdumputil");
         if (in == null) {
@@ -229,7 +229,7 @@ public class DumpCommands extends CommonCommands {
 
     }
 
-    @ShellMethod(key = "system_dump_offload", value = "eg: system_dump_offload 4 out_filename")
+    @ShellMethod(key = "dump.system.offload", value = "eg: system_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void system_dump_offload(String id, String filename) throws URISyntaxException, IOException {
         get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/System/%s/attachment", id), filename,
