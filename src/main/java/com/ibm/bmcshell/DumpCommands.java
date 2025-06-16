@@ -134,6 +134,14 @@ public class DumpCommands extends CommonCommands {
         Process process = pb.start();
         process.waitFor();
         tempScript.delete();
+        File outDir = new File(absPath + "_out");
+        if (outDir.exists() && outDir.isDirectory()) {
+            Files.walk(outDir.toPath())
+                .filter(Files::isRegularFile)
+                .forEach(path -> System.out.println(path.toAbsolutePath()));
+        } else {
+            System.out.println("Directory " + outDir.getAbsolutePath() + " does not exist.");
+        }
     }
 
     private void downLoadParts(DownloadData data, int max) {

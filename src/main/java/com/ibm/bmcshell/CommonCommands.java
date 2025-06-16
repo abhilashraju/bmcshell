@@ -837,16 +837,10 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "journalctl", value = "eg: journalctl arg ")
     void journalctl(@ShellOption(value = { "-u" }, defaultValue = "") String u,
-            @ShellOption(value = { "-n" }, defaultValue = "20") int n) throws IOException {
+            @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
         scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
     }
-
-    @ShellMethod(key = "journalhelp", value = "eg: journalhelp")
-    void journalhelp() {
-        scmd(String.format("journalctl -h"));
-    }
-
     @ShellMethod(key = "display_session", value = "eg: display_session")
     void display_session() {
 
