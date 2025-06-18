@@ -85,4 +85,16 @@ public class RemoteCommands extends CommonCommands {
     void service_enable(String s) {
         scmd(String.format("systemctl enable %s", s));
     }
+    @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
+    @ShellMethodAvailability("availabilityCheck")
+    void findFile(String filename ,
+                  @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
+        scmd(String.format("find %s -iname %s", path, filename));
+    }
+    @ShellMethod(key = "ro.grep", value = "eg: ro.grep pattern [<path>]")
+    @ShellMethodAvailability("availabilityCheck")
+    void grep(String pattern ,
+                  @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
+        scmd(String.format("grep -nr %s %s", pattern, path));
+    }
 }

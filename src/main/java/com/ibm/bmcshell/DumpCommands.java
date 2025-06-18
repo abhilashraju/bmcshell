@@ -54,6 +54,11 @@ public class DumpCommands extends CommonCommands {
     public void list_bmcdump() throws URISyntaxException, IOException {
         get("/redfish/v1/Managers/bmc/LogServices/Dump/Entries", "", true);
     }
+    @ShellMethod(key = "dump.bmc.delete")
+    @ShellMethodAvailability("availabilityCheck")
+    public void delete_bmcdump(String id) throws URISyntaxException, IOException {
+        delete(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/",id ));
+    }
 
     public static class DownLoadInfo {
         static enum Status {
@@ -240,7 +245,7 @@ public class DumpCommands extends CommonCommands {
     @ShellMethod(key = "dump.system.offload", value = "eg: system_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void system_dump_offload(String id, String filename) throws URISyntaxException, IOException {
-        get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/System/%s/attachment", id), filename,
+        get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename,
                 false);
     }
 

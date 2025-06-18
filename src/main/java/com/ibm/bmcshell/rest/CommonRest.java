@@ -1,44 +1,11 @@
 package com.ibm.bmcshell.rest;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ibm.bmcshell.CommonCommands;
-import com.ibm.bmcshell.CustomPromptProvider;
-import com.ibm.bmcshell.EthCommands;
-import com.ibm.bmcshell.Utils.Util;
-import com.ibm.bmcshell.redfish.MockUpFetcher;
-
-import jakarta.servlet.http.HttpServletRequest;
-import org.jline.utils.AttributedStyle;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.BodyInserters;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import org.yaml.snakeyaml.Yaml;
-
-import reactor.core.publisher.Mono;
-
-import javax.net.ssl.SSLException;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.lang.reflect.Constructor;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,16 +14,52 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
-import java.util.*;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import reactor.util.retry.Retry;
 
-import java.time.Duration;
+import javax.net.ssl.SSLException;
+
+import org.jline.utils.AttributedStyle;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.yaml.snakeyaml.Yaml;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibm.bmcshell.CommonCommands;
+import com.ibm.bmcshell.CustomPromptProvider;
+import com.ibm.bmcshell.Utils.Util;
+import com.ibm.bmcshell.redfish.MockUpFetcher;
+
+import jakarta.servlet.http.HttpServletRequest;
+import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 @RestController
 public class CommonRest {
@@ -180,6 +183,14 @@ public class CommonRest {
                 }).collect(Collectors.toList());
 
         filtered.forEach(a -> System.out.println(a.toPrettyString()));
+
+        String message = "Resource created successfully!";
+        return Mono.just(message);
+    }
+    @PostMapping("/journals")
+    public Mono<String> createJournal(@RequestBody String requestData) throws JsonProcessingException {
+
+        System.out.println(requestData);
 
         String message = "Resource created successfully!";
         return Mono.just(message);
