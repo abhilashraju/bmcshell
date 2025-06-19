@@ -841,6 +841,24 @@ public class CommonCommands implements ApplicationContextAware {
         scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
     }
+    @ShellMethod(key = "subscribe.journal", value = "eg: subscribe.journal")
+    void subscribe_journal(String ip,String port) throws IOException {
+        try {
+            String url = String.format("https://%s:8080/subscribe", Util.fullMachineName(machine));
+            String data = String.format("https://%s:%s/journals", ip, port);
+            var response = client.post()
+                .uri(new URI(url))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(data)
+                .retrieve()
+                .toEntity(String.class)
+                .block();
+            System.out.println(response.getBody());
+        } catch (Exception e) {
+            System.err.println("Failed to subscribe: " + e.getMessage());
+        }
+
+    }
     @ShellMethod(key = "display_session", value = "eg: display_session")
     void display_session() {
 

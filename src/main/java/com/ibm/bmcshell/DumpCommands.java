@@ -91,6 +91,9 @@ public class DumpCommands extends CommonCommands {
     @ShellMethod(key = "dump.bmc.offload", value = "eg: bmc_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void bmc_dump_offload(String id, String filename) throws URISyntaxException, IOException, InterruptedException {
+        if (filename == null) {
+            filename = id;
+        }
         var target = String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id);
         var auri = new URI(base() + target);
         var response = client.get()
@@ -245,8 +248,10 @@ public class DumpCommands extends CommonCommands {
     @ShellMethod(key = "dump.system.offload", value = "eg: system_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void system_dump_offload(String id, String filename) throws URISyntaxException, IOException {
-        get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename,
-                false);
+        if (filename == null) {
+            filename = id;
+        }
+        get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename, false);
     }
 
 }
