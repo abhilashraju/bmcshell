@@ -169,6 +169,8 @@ public class CommonRest {
     @PostMapping("/events")
     public Mono<String> createResource(@RequestBody String requestData) throws JsonProcessingException {
 
+        String sourceIp = request.getRemoteAddr();
+        System.out.println("Source IP: " + sourceIp);
         // System.out.println(requestData);
         ObjectMapper mapper = new ObjectMapper();
         var tree = mapper.readTree(requestData);
