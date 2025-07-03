@@ -97,4 +97,10 @@ public class RemoteCommands extends CommonCommands {
                   @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
         scmd(String.format("grep -nr %s %s", pattern, path));
     }
+    @ShellMethod(key = "ro.running", value = "eg: ro.running pattern [<path>]")
+    @ShellMethodAvailability("availabilityCheck")
+    void running(String pattern ,
+                  @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
+        scmd(String.format("ps | grep %s", pattern));
+    }
 }
