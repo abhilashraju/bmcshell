@@ -34,6 +34,13 @@ public class AiCommands extends CommonCommands {
         LLaMA3Client.ask(q + "\n\nYou may use the following context, but are not limited to it:\n\nContext:\n" + bufferContent);
         System.out.println("");
     }
+     @ShellMethod(key = "explain")
+    public void explain()
+            throws Exception {
+        String bufferContent = BmcshellApplication.getCircularBufferContent();
+        LLaMA3Client.ask("\n\n explain the following \n\nContext:\n" + bufferContent);
+        System.out.println("");
+    }
 
     @ShellMethod(key = "?")
     public void ask() throws Exception {
