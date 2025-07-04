@@ -28,11 +28,17 @@ public class AiCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "q")
-    public void explain(@ShellOption(valueProvider = MyCustomValueProvider.class) String q)
+    public void explain(@ShellOption(valueProvider = MyCustomValueProvider.class) String q,@ShellOption(defaultValue="False") boolean useContext)
             throws Exception {
-        String bufferContent = BmcshellApplication.getCircularBufferContent();
-        LLaMA3Client.ask("\n\nYou may use the following context, but are not limited to it:\n\nContext:\n" + bufferContent + "\nQuestion:\n" + q + " ?");
-        System.out.println("");
+        if (useContext) {
+            String bufferContent = BmcshellApplication.getCircularBufferContent();
+            LLaMA3Client.ask("\n\nYou may use the following context, but are not limited to it:\n\nContext:\n" + bufferContent + "\nQuestion:\n" + q + " ?");
+            System.out.println("");
+        }
+        else {
+            LLaMA3Client.ask("\n\nQuestion:\n" + q + " ?");
+            System.out.println("");
+        }
     }
      @ShellMethod(key = "explain")
     public void explain()
@@ -44,7 +50,7 @@ public class AiCommands extends CommonCommands {
 
     @ShellMethod(key = "?")
     public void ask() throws Exception {
-        LLaMA3Client.ask("Explain the following \n\n" + lastCurlResponse);
+        LLaMA3Client.ask(lastCurlResponse +" Explain above");
         System.out.println("");
     }
 

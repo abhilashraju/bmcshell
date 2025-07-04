@@ -74,7 +74,7 @@ public class CommonCommands implements ApplicationContextAware {
         return Util.base(machine);
     }
 
-    public static String machine = "rain127bmc";
+    public static String machine;
     @Autowired
     private ApplicationContext applicationContext;
     static String userName;
@@ -124,7 +124,31 @@ public class CommonCommands implements ApplicationContextAware {
     public void setApplicationContext(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
     }
-
+    void checkUserNameAndPasswd() throws IOException {
+        if (userName == null || passwd == null || machine == null) {
+			java.util.Scanner scanner = new java.util.Scanner(System.in);
+				if (CommonCommands.userName == null) {
+					System.out.print("Enter username: ");
+					CommonCommands.userName = scanner.nextLine();
+				}
+				if (CommonCommands.passwd == null) {
+					System.out.print("Enter password: ");
+					java.io.Console console = System.console();
+					if (console != null) {
+						char[] pwd = console.readPassword();
+						CommonCommands.passwd = new String(pwd);
+					} else {
+						// Fallback if console is not available (e.g., in IDE)
+						CommonCommands.passwd = scanner.nextLine();
+					}
+				}
+                if(machine == null) {
+                    System.out.print("Enter machine name: ");
+                    CommonCommands.machine = scanner.nextLine();
+                }
+			serialise();
+		}
+    }
     protected CommonCommands() throws IOException {
         if (client == null) {
             client = Util.createWebClient();
@@ -162,6 +186,7 @@ public class CommonCommands implements ApplicationContextAware {
                     file.delete();
                 }
             }
+            checkUserNameAndPasswd();
             FileOutputStream stream = new FileOutputStream(new File(libPath + "clear"));
             stream.write("clear\n".getBytes(StandardCharsets.UTF_8));
             stream.close();
