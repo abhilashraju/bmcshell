@@ -16,6 +16,7 @@ import com.ibm.bmcshell.inferencing.LLaMA3Client;
 
 @ShellComponent
 public class AiCommands extends CommonCommands {
+    static boolean useContext = false;
 
     AiCommands() throws IOException, URISyntaxException {
         super();
@@ -28,19 +29,20 @@ public class AiCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "q")
-    public void explain(@ShellOption(valueProvider = MyCustomValueProvider.class) String q,@ShellOption(defaultValue="False") boolean useContext)
+    public void explain(@ShellOption(valueProvider = MyCustomValueProvider.class) String q)
             throws Exception {
         if (useContext) {
             String bufferContent = BmcshellApplication.getCircularBufferContent();
-            LLaMA3Client.ask("\n\nYou may use the following context, but are not limited to it:\n\nContext:\n" + bufferContent + "\nQuestion:\n" + q + " ?");
+            LLaMA3Client.ask("\n\nYou may use the following context, but are not limited to it:\n\nContext:\n"
+                    + bufferContent + "\nQuestion:\n" + q + " ?");
             System.out.println("");
-        }
-        else {
+        } else {
             LLaMA3Client.ask("\n\nQuestion:\n" + q + " ?");
             System.out.println("");
         }
     }
-     @ShellMethod(key = "explain")
+
+    @ShellMethod(key = "explain")
     public void explain()
             throws Exception {
         String bufferContent = BmcshellApplication.getCircularBufferContent();
@@ -48,9 +50,14 @@ public class AiCommands extends CommonCommands {
         System.out.println("");
     }
 
+    @ShellMethod(key = "ai.enable-context")
+    public void context(boolean enable) {
+        useContext = enable;
+    }
+
     @ShellMethod(key = "?")
     public void ask() throws Exception {
-        LLaMA3Client.ask(lastCurlResponse +" Explain above");
+        LLaMA3Client.ask(lastCurlResponse + " Explain above");
         System.out.println("");
     }
 
