@@ -35,12 +35,11 @@ RUN git clone git@github.com:abhilashraju/bmcshell.git /root/bmcshell #
 
 RUN cd /root/bmcshell && mvn package
 
-RUN cd /root/bmcshell && git pull && mvn package #run14
-
 #RUN ollama start & sleep 15 && \
  #   ollama pull llama4
 
-RUN rm -rf /root/.ssh
 RUN yum install -y zstd
-CMD echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
+RUN cd /root/bmcshell && git pull && mvn package #run14
+RUN rm -rf /root/.ssh
+RUN echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
 CMD ollama serve & ./bmc-shell.sh ; bash
