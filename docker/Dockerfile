@@ -41,5 +41,5 @@ RUN cd /root/bmcshell && git pull && mvn package #run14
  #   ollama pull llama4
 
 RUN rm -rf /root/.ssh
-RUN yum isntall zstd
+RUN yum install zstd
 CMD ollama serve & java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar ; bash
