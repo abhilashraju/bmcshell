@@ -39,6 +39,12 @@ RUN cd /root/bmcshell && mvn package
  #   ollama pull llama4
 
 RUN yum install -y zstd
+#install PEL tool
+RUN git clone git@github.com:ibm-openbmc/openpower-pel-parsers.git /root/openpower-pel-parsers
+RUN cd /root/openpower-pel-parsers
+RUN python3 setup.py install
+RUN pip3 install .
+
 RUN cd /root/bmcshell && git pull && mvn package #run14
 RUN rm -rf /root/.ssh
 RUN echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
