@@ -41,9 +41,7 @@ RUN cd /root/bmcshell && mvn package
 RUN yum install -y zstd
 #install PEL tool
 RUN git clone git@github.com:ibm-openbmc/openpower-pel-parsers.git /root/openpower-pel-parsers
-RUN cd /root/openpower-pel-parsers
-RUN python3 setup.py install
-RUN pip3 install .
+RUN cd /root/openpower-pel-parsers ;python3 setup.py install;pip3 install .
 
 RUN cd /root/bmcshell && git pull && mvn package #run14
 RUN rm -rf /root/.ssh
