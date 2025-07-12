@@ -74,10 +74,10 @@ public class CommonCommands implements ApplicationContextAware {
         return Util.base(machine);
     }
 
-    public static String machine;
+    public static String machine="rain135bmc";
     @Autowired
     private ApplicationContext applicationContext;
-    static String userName;
+    static String userName="service";
     static String passwd;
 
     static String libPath = "./";
