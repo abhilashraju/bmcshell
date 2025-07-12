@@ -66,6 +66,7 @@ public class InstallCommands extends CommonCommands {
     @ShellMethod(key = "flash", value = "eg: flash . To flash images")
     void flash() throws InterruptedException {
         scmd("mv /tmp/obmc-phosphor-image-p10bmc.ext4.mmc.tar /tmp/images");
+        sleep(1);
         scmd("ls /tmp/images");
         Scanner scanner = new Scanner(System.in);
         System.out.print("Enter image id from above : ");
@@ -79,14 +80,15 @@ public class InstallCommands extends CommonCommands {
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
     void upload(String imagepath) {
-        scp(imagepath);
+        scp(imagepath,"/tmp/images");
         var subpaths = imagepath.split("/");
         scmd(String.format("mv /tmp/%s /tmp/images", subpaths[subpaths.length - 1]));
     }
 
     @ShellMethod(key = "scp", value = "eg: scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
     @ShellMethodAvailability("availabilityCheck")
-    void scp(String path) {
+    void scp(String path,String dest) {
+        System.out.println(passwd);
         StringBuilder cmdBuilder = new StringBuilder();
 
         cmdBuilder.append("scp ");
@@ -98,9 +100,13 @@ public class InstallCommands extends CommonCommands {
         cmdBuilder.append(userName);
         cmdBuilder.append("@");
         cmdBuilder.append(Util.fullMachineName(machine));
-        cmdBuilder.append(":/tmp/");
-
+        cmdBuilder.append(":/tmp");
+        
         system(cmdBuilder.toString());
+        var subpaths = dest.split("/");
+        scmd(String.format("mkdir -p %s", dest.substring(0, dest.lastIndexOf('/'))));
+       
+        scmd(String.format("chmod 777 /tmp/%s; mv /tmp/%s %s", subpaths[subpaths.length - 1],subpaths[subpaths.length - 1],dest));
     }
 
     @ShellMethod(key = "acfupload", value = "eg: acfupload acfpath ")

@@ -1,5 +1,6 @@
 package com.ibm.bmcshell;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 
 import org.springframework.shell.standard.ShellComponent;
@@ -16,12 +17,12 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethod(key = "ro.ls", value = "eg: ro.ls path")
     @ShellMethodAvailability("availabilityCheck")
     void ls(String path) {
-        scmd(String.format("ls -a %s", path));
+        scmd(String.format("ls -alhS %s", path));
     }
 
     @ShellMethod(key = "ro.mv", value = "eg: ro.ls path")
     @ShellMethodAvailability("availabilityCheck")
-    void scp(String source, String dest) {
+    void mv(String source, String dest) {
         scmd(String.format("mv %s %s", source, dest));
     }
 
@@ -103,4 +104,12 @@ public class RemoteCommands extends CommonCommands {
                   @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
         scmd(String.format("ps | grep %s", pattern));
     }
+    @ShellMethod(key = "ro.makefile", value = "eg: ro.makefile path content")
+    @ShellMethodAvailability("availabilityCheck")
+    void makeFile(String path ,String data) {
+        scmd(String.format("mkdir -p %s", path.substring(0, path.lastIndexOf('/'))));
+        scmd(String.format("chmod 777 %s;echo %s > %s",path,data, path));
+        scmd(String.format("ls -lh %s",path));
+    }
+    
 }
