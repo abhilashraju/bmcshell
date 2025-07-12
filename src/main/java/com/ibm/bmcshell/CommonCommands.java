@@ -78,7 +78,7 @@ public class CommonCommands implements ApplicationContextAware {
     @Autowired
     private ApplicationContext applicationContext;
     static String userName="service";
-    static String passwd;
+    static String passwd="empty";
 
     static String libPath = "./";
     PrintStream savedStream = System.out;
