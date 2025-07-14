@@ -86,6 +86,7 @@ public class RemoteCommands extends CommonCommands {
     void service_enable(String s) {
         scmd(String.format("systemctl enable %s", s));
     }
+    
     @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void findFile(String filename ,
@@ -110,6 +111,16 @@ public class RemoteCommands extends CommonCommands {
         scmd(String.format("mkdir -p %s", path.substring(0, path.lastIndexOf('/'))));
         scmd(String.format("chmod 777 %s;echo %s > %s",path,data, path));
         scmd(String.format("ls -lh %s",path));
+    }
+    @ShellMethod(key = "ro.digest", value = "eg: ro.digest path to file")
+    @ShellMethodAvailability("availabilityCheck")
+    void digest(String path) {
+         scmd(String.format("openssl dgst -sha256 %s",path));
+    }
+    @ShellMethod(key = "ro.ping", value = "eg: ro.ping ip")
+    @ShellMethodAvailability("availabilityCheck")
+    void ping(String ip) {
+        scmd(String.format("ping -c 1 %s",ip));
     }
     
 }
