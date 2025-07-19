@@ -519,60 +519,63 @@ function main()
     update_build_ver
 }
 
-TEMP=`getopt -o l:e:d:I:L:vVqh \
-      --long list:,extract:,dir:,compress:,level:,type:,verbose,version,quiet,help \
-      -- "$@"`
-
-if [ $# -eq 0 ];then
+if [ $# -eq 0 ]; then
     echo "$help"
     exit 1
 fi
 
-if [ $? -ne 0 ]; then
-    echo "Error: Invalid options"
-    exit 1
-fi
-
-eval set -- "$TEMP"
-
-while [[ $# -gt 1 ]]; do
-    key="$1"
-    case $key in
+while [ $# -gt 0 ]; do
+    case "$1" in
         -l|--list)
-            name=$2
-            action_type=$ACTION_LIST;
-            shift 2;;
+            name="$2"
+            action_type=$ACTION_LIST
+            shift 2
+            ;;
         -e|--extract)
-            name=$2
-            action_type=$ACTION_EXTRACT;
-            shift 2;;
+            name="$2"
+            action_type=$ACTION_EXTRACT
+            shift 2
+            ;;
         -d|--dir)
-            out_dir=$2
-            shift 2;;
+            out_dir="$2"
+            shift 2
+            ;;
         -I|--compress)
-            compress_pgm=$2
-            shift 2;;
+            compress_pgm="$2"
+            shift 2
+            ;;
         -L|--level)
-            extract_lvl=$2
-            shift 2;;
-        -v|—-verbose)
+            extract_lvl="$2"
+            shift 2
+            ;;
+        -v|--verbose)
             verbose=$TRUE
-            shift;;
+            shift
+            ;;
         -V|--version)
             echo "$VERSION"
-            exit;;
-        -q|—-quiet)
+            exit
+            ;;
+        -q|--quiet)
             quiet=$TRUE
-            shift;;
+            shift
+            ;;
         -h|--help)
             echo "$help"
-            exit;;
-        *) # unknown option
+            exit
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
             log_error "Unknown argument: $1"
             log_info "$help"
-            exit 1;;
+            exit 1
+            ;;
     esac
 done
+
 
 main #main program
 exit $?
