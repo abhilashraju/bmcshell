@@ -16,6 +16,11 @@ import org.springframework.shell.standard.ShellMethodAvailability;
 
 import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.ssh.SSHShellClient;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.http.MediaType;
+import reactor.core.publisher.Mono;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 @ShellComponent
 public class InstallCommands extends CommonCommands {
@@ -64,18 +69,31 @@ public class InstallCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "flash", value = "eg: flash . To flash images")
-    void flash() throws InterruptedException {
-        scmd("mv /tmp/obmc-phosphor-image-p10bmc.ext4.mmc.tar /tmp/images");
-        sleep(1);
-        scmd("ls /tmp/images");
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter image id from above : ");
-        String imageid = scanner.nextLine();
-        String command = String.format(
-                "busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",
-                imageid);
-        System.out.println(command);
-        scmd(command);
+    void flash(String path) throws InterruptedException {
+        String url = String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/UpdateService/update",machine);
+        String token = getToken();
+        String filePath = path; // path argument is the file to upload
+        try {
+            File file = new File(filePath);
+            WebClient webClient = WebClient.builder()
+                .baseUrl(url)
+                .build();
+
+            String response = webClient.post()
+                .uri("")
+                .header("X-Auth-Token", token)
+                .header("Content-Type", "application/octet-stream")
+                .bodyValue(Files.newInputStream(file.toPath()))
+                .retrieve()
+                .bodyToMono(String.class)
+                .doOnError(Throwable::printStackTrace)
+                .block();
+            System.out.println("Response: " + response);
+            return;
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
