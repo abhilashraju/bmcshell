@@ -863,9 +863,8 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
-    void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
-            @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
-        if(u.equals(u.trim()) && u.equals("*")){
+    void journalctl() throws IOException {
+       
             // Start a thread to run journalctl -f
             Thread journalThread = new Thread(() -> scmd("journalctl -f"));
             journalThread.setName("JournalCtlThread");
@@ -874,8 +873,14 @@ public class CommonCommands implements ApplicationContextAware {
             // Store the thread reference for control commands
             this.journalThread = journalThread;
             return;
-        }
-        scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
+        
+        
+
+    }
+    @ShellMethod(key = "journal.search", value = "eg: journal.search arg ")
+    void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
+            @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
+       scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
     }
     @ShellMethod(key = "journal.stop", value = "eg: journal.stop")

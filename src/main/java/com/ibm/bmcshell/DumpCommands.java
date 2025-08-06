@@ -122,7 +122,17 @@ public class DumpCommands extends CommonCommands {
         // System.out.println(response.getBody());
         get(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id), filename, false);
         String absPath = new File(filename).getAbsolutePath();
-        extract_dump(absPath);
+        Thread script = new Thread(() -> {
+            try {
+                System.out.println("Extracting dump to " + absPath+ "_out");
+                extract_dump(absPath);
+            } catch (IOException | URISyntaxException | InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+        script.setName("Dump Extractor");
+        script.setDaemon(true);
+        script.start();
     }
 
     @ShellMethod(key = "dump.extract", value = "eg: extract_dump out_filename")
@@ -137,8 +147,8 @@ public class DumpCommands extends CommonCommands {
             in.transferTo(out);
         }
         
-        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath,"-I","xz","-L","2");
-        pb.inheritIO();
+        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath,"-I","xz","-L","0");
+        // pb.inheritIO();
         Process process = pb.start();
         process.waitFor();
         tempScript.delete();
