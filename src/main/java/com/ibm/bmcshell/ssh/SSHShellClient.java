@@ -1,5 +1,6 @@
 package com.ibm.bmcshell.ssh;
 
+import com.ibm.bmcshell.ColorPrinter;
 import com.jcraft.jsch.*;
 
 import java.io.*;
@@ -98,11 +99,11 @@ public class SSHShellClient {
             BufferedReader errorReader = new BufferedReader(new InputStreamReader(channel.getErrStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println(line);
+                System.out.println(ColorPrinter.addColor(line, "green"));
             }
             System.out.println("\nStandard Error: ");
             while ((line = errorReader.readLine()) != null) {
-                System.out.println(line);
+                System.out.println(ColorPrinter.red(line));
             }
             channel.setInputStream(null);
             channel.disconnect();

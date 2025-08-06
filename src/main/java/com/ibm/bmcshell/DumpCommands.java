@@ -137,7 +137,7 @@ public class DumpCommands extends CommonCommands {
             in.transferTo(out);
         }
         
-        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath,"-I","xz","-L","3");
+        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath,"-I","xz","-L","2");
         pb.inheritIO();
         Process process = pb.start();
         process.waitFor();

@@ -69,10 +69,25 @@ public class InstallCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "flash", value = "eg: flash . To flash images")
-    void flash(String path) throws InterruptedException {
+    void flash() throws InterruptedException {
+        scmd("mv /tmp/obmc-phosphor-image-p10bmc.ext4.mmc.tar /tmp/images");
+        sleep(1);
+        scmd("ls /tmp/images");
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter image id from above : ");
+        String imageid = scanner.nextLine();
+        String command = String.format(
+                "busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",
+                imageid);
+        System.out.println(command);
+        scmd(command);
+    }
+
+    @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
+    void upload(String imagepath) {
         String url = String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/UpdateService/update",machine);
         String token = getToken();
-        String filePath = path; // path argument is the file to upload
+        String filePath = imagepath; // path argument is the file to upload
         try {
             File file = new File(filePath);
             WebClient webClient = WebClient.builder()
@@ -94,13 +109,6 @@ public class InstallCommands extends CommonCommands {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
-    void upload(String imagepath) {
-        scp(imagepath,"/tmp/images");
-        var subpaths = imagepath.split("/");
-        scmd(String.format("mv /tmp/%s /tmp/images", subpaths[subpaths.length - 1]));
     }
 
     @ShellMethod(key = "scp", value = "eg: scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")

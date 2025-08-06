@@ -91,6 +91,8 @@ public class CommonCommands implements ApplicationContextAware {
 
     private Stack<List<Util.EndPoints>> endPoints = new Stack<>();
 
+    protected Thread journalThread;
+
     public static String getUserName() {
         return userName;
     }
@@ -860,16 +862,33 @@ public class CommonCommands implements ApplicationContextAware {
         scmd(String.format("systemctl restart %s", service));
     }
 
-    @ShellMethod(key = "journalctl", value = "eg: journalctl arg ")
+    @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
     void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
             @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
         if(u.equals(u.trim()) && u.equals("*")){
-            new Thread(() -> scmd("journalctl -f")).start();
+            // Start a thread to run journalctl -f
+            Thread journalThread = new Thread(() -> scmd("journalctl -f"));
+            journalThread.setName("JournalCtlThread");
+            journalThread.start();
+
+            // Store the thread reference for control commands
+            this.journalThread = journalThread;
             return;
         }
         scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
     }
+    @ShellMethod(key = "journal.stop", value = "eg: journal.stop")
+    void journalctlStop() {
+        if (journalThread != null && journalThread.isAlive()) {
+            journalThread.interrupt();
+            System.out.println("JournalCtl thread stopped.");
+        } else {
+            System.out.println("No active JournalCtl thread to stop.");
+        }
+    }
+ 
+
     @ShellMethod(key = "subscribe.journal", value = "eg: subscribe.journal")
     void subscribe_journal(String ip,String port) throws IOException {
         try {
