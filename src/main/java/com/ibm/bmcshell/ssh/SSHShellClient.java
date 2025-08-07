@@ -73,6 +73,40 @@ public class SSHShellClient {
 
 
     }
+    public static void runCommand(String host, String user, String password, String command, StringBuffer buffer)
+    {
+        try {
+
+            JSch jsch = new JSch();
+//            jsch.setConfig("kex", "hmac-sha2-256");
+
+
+            Session session = jsch.getSession(user, host, port);
+            session.setPassword(password);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+            ChannelExec channel = (ChannelExec) session.openChannel("exec");
+
+
+            channel.setCommand(command);
+//            channel.setInputStream(System.in,true);
+            channel.setOutputStream(System.out);
+            InputStream in = channel.getInputStream();
+
+            channel.connect();
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                buffer.append(line);
+            }
+            channel.setInputStream(null);
+            channel.disconnect();
+            session.disconnect();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
     public static void runCommand(String host, String user, String password, String command)
     {
         try {
