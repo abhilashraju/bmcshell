@@ -1,4 +1,4 @@
-package com.ibm.bmcshell.ssh;
+package com.ibm.bmcshell;
 
 
 import java.io.IOException;
@@ -12,9 +12,7 @@ import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ibm.bmcshell.CommonCommands;
-import com.ibm.bmcshell.DbusCommnads;
-import com.ibm.bmcshell.TotpService;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @ShellComponent
 public class AccountServiceCommand extends CommonCommands {
@@ -130,5 +128,29 @@ public class AccountServiceCommand extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void clearSecretKey() throws URISyntaxException, IOException {
         post(String.format("/redfish/v1/AccountService/Accounts/%s/Actions/ManagerAccount.ClearSecretKey", getUserName()), "",false);
+    }
+    @ShellMethod(key = "as.acf_upload", value = "Upload ACF file")
+    public void acfUpload(@ShellOption(value = { "--file", "-f" }) String filepath) throws URISyntaxException, IOException {
+        byte[] fileBytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filepath));
+        ObjectMapper objectMapper = new ObjectMapper();
+        String encodedContent = java.util.Base64.getEncoder().encodeToString(fileBytes);
+
+        
+
+        com.fasterxml.jackson.databind.node.ObjectNode acfNode = objectMapper.createObjectNode();
+        acfNode.put("ACFFile", encodedContent);
+        acfNode.put("AllowUnauthACFUpload", true);
+
+        com.fasterxml.jackson.databind.node.ObjectNode oemNode = objectMapper.createObjectNode();
+        oemNode.set("ACF", acfNode);
+
+        com.fasterxml.jackson.databind.node.ObjectNode ibmNode = objectMapper.createObjectNode();
+        ibmNode.set("IBM", oemNode);
+
+        com.fasterxml.jackson.databind.node.ObjectNode rootNode = objectMapper.createObjectNode();
+        rootNode.set("Oem", ibmNode);
+
+        String data = objectMapper.writeValueAsString(rootNode);
+        patch("/redfish/v1/AccountService/Accounts/service", data);
     }
 }
