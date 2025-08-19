@@ -239,6 +239,9 @@ public class Util {
         if (m.startsWith("qemu")) {
             return localName;
         }
+        if(m.contains(".com")){
+            return m;
+        }
         return String.format(baseName, m);
     }
 
