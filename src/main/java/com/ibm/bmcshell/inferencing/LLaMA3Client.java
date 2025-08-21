@@ -40,8 +40,11 @@ public class LLaMA3Client {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         var res = new ObjectMapper().readTree(line);
-
-                        System.out.print(res.get("response").asText());
+                        try {
+                            System.out.print(res.get("response").asText());
+                        } catch (Exception e) {
+                            System.out.println(res);
+                        }
                         // Optionally, process each line here as it arrives
                     }
                 }
