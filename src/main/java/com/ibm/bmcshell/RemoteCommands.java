@@ -80,6 +80,11 @@ public class RemoteCommands extends CommonCommands {
     void service_log(String s) {
         scmd(String.format("journalctl -u %s", s));
     }
+    @ShellMethod(key = "ro.service.cat", value = "eg: ro.service.cat servicename")
+    @ShellMethodAvailability("availabilityCheck")
+    void service_cat(String s) {
+        scmd(String.format("systemctl cat %s", s));
+    }
 
     @ShellMethod(key = "ro.service.enable", value = "eg: ro.service_log servicename")
     @ShellMethodAvailability("availabilityCheck")

@@ -25,7 +25,7 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 RUN java -version && gcc --version && ollama --version
 
 RUN ollama start & sleep 15 && \
-    ollama pull codellama 
+    ollama pull gpt-oss:20b 
 
 COPY .ssh /root/.ssh
 

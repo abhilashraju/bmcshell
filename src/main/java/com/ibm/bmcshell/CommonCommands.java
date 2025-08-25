@@ -222,7 +222,7 @@ public class CommonCommands implements ApplicationContextAware {
         String req = String.format(
                 "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\"%s}'",
                 Util.base(machine), userName, passwd, totpString);
-        System.out.println(req);
+       // System.out.println(req);
         try{
             var response = client.post()
             .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
@@ -323,7 +323,7 @@ public class CommonCommands implements ApplicationContextAware {
             return String.format("{\"file_location\":\"not able to download\"}", target);
 
         }
-        return Util.tryUntil(3, () -> {
+        return Util.tryUntil(2, () -> {
             try {
                 var response = client.get()
                         .uri(auri)
@@ -357,7 +357,7 @@ public class CommonCommands implements ApplicationContextAware {
     String makePostRequestWithFormData(String target, String data) throws URISyntaxException {
         var auri = new URI(base() + target);
 
-        return Util.tryUntil(3, () -> {
+        return Util.tryUntil(2, () -> {
             try {
                 Map<String, String> formData = parseFormData(data);
                 MultiValueMap<String, Object> multipartData = new LinkedMultiValueMap<String, Object>();
@@ -420,7 +420,7 @@ public class CommonCommands implements ApplicationContextAware {
     String makePostRequest(String target, String data, String contType) throws URISyntaxException, IOException {
         var auri = new URI(base() + target);
 
-        return Util.tryUntil(3, () -> {
+        return Util.tryUntil(2, () -> {
             try {
 
                 System.out.println("Posting" + data);
@@ -453,7 +453,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     String makeDeleteRequest(String target) throws URISyntaxException {
         var auri = new URI(base() + target);
-        return Util.tryUntil(3, () -> {
+        return Util.tryUntil(2, () -> {
             try {
                 var response = client.delete()
                         .uri(auri)
@@ -478,7 +478,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     String makePatchRequest(String target, String data) throws URISyntaxException {
         var auri = new URI(base() + target);
-        return Util.tryUntil(3, () -> {
+        return Util.tryUntil(2, () -> {
             try {
                 System.out.println("Patching" + data);
                 var response = client.patch()

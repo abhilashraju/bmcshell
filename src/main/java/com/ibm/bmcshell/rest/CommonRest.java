@@ -99,7 +99,7 @@ public class CommonRest {
 
     protected Mono<ResponseEntity<String>> makeGetRequestMono(String target) throws URISyntaxException {
         var auri = new URI(base() + target);
-        return Util.tryUntil(3, () -> {
+        return Util.tryUntil(2, () -> {
             try {
                 return client.get()
                         .uri(auri)

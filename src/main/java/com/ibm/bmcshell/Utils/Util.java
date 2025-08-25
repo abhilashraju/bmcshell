@@ -111,8 +111,8 @@ public class Util {
         HttpClient httpClient = HttpClient.create(connectionProvider).secure(t -> t.sslContext(sslContext))
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
                 .option(ChannelOption.SO_KEEPALIVE, false)
-                .responseTimeout(Duration.ofMillis(30000))
-                .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(60))
+                .responseTimeout(Duration.ofMillis(15000))
+                .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(30))
                         .addHandlerLast(new WriteTimeoutHandler(60)));
 
         return WebClient.builder().exchangeStrategies(strategies)
