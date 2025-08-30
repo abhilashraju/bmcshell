@@ -863,10 +863,14 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
-    void journalctl() throws IOException {
+    void journalctl(@ShellOption(value = { "--filter", "-f" }, defaultValue = "*") String filter) throws IOException {
        
-            // Start a thread to run journalctl -f
-            Thread journalThread = new Thread(() -> scmd("journalctl -f"));
+            StringBuffer command=new StringBuffer();
+            command.append("journalctl -f");
+            if(!filter.equals("*")){
+                command.append(" |grep ").append(filter);
+            }
+            Thread journalThread = new Thread(() -> scmd(command.toString()));
             journalThread.setName("JournalCtlThread");
             journalThread.start();
 
@@ -892,7 +896,10 @@ public class CommonCommands implements ApplicationContextAware {
             System.out.println("No active JournalCtl thread to stop.");
         }
     }
- 
+    @ShellMethod(key = "journal.clear", value = "eg: journal.clear")
+    void journalctlClear() {
+        scmd("journalctl --rotate; journalctl --vacuum-time=1s");
+    }
 
     @ShellMethod(key = "subscribe.journal", value = "eg: subscribe.journal")
     void subscribe_journal(String ip,String port) throws IOException {
@@ -1113,9 +1120,8 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "r", value = "eg: r filename. This command will run the file content as script")
     @ShellMethodAvailability("availabilityCheck")
-    void runScript(String scrFile) throws Exception {
+    void runScript(@ShellOption(valueProvider = ScriptNameProvider.class,value = { "--file", "-f" }) String scrFile) throws Exception {
         script.script(new File(libPath + scrFile));
-
     }
 
     void tell(String message) throws IOException, InterruptedException {
