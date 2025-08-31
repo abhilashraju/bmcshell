@@ -74,19 +74,19 @@ public class CommonCommands implements ApplicationContextAware {
         return Util.base(machine);
     }
 
-    public static String machine="rain135bmc";
+    public static String machine = "rain135bmc";
     @Autowired
     private ApplicationContext applicationContext;
-    static String userName="service";
-    static String passwd="empty";
+    static String userName = "service";
+    static String passwd = "empty";
 
     static String libPath = "./";
     PrintStream savedStream = System.out;
     @Autowired
     Script script;
-    
+
     static String lastCurlRequest;
-    
+
     static String lastCurlResponse;
 
     private Stack<List<Util.EndPoints>> endPoints = new Stack<>();
@@ -100,12 +100,14 @@ public class CommonCommands implements ApplicationContextAware {
     public static String getPasswd() {
         return passwd;
     }
+
     @FunctionalInterface
     public interface Setter {
         void set(com.fasterxml.jackson.databind.node.ObjectNode node, String key);
     }
-    public String toJson(com.fasterxml.jackson.databind.node.ObjectNode rootNode,String path, Setter setter){
-        var keys =path.split("/");
+
+    public String toJson(com.fasterxml.jackson.databind.node.ObjectNode rootNode, String path, Setter setter) {
+        var keys = path.split("/");
         ObjectMapper mapper = new ObjectMapper();
         com.fasterxml.jackson.databind.node.ObjectNode currentNode = rootNode;
         for (int i = 0; i < keys.length - 1; i++) {
@@ -115,8 +117,7 @@ public class CommonCommands implements ApplicationContextAware {
         }
         setter.set(currentNode, keys[keys.length - 1]);
         return rootNode.toString();
-    } 
-
+    }
 
     CustomPromptProvider getPromptProvider() {
         return applicationContext.getBean(CustomPromptProvider.class);
@@ -126,31 +127,33 @@ public class CommonCommands implements ApplicationContextAware {
     public void setApplicationContext(ApplicationContext applicationContext) {
         this.applicationContext = applicationContext;
     }
+
     void checkUserNameAndPasswd() throws IOException {
         if (userName == null || passwd == null || machine == null) {
-			java.util.Scanner scanner = new java.util.Scanner(System.in);
-				if (CommonCommands.userName == null) {
-					System.out.print("Enter username: ");
-					CommonCommands.userName = scanner.nextLine();
-				}
-				if (CommonCommands.passwd == null) {
-					System.out.print("Enter password: ");
-					java.io.Console console = System.console();
-					if (console != null) {
-						char[] pwd = console.readPassword();
-						CommonCommands.passwd = new String(pwd);
-					} else {
-						// Fallback if console is not available (e.g., in IDE)
-						CommonCommands.passwd = scanner.nextLine();
-					}
-				}
-                if(machine == null) {
-                    System.out.print("Enter machine name: ");
-                    CommonCommands.machine = scanner.nextLine();
+            java.util.Scanner scanner = new java.util.Scanner(System.in);
+            if (CommonCommands.userName == null) {
+                System.out.print("Enter username: ");
+                CommonCommands.userName = scanner.nextLine();
+            }
+            if (CommonCommands.passwd == null) {
+                System.out.print("Enter password: ");
+                java.io.Console console = System.console();
+                if (console != null) {
+                    char[] pwd = console.readPassword();
+                    CommonCommands.passwd = new String(pwd);
+                } else {
+                    // Fallback if console is not available (e.g., in IDE)
+                    CommonCommands.passwd = scanner.nextLine();
                 }
-			serialise();
-		}
+            }
+            if (machine == null) {
+                System.out.print("Enter machine name: ");
+                CommonCommands.machine = scanner.nextLine();
+            }
+            serialise();
+        }
     }
+
     protected CommonCommands() throws IOException {
         if (client == null) {
             client = Util.createWebClient();
@@ -222,33 +225,30 @@ public class CommonCommands implements ApplicationContextAware {
         String req = String.format(
                 "curl -k -X POST %s/redfish/v1/SessionService/Sessions -d '{\"UserName\":\"%s\", \"Password\":\"%s\"%s}'",
                 Util.base(machine), userName, passwd, totpString);
-       // System.out.println(req);
-        try{
+        // System.out.println(req);
+        try {
             var response = client.post()
-            .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(BodyInserters.fromValue(
-                    String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"%s}", userName,
-                            passwd, totpString)))
-            .retrieve()
-            .toEntity(String.class)
-            .block();
+                    .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(BodyInserters.fromValue(
+                            String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"%s}", userName,
+                                    passwd, totpString)))
+                    .retrieve()
+                    .toEntity(String.class)
+                    .block();
             System.out.println(response.getBody());
             HttpHeaders responseHeaders = response.getHeaders();
 
             List<String> headerValue = responseHeaders.get("X-Auth-Token");
-            
+
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
-        }catch (WebClientResponseException ex) {
-              
+        } catch (WebClientResponseException ex) {
+
             System.err.println(ex.getResponseBodyAsString());
             HttpHeaders responseHeaders = ex.getHeaders();
             List<String> headerValue = responseHeaders.get("X-Auth-Token");
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
-        } 
-       
-
-        
+        }
 
     }
 
@@ -312,11 +312,11 @@ public class CommonCommands implements ApplicationContextAware {
                         }))
                         .block();
                 return String.format("{\"file_location\":\"%s\"}", o);
-            }catch (WebClientResponseException ex) {
-              
-                System.err.println("Internal Server Error  "+ex.getStatusText());
+            } catch (WebClientResponseException ex) {
+
+                System.err.println("Internal Server Error  " + ex.getStatusText());
                 return ex.getResponseBodyAsString();
-                      
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -384,11 +384,11 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
-            }catch (WebClientResponseException ex) {
-              
-                System.err.println("Internal Server Error  "+ex.getStatusText());
+            } catch (WebClientResponseException ex) {
+
+                System.err.println("Internal Server Error  " + ex.getStatusText());
                 return ex.getResponseBodyAsString();
-                      
+
             } catch (Exception ex) {
                 resetToken();
                 throw ex;
@@ -396,13 +396,13 @@ public class CommonCommands implements ApplicationContextAware {
 
         });
     }
-    String makePostRequestWithFileData(String target,String filenamePath) throws Exception
-    {
+
+    String makePostRequestWithFileData(String target, String filenamePath) throws Exception {
         try {
             var auri = new URI(base() + target);
             var fileResource = new FileSystemResource(filenamePath);
             var fileName = fileResource.getFilename();
-             var response = client.post()
+            var response = client.post()
                     .uri(auri)
                     .header("File-Upload", "true")
                     .header("File-Name", fileName)
@@ -417,6 +417,7 @@ public class CommonCommands implements ApplicationContextAware {
             throw ex;
         }
     }
+
     String makePostRequest(String target, String data, String contType) throws URISyntaxException, IOException {
         var auri = new URI(base() + target);
 
@@ -438,11 +439,11 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
-            }catch (WebClientResponseException ex) {
-              
-                System.err.println("Internal Server Error  "+ex.getStatusText());
+            } catch (WebClientResponseException ex) {
+
+                System.err.println("Internal Server Error  " + ex.getStatusText());
                 return ex.getResponseBodyAsString();
-                      
+
             } catch (Exception ex) {
                 resetToken();
                 throw ex;
@@ -463,11 +464,11 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
-            }catch (WebClientResponseException ex) {
-              
-                System.err.println("Internal Server Error  "+ex.getStatusText());
+            } catch (WebClientResponseException ex) {
+
+                System.err.println("Internal Server Error  " + ex.getStatusText());
                 return ex.getResponseBodyAsString();
-                      
+
             } catch (Exception ex) {
                 resetToken();
                 throw ex;
@@ -490,17 +491,16 @@ public class CommonCommands implements ApplicationContextAware {
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
-            }catch (WebClientResponseException ex) {
-              
-                System.err.println("Internal Server Error  "+ex.getStatusText());
+            } catch (WebClientResponseException ex) {
+
+                System.err.println("Internal Server Error  " + ex.getStatusText());
                 return ex.getResponseBodyAsString();
-                      
+
             } catch (Exception ex) {
-                
+
                 resetToken();
                 throw ex;
             }
-                        
 
         });
     }
@@ -608,8 +608,11 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "overrideport")
-    public void setOverridePort(int p) {
-        Util.targetport = p;
+    public int setOverridePort(@ShellOption(value = { "--ser", "-s" }, defaultValue = "-1") int p) {
+        if (p > 0) {
+            Util.targetport = p;
+        }
+        return Util.targetport;
     }
 
     @ShellMethod(key = "scheme")
@@ -642,10 +645,10 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethodAvailability("availabilityCheck")
     public void post(@ShellOption(value = { "-t", "--target" }, help = "Target URL") String target,
             @ShellOption(value = { "-d", "--data" }, help = "Data to send") String data,
-            @ShellOption(value = { "-e", "--encode" }, help = "Base64 encode",defaultValue="false") boolean  encode)
+            @ShellOption(value = { "-e", "--encode" }, help = "Base64 encode", defaultValue = "false") boolean encode)
             throws URISyntaxException, IOException {
         var ep = new Util.EndPoints(target, "Post");
-        if(data.startsWith("@")){
+        if (data.startsWith("@")) {
             data = data.substring(1);
             File file = new File(data);
             if (file.exists()) {
@@ -655,14 +658,15 @@ public class CommonCommands implements ApplicationContextAware {
                 return;
             }
         }
-        if(encode==true){
+        if (encode == true) {
             data = Util.encodeBase64(data);
         }
         System.out.println(goTo(ep, data, false, ""));
     }
+
     @ShellMethod(key = "postFile", value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
     @ShellMethodAvailability("availabilityCheck")
-    public void postFile( String target,
+    public void postFile(String target,
             String filename)
             throws Exception {
         makePostRequestWithFileData(target, filename);
@@ -681,10 +685,11 @@ public class CommonCommands implements ApplicationContextAware {
         }
         makePostRequest(target, data, contentType);
     }
-    @ShellMethod(key ="setDebugLevel", value = "eg setDebugLevel debug")
+
+    @ShellMethod(key = "setDebugLevel", value = "eg setDebugLevel debug")
     public void setDebugLevel(String level) {
         String command = String.format("bmcweb loglevel %s", level);
-        scmd(command);  
+        scmd(command);
     }
 
     public void delete(String endPoint) throws URISyntaxException, IOException {
@@ -724,16 +729,16 @@ public class CommonCommands implements ApplicationContextAware {
         try {
             if (ep.action.equals("Post")) {
                 System.out.println(data);
-                return lastCurlResponse=makePostRequest(url, data, "application/json");
+                return lastCurlResponse = makePostRequest(url, data, "application/json");
             }
             if (ep.action.equals("Delete")) {
-                return lastCurlResponse=makeDeleteRequest(url);
+                return lastCurlResponse = makeDeleteRequest(url);
             }
             if (p) {
                 System.out.println(data);
-                return lastCurlResponse=makePatchRequest(url, data);
+                return lastCurlResponse = makePatchRequest(url, data);
             }
-            return lastCurlResponse=applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o));
+            return lastCurlResponse = applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o));
 
         } catch (WebClientResponseException.BadRequest
                 | WebClientResponseException.Forbidden
@@ -841,7 +846,7 @@ public class CommonCommands implements ApplicationContextAware {
             throws IOException, URISyntaxException {
         post("EventService/Subscriptions", String.format(
                 "{\"Destination\":\"https://%s:%d/%s\",\"Protocol\":\"Redfish\",\"DeliveryRetryPolicy\": \"RetryForever\"}",
-                ipaddress, port, target),false);
+                ipaddress, port, target), false);
 
     }
 
@@ -850,8 +855,7 @@ public class CommonCommands implements ApplicationContextAware {
         delete(String.format("EventService/Subscriptions/%s", id));
 
     }
-   
-   
+
     @ShellMethod(key = "event_filters", value = "eg: event_filters hypervisor/EthernetInterfaces/eth0,hypervisor/EthernetInterfaces/eth1")
     void event_filters(String filter) {
         Util.setEventFilter(filter);
@@ -864,29 +868,29 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
     void journalctl(@ShellOption(value = { "--filter", "-f" }, defaultValue = "*") String filter) throws IOException {
-       
-            StringBuffer command=new StringBuffer();
-            command.append("journalctl -f");
-            if(!filter.equals("*")){
-                command.append(" |grep ").append(filter);
-            }
-            Thread journalThread = new Thread(() -> scmd(command.toString()));
-            journalThread.setName("JournalCtlThread");
-            journalThread.start();
 
-            // Store the thread reference for control commands
-            this.journalThread = journalThread;
-            return;
-        
-        
+        StringBuffer command = new StringBuffer();
+        command.append("journalctl -f");
+        if (!filter.equals("*")) {
+            command.append(" |grep ").append(filter);
+        }
+        Thread journalThread = new Thread(() -> scmd(command.toString()));
+        journalThread.setName("JournalCtlThread");
+        journalThread.start();
+
+        // Store the thread reference for control commands
+        this.journalThread = journalThread;
+        return;
 
     }
+
     @ShellMethod(key = "journal.search", value = "eg: journal.search arg ")
     void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
             @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
-       scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
+        scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
     }
+
     @ShellMethod(key = "journal.stop", value = "eg: journal.stop")
     void journalctlStop() {
         if (journalThread != null && journalThread.isAlive()) {
@@ -896,29 +900,31 @@ public class CommonCommands implements ApplicationContextAware {
             System.out.println("No active JournalCtl thread to stop.");
         }
     }
+
     @ShellMethod(key = "journal.clear", value = "eg: journal.clear")
     void journalctlClear() {
         scmd("journalctl --rotate; journalctl --vacuum-time=1s");
     }
 
     @ShellMethod(key = "subscribe.journal", value = "eg: subscribe.journal")
-    void subscribe_journal(String ip,String port) throws IOException {
+    void subscribe_journal(String ip, String port) throws IOException {
         try {
             String url = String.format("https://%s:8080/subscribe", Util.fullMachineName(machine));
             String data = String.format("https://%s:%s/journals", ip, port);
             var response = client.post()
-                .uri(new URI(url))
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(data)
-                .retrieve()
-                .toEntity(String.class)
-                .block();
+                    .uri(new URI(url))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(data)
+                    .retrieve()
+                    .toEntity(String.class)
+                    .block();
             System.out.println(response.getBody());
         } catch (Exception e) {
             System.err.println("Failed to subscribe: " + e.getMessage());
         }
 
     }
+
     @ShellMethod(key = "display_session", value = "eg: display_session")
     void display_session() {
 
@@ -940,12 +946,12 @@ public class CommonCommands implements ApplicationContextAware {
         userName = u;
         serialise();
         resetToken();
-        
+
     }
 
     @ShellMethod(key = "password")
     String setPasswd(@ShellOption(value = { "--password", "-p" }, defaultValue = "") String p) throws IOException {
-        if(p==null || p.isEmpty()){
+        if (p == null || p.isEmpty()) {
             return passwd;
         }
         passwd = p;
@@ -990,9 +996,12 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "sshport", value = "eg sshport portnumber .Set default port for ssh")
     @ShellMethodAvailability("availabilityCheck")
-    void sshport(int port) throws IOException {
-        SSHShellClient.port = port;
-        serialise();
+    int sshport(@ShellOption(value = { "--port", "-p" }, defaultValue = "-1") int port) throws IOException {
+        if (port > 0) {
+            SSHShellClient.port = port;
+            serialise();
+        }
+        return SSHShellClient.port;
     }
 
     @ShellMethod(key = "webroot", value = "eg webroot <path to root>")
@@ -1007,7 +1016,6 @@ public class CommonCommands implements ApplicationContextAware {
         Util.schemaroot = path;
         serialise();
         SchemaFetcher.fetchSchemaFiles(path);
-
 
     }
 
@@ -1102,6 +1110,7 @@ public class CommonCommands implements ApplicationContextAware {
             count--;
         }
     }
+
     @ShellMethod(key = "repeatpar", value = "eg: repeat filename count. This will rung the script specifed(count) number of times")
     @ShellMethodAvailability("availabilityCheck")
     void repeatpar(String scrFile, int count) throws Exception {
@@ -1120,7 +1129,8 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "r", value = "eg: r filename. This command will run the file content as script")
     @ShellMethodAvailability("availabilityCheck")
-    void runScript(@ShellOption(valueProvider = ScriptNameProvider.class,value = { "--file", "-f" }) String scrFile) throws Exception {
+    void runScript(@ShellOption(valueProvider = ScriptNameProvider.class, value = { "--file", "-f" }) String scrFile)
+            throws Exception {
         script.script(new File(libPath + scrFile));
     }
 

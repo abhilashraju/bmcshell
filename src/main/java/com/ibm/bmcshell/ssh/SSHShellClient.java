@@ -135,9 +135,54 @@ public class SSHShellClient {
             while ((line = reader.readLine()) != null) {
                 System.out.println(ColorPrinter.addColor(line, "green"));
             }
-            System.out.println("\nStandard Error: ");
-            while ((line = errorReader.readLine()) != null) {
+            if((line = errorReader.readLine())  != null){
+                System.out.println("\nStandard Error: ");
                 System.out.println(ColorPrinter.red(line));
+                while ((line = errorReader.readLine()) != null) {
+                    System.out.println(ColorPrinter.red(line));
+                }
+            }
+            channel.setInputStream(null);
+            channel.disconnect();
+            session.disconnect();
+        } catch (Exception e) {
+
+        }
+    }
+    public static void runCommandShort(String host, String user, String password, String command)
+    {
+        try {
+
+            JSch jsch = new JSch();
+//            jsch.setConfig("kex", "hmac-sha2-256");
+
+
+            Session session = jsch.getSession(user, host, port);
+            session.setPassword(password);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+            ChannelExec channel = (ChannelExec) session.openChannel("exec");
+
+
+            channel.setCommand(command);
+//            channel.setInputStream(System.in,true);
+            channel.setOutputStream(System.out);
+            InputStream in = channel.getInputStream();
+
+            channel.connect();
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(channel.getErrStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+            if((line = errorReader.readLine())  != null){
+                System.out.println("\nStandard Error: ");
+                System.out.println(ColorPrinter.red(line));
+                while ((line = errorReader.readLine()) != null) {
+                    System.out.println(line);
+                }
             }
             channel.setInputStream(null);
             channel.disconnect();

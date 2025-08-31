@@ -4,15 +4,31 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
+import org.springframework.shell.CompletionContext;
+import org.springframework.shell.CompletionProposal;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.standard.ValueProvider;
+import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.Utils.Util;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
+import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 
 @ShellComponent
 public class DbusCommnads extends CommonCommands {
@@ -20,13 +36,30 @@ public class DbusCommnads extends CommonCommands {
     String currentPath;
 
     String currentIface;
-   
+
+    @Component
+    public static class BusNameProvider implements ValueProvider {
+        public static List<String> busnames;
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (busnames != null) {
+                String userInput = context.currentWordUpToCursor();
+                return busnames.stream()
+                        .filter(name -> name.toLowerCase().contains(userInput.toLowerCase())) // Filter based on user input
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return null;
+        }
+    }
+
     protected DbusCommnads() throws IOException {
     }
-   
+
     @ShellMethod(key = "bs.introspect", value = "eg: bs.introspect xyz.openbmc_project.Network.Hypervisor /xyz/openbmc_project/network/hypervisor/eth0/ipv4")
     @ShellMethodAvailability("availabilityCheck")
-    public void introspect(@ShellOption(value = { "--ser", "-s" }, defaultValue = "") String service,
+    public void introspect(@ShellOption(value = { "--ser", "-s" }, defaultValue = "",valueProvider = BusNameProvider.class) String service,
             @ShellOption(value = { "--path", "-p" }, defaultValue = "") String path) {
         if (service.equals("")) {
             service = currentService;
@@ -41,14 +74,40 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.search", value = "eg: bs.search network")
     @ShellMethodAvailability("availabilityCheck")
-    public void search(String service) {
-        runCommand(Util.fullMachineName(machine), userName, passwd, String.format("busctl list | grep %s", service));
+    public void search(@ShellOption(valueProvider = BusNameProvider.class,value = { "--ser", "-s" }) String service) throws JsonParseException, JsonProcessingException {
+        if (BusNameProvider.busnames == null) {
+            getBusNames();
+        }
+        BusNameProvider.busnames.stream().filter(a -> a.toLowerCase().contains(service.toLowerCase()))
+                .forEach(n -> tree(n));
+    }
 
+    @ShellMethod(key = "bs.list", value = "eg: bs.lsit ")
+    @ShellMethodAvailability("availabilityCheck")
+    List<String> getBusNames() throws JsonParseException, JsonProcessingException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        redirector(outputStream, () -> {
+            try {
+                runCommandShort(Util.fullMachineName(machine), userName, passwd,
+                        String.format("busctl --json=short list"));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        ObjectMapper mapper = new ObjectMapper();
+        String out = new String(outputStream.toByteArray());
+        JsonNode rootNode = mapper.readTree(out);
+        BusNameProvider.busnames = StreamSupport.stream(rootNode.spliterator(), false)
+                .filter(JsonNode::isObject) // Filter out any non-object nodes
+                .filter(busNode -> busNode.has("name")) // Ensure the "name" field exists
+                .map(busNode -> busNode.get("name").asText()) // Extract the "name" as a String
+                .collect(Collectors.toList()); // Collect the results into a List<String>
+        return BusNameProvider.busnames;
     }
 
     @ShellMethod(key = "bs.tree", value = "eg: bs.tree xyz.openbmc_project.Network.Hypervisor")
     @ShellMethodAvailability("availabilityCheck")
-    public void tree(String service) {
+    public void tree(@ShellOption(valueProvider = BusNameProvider.class,value = { "--ser", "-s" }) String service) {
         if (!service.equals("*")) {
             currentService = service;
         }
@@ -58,7 +117,7 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.managed_objects", value = "eg: bs.managed_objects xyz.openbmc_project.Network /xyz/openbmc_project/network")
     @ShellMethodAvailability("availabilityCheck")
-    public void managed_objects(String service, String path) {
+    public void managed_objects(@ShellOption(valueProvider = BusNameProvider.class,value = { "--ser", "-s" }) String service, String path) {
         runCommand(Util.fullMachineName(machine), userName, passwd, String.format(
                 "busctl call %s %s org.freedesktop.DBus.ObjectManager GetManagedObjects --verbose", service, path));
     }
@@ -118,12 +177,12 @@ public class DbusCommnads extends CommonCommands {
         var formatwitharg = "busctl call %s %s %s %s %s %s";
         var format = "busctl call %s %s %s %s";
         String commd;
-        if (args != null){
+        if (args != null) {
 
-            var str=Arrays.stream(args.split("\\|")).map(a->"\""+a+"\" ").reduce((a,b)->a+b).orElse("");
+            var str = Arrays.stream(args.split("\\|")).map(a -> "\"" + a + "\" ").reduce((a, b) -> a + b).orElse("");
             commd = String.format(formatwitharg, service, path, iface, method, sig, str);
         }
-            
+
         else
             commd = String.format(format, service, path, iface, method);
 
@@ -210,9 +269,8 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethod(key = "bs.serial_number", value = "eg: bs.serial_number")
     @ShellMethodAvailability("availabilityCheck")
     public void serial_number() throws IOException {
-        String commd=" busctl get-property xyz.openbmc_project.Inventory.Manager /xyz/openbmc_project/inventory/system xyz.openbmc_project.Inventory.Decorator.Asset SerialNumber";
+        String commd = " busctl get-property xyz.openbmc_project.Inventory.Manager /xyz/openbmc_project/inventory/system xyz.openbmc_project.Inventory.Decorator.Asset SerialNumber";
         scmd(commd);
     }
-   
 
 }
