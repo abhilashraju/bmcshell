@@ -7,8 +7,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -46,7 +50,27 @@ public class DbusCommnads extends CommonCommands {
             if (busnames != null) {
                 String userInput = context.currentWordUpToCursor();
                 return busnames.stream()
-                        .filter(name -> name.toLowerCase().contains(userInput.toLowerCase())) // Filter based on user input
+                        .filter(name -> name.startsWith(userInput)) // Filter based on user
+                                                                                              // input
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return null;
+        }
+    }
+
+    @Component
+    public static class PathNameProvider implements ValueProvider {
+        public static HashMap<String, List<String>> pathnames=new HashMap<>();
+        public static String currentBusname;
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (pathnames != null) {
+                String userInput = context.currentWordUpToCursor();
+                return pathnames.get(currentBusname)
+                        .stream()
+                        .filter(name ->name.startsWith(userInput))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -59,8 +83,10 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.introspect", value = "eg: bs.introspect xyz.openbmc_project.Network.Hypervisor /xyz/openbmc_project/network/hypervisor/eth0/ipv4")
     @ShellMethodAvailability("availabilityCheck")
-    public void introspect(@ShellOption(value = { "--ser", "-s" }, defaultValue = "",valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "") String path) {
+    public void introspect(
+            @ShellOption(value = { "--ser",
+                    "-s" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path", "-p" }, defaultValue = "",valueProvider = PathNameProvider.class) String path) {
         if (service.equals("")) {
             service = currentService;
             System.out.println("Service is null, using previous service " + service);
@@ -74,7 +100,8 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.search", value = "eg: bs.search network")
     @ShellMethodAvailability("availabilityCheck")
-    public void search(@ShellOption(valueProvider = BusNameProvider.class,value = { "--ser", "-s" }) String service) throws JsonParseException, JsonProcessingException {
+    public void search(@ShellOption(valueProvider = BusNameProvider.class, value = { "--ser", "-s" }) String service)
+            throws JsonParseException, JsonProcessingException {
         if (BusNameProvider.busnames == null) {
             getBusNames();
         }
@@ -107,17 +134,71 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.tree", value = "eg: bs.tree xyz.openbmc_project.Network.Hypervisor")
     @ShellMethodAvailability("availabilityCheck")
-    public void tree(@ShellOption(valueProvider = BusNameProvider.class,value = { "--ser", "-s" }) String service) {
+    public void tree(@ShellOption(valueProvider = BusNameProvider.class, value = { "--ser", "-s" }) String service) {
         if (!service.equals("*")) {
             currentService = service;
+            PathNameProvider.currentBusname = service;
         }
-        runCommand(Util.fullMachineName(machine), userName, passwd,
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        redirector(outputStream, () -> {
+            try {
+                runCommandShort(Util.fullMachineName(machine), userName, passwd,
                 String.format("busctl tree %s", service.equals("*") ? "" : service));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println(outputStream);
+        if (!PathNameProvider.pathnames.containsKey(service)){
+            PathNameProvider.pathnames.put(service,convertTreeToPaths(outputStream.toString()));
+        }
     }
+
+    public static List<String> convertTreeToPaths(String treeString) {
+        List<String> paths = new ArrayList<>();
+        // Use a stack to track the current path, but a simple array works too
+        String[] pathSegments = new String[10]; // Max depth of 10, adjust if needed
+        int currentDepth = -1;
+
+        // Regular expression to find the path fragment and capture the indentation
+        // level
+        Pattern pattern = Pattern.compile("^(?:\\s*(?:[│├└]─\\s*))*(.*)$");
+
+        for (String line : treeString.split("\\R")) { // Split by any line break
+            if (line.isBlank()) {
+                continue;
+            }
+
+            Matcher matcher = pattern.matcher(line);
+            if (matcher.find()) {
+                // Calculate the depth based on indentation
+                int depth = (line.indexOf("─") / 2) - 1;
+
+                String pathSegment = matcher.group(1);
+
+                if (depth < 0) {
+                    // Handle the root node separately
+                    pathSegments[0] = pathSegment;
+                    currentDepth = 0;
+                } else {
+                    currentDepth = depth;
+                    pathSegments[currentDepth] = pathSegment;
+                }
+
+                paths.add(pathSegments[currentDepth].trim());
+            }
+        }
+
+        return paths;
+    }
+
+
 
     @ShellMethod(key = "bs.managed_objects", value = "eg: bs.managed_objects xyz.openbmc_project.Network /xyz/openbmc_project/network")
     @ShellMethodAvailability("availabilityCheck")
-    public void managed_objects(@ShellOption(valueProvider = BusNameProvider.class,value = { "--ser", "-s" }) String service, String path) {
+    public void managed_objects(
+            @ShellOption(valueProvider = BusNameProvider.class, value = { "--ser", "-s" }) String service,
+            String path) {
         runCommand(Util.fullMachineName(machine), userName, passwd, String.format(
                 "busctl call %s %s org.freedesktop.DBus.ObjectManager GetManagedObjects --verbose", service, path));
     }
