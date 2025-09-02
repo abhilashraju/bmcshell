@@ -30,6 +30,11 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.ibm.bmcshell.Introspectables.Interface;
+import com.ibm.bmcshell.Introspectables.Member;
+import com.ibm.bmcshell.Introspectables.ServiceDescription;
 import com.ibm.bmcshell.Utils.Util;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
@@ -51,7 +56,7 @@ public class DbusCommnads extends CommonCommands {
                 String userInput = context.currentWordUpToCursor();
                 return busnames.stream()
                         .filter(name -> name.startsWith(userInput)) // Filter based on user
-                                                                                              // input
+                                                                    // input
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -61,7 +66,7 @@ public class DbusCommnads extends CommonCommands {
 
     @Component
     public static class PathNameProvider implements ValueProvider {
-        public static HashMap<String, List<String>> pathnames=new HashMap<>();
+        public static HashMap<String, List<String>> pathnames = new HashMap<>();
         public static String currentBusname;
 
         @Override
@@ -70,7 +75,62 @@ public class DbusCommnads extends CommonCommands {
                 String userInput = context.currentWordUpToCursor();
                 return pathnames.get(currentBusname)
                         .stream()
-                        .filter(name ->name.startsWith(userInput))
+                        .filter(name -> name.startsWith(userInput))
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return null;
+        }
+    }
+
+    @Component
+    public static class InterfaceProvider implements ValueProvider {
+        public static HashMap<String, ServiceDescription> introspectables = new HashMap<>();
+        public static String currentInterface;
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (introspectables != null) {
+                String userInput = context.currentWordUpToCursor();
+                return introspectables.get(currentInterface).getInterfaces().stream()
+                        .filter(nm -> nm.getName().startsWith(userInput))
+                        .map(iname -> iname.getName())
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return null;
+        }
+    }
+
+    @Component
+    public static class MethodProvider implements ValueProvider {
+       
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (InterfaceProvider.introspectables != null) {
+                String userInput = context.currentWordUpToCursor();
+                return InterfaceProvider.introspectables.get(InterfaceProvider.currentInterface).getInterfaces().stream()
+                        .flatMap(iface -> iface.getMembers().stream())
+                        .filter(nm -> nm.getName().startsWith(userInput))
+                        .map(iname -> iname.getName())
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return null;
+        }
+    }
+     @Component
+    public static class SignatureProvider implements ValueProvider {
+       
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (InterfaceProvider.introspectables != null) {
+                String userInput = context.currentWordUpToCursor();
+                return InterfaceProvider.introspectables.get(InterfaceProvider.currentInterface).getInterfaces().stream()
+                        .flatMap(iface -> iface.getMembers().stream())
+                        .filter(nm->nm.getSignature()!=null)
+                        .filter(nm -> nm.getSignature().startsWith(userInput))
+                        .map(iname -> iname.getSignature())
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -86,16 +146,89 @@ public class DbusCommnads extends CommonCommands {
     public void introspect(
             @ShellOption(value = { "--ser",
                     "-s" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "",valueProvider = PathNameProvider.class) String path) {
+            @ShellOption(value = { "--path",
+                    "-p" }, defaultValue = "", valueProvider = PathNameProvider.class) String path)
+            throws Exception {
         if (service.equals("")) {
             service = currentService;
             System.out.println("Service is null, using previous service " + service);
         }
         currentService = service;
         currentPath = path;
-        runCommand(Util.fullMachineName(machine), userName, passwd,
-                String.format("busctl introspect %s %s", service, path));
+        InterfaceProvider.currentInterface = service + path;
+        final String ser = service;
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        redirector(outputStream, () -> {
+            try {
+                runCommandShort(Util.fullMachineName(machine), userName, passwd,
+                        String.format("busctl introspect --json=pretty %s %s", ser, path));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        System.out.println(outputStream.toString());
+        ObjectMapper mapper = new ObjectMapper();
+        if (!InterfaceProvider.introspectables.containsKey(InterfaceProvider.currentInterface)) {
+            ServiceDescription serviceInterfaces = mapper.readValue(convertToIntrospectJson(outputStream.toString()),
+                    ServiceDescription.class);
+            InterfaceProvider.introspectables.put(InterfaceProvider.currentInterface, serviceInterfaces);
+        }
 
+    }
+
+    public static String convertToIntrospectJson(String input) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = mapper.createObjectNode();
+        ArrayNode interfacesArray = root.putArray("interfaces");
+
+        ObjectNode currentInterface = null;
+
+        // Regex to match an interface line
+        Pattern interfacePattern = Pattern.compile("^(\\S+)\\s+interface.*");
+
+        // Regex to match a member (method, signal, property) line
+        Pattern memberPattern = Pattern
+                .compile("^\\.(\\S+)\\s+(method|signal|property)\\s+(\\S+)?\\s+(\\S+)?\\s+(.*)?");
+
+        for (String line : input.split("\\R")) {
+            if (line.isBlank() || line.startsWith("NAME")) {
+                continue;
+            }
+
+            Matcher interfaceMatcher = interfacePattern.matcher(line);
+            Matcher memberMatcher = memberPattern.matcher(line);
+
+            if (interfaceMatcher.find()) {
+                currentInterface = interfacesArray.addObject();
+                currentInterface.put("name", interfaceMatcher.group(1));
+                currentInterface.putArray("members");
+            } else if (memberMatcher.find() && currentInterface != null) {
+                ArrayNode membersArray = (ArrayNode) currentInterface.get("members");
+                ObjectNode member = membersArray.addObject();
+
+                member.put("name", memberMatcher.group(1));
+                member.put("type", memberMatcher.group(2));
+
+                String signature = memberMatcher.group(3);
+                if (signature != null && !signature.equals("-")) {
+                    member.put("signature", signature);
+                }
+
+                String value = memberMatcher.group(4);
+                if (value != null && !value.equals("-")) {
+                    member.put("result_value", value);
+                }
+
+                String flags = memberMatcher.group(5);
+                if (flags != null && !flags.isBlank() && !flags.equals("-")) {
+                    ArrayNode flagsArray = member.putArray("flags");
+                    for (String flag : flags.trim().split("\\s+")) {
+                        flagsArray.add(flag);
+                    }
+                }
+            }
+        }
+        return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
     }
 
     @ShellMethod(key = "bs.search", value = "eg: bs.search network")
@@ -143,14 +276,14 @@ public class DbusCommnads extends CommonCommands {
         redirector(outputStream, () -> {
             try {
                 runCommandShort(Util.fullMachineName(machine), userName, passwd,
-                String.format("busctl tree %s", service.equals("*") ? "" : service));
+                        String.format("busctl tree %s", service.equals("*") ? "" : service));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
         System.out.println(outputStream);
-        if (!PathNameProvider.pathnames.containsKey(service)){
-            PathNameProvider.pathnames.put(service,convertTreeToPaths(outputStream.toString()));
+        if (!PathNameProvider.pathnames.containsKey(service)) {
+            PathNameProvider.pathnames.put(service, convertTreeToPaths(outputStream.toString()));
         }
     }
 
@@ -191,8 +324,6 @@ public class DbusCommnads extends CommonCommands {
 
         return paths;
     }
-
-
 
     @ShellMethod(key = "bs.managed_objects", value = "eg: bs.managed_objects xyz.openbmc_project.Network /xyz/openbmc_project/network")
     @ShellMethodAvailability("availabilityCheck")
@@ -238,9 +369,10 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void call(@ShellOption(value = { "--ser", "-s" }, defaultValue = "") String service,
             @ShellOption(value = { "--path", "-p" }, defaultValue = "") String path,
-            @ShellOption(value = { "--iface", "-i" }, defaultValue = "") String iface,
-            @ShellOption(value = { "--method", "-m" }) String method,
-            @ShellOption(value = { "--sig", "-s" }, defaultValue = "") String sig,
+            @ShellOption(value = { "--iface",
+                    "-i" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--method", "-m" },valueProvider = MethodProvider.class) String method,
+            @ShellOption(value = { "--sig", "-s" }, defaultValue = "",valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args) {
         if (service.equals("")) {
             service = currentService;
@@ -274,20 +406,20 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.call", value = "eg: bs.call xyz.openbmc_project.ObjectMapper GetObject sas /xyz/openbmc_project/sensors/power/total_power 1 xyz.openbmc_project.Sensor.Value")
     @ShellMethodAvailability("availabilityCheck")
-    public void call(@ShellOption(value = { "--iface", "-i" }, defaultValue = "") String iface,
-            @ShellOption(value = { "--method", "-m" }) String method,
-            @ShellOption(value = { "--sig", "-s" }, defaultValue = "") String sig,
+    public void call(@ShellOption(value = { "--iface", "-i" }, defaultValue = "",valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--method", "-m" },valueProvider = MethodProvider.class) String method,
+            @ShellOption(value = { "--sig", "-s" }, defaultValue = "",valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args) {
         call(currentService, currentPath, iface, method, sig, args);
     }
 
     @ShellMethod(key = "bs.setproperty", value = "eg: bs.setproperty xyz.openbmc_project.EntityManager /xyz/openbmc_project/inventory/system/chassis/Tacoma_Rack_Controller/aggregated0 xyz.openbmc_project.Configuration.SatelliteController Hostname s Tacoma_Rack_Controller")
     @ShellMethodAvailability("availabilityCheck")
-    public void setProperty(@ShellOption(value = { "--ser", "-s" }, defaultValue = "") String service,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "") String path,
-            @ShellOption(value = { "--iface", "-i" }, defaultValue = "") String iFace,
-            @ShellOption(value = { "--property", "-pn" }) String property,
-            @ShellOption(value = { "--sig", "-si" }) String sig,
+    public void setProperty(@ShellOption(value = { "--ser", "-s" }, defaultValue = "",valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path", "-p" }, defaultValue = "",valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = { "--iface", "-i" }, defaultValue = "",valueProvider = InterfaceProvider.class) String iFace,
+            @ShellOption(value = { "--property", "-pn" },valueProvider = MethodProvider.class) String property,
+            @ShellOption(value = { "--sig", "-si" },valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args", "-a" }) String args) {
         if (service.equals("")) {
             service = currentService;
