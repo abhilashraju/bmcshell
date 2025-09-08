@@ -2,9 +2,11 @@ package com.ibm.bmcshell;
 
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -21,6 +23,7 @@ import org.springframework.shell.standard.ValueProvider;
 import org.springframework.stereotype.Component;
 
 import com.ibm.bmcshell.DbusCommnads.InterfaceProvider;
+import com.ibm.bmcshell.RemoteCommands.ServiceProvider;
 import com.ibm.bmcshell.Utils.Util;
 
 @ShellComponent
@@ -41,6 +44,8 @@ public class RemoteCommands extends CommonCommands {
             return null;
         }
     }
+
+    String currentService;
 
     protected RemoteCommands() throws IOException {
 
@@ -72,8 +77,8 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = "ro.service", value = "eg: ro.service servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service(@ShellOption(value = { "--service", "-s" }, defaultValue = "") String s) {
-        
+    void service(@ShellOption(value = { "--service", "-s" }, defaultValue = "") String s) throws IOException {
+
         if (ServiceProvider.serviceNames == null) {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             redirector(outputStream, () -> {
@@ -84,7 +89,21 @@ public class RemoteCommands extends CommonCommands {
                     throw new RuntimeException(e);
                 }
             });
+            ByteArrayOutputStream outputStream2 = new ByteArrayOutputStream();
+            redirector(outputStream2, () -> {
+                try {
+                    runCommandShort(Util.fullMachineName(machine), userName, passwd,
+                            String.format("ls -alhS /etc/systemd/system"));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+
             ServiceProvider.serviceNames = extractServiceNamesFromSysctl(outputStream.toString());
+            var filenames = parseFilenamesFromls(outputStream2.toString());
+            filenames.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
+                    .forEach(a -> ServiceProvider.serviceNames.add(a));
+
         }
 
         ServiceProvider.serviceNames.stream().filter(nm -> {
@@ -92,58 +111,96 @@ public class RemoteCommands extends CommonCommands {
                 return true;
             else
                 return nm.contains(s);
-        }).forEach(nm -> System.out.println(nm));
+        }).forEach(nm -> {System.out.println(nm);currentService=nm;});
 
     }
 
     @ShellMethod(key = "ro.service.show", value = "eg: ro.service_show servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_show(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s,
+    void service_show(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s,
             @ShellOption(value = { "--reg", "-r" }, defaultValue = ".") String reg) {
-
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl show %s |grep %s", s, reg));
 
     }
 
     @ShellMethod(key = "ro.service.status", value = "eg: ro.service_status servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_status(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_status(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl status %s", s));
     }
 
     @ShellMethod(key = "ro.service.start", value = "eg: ro.service_start servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_start(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_start(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl start %s", s));
     }
 
     @ShellMethod(key = "ro.service.stop", value = "eg: ro.service_stop servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_stop(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_stop(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl stop %s", s));
     }
 
     @ShellMethod(key = "ro.service.restart", value = "eg: ro.service_stop servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_restart(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_restart(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl restart %s", s));
     }
 
     @ShellMethod(key = "ro.service.log", value = "eg: ro.service_log servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_log(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_log(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("journalctl -u %s", s));
     }
 
     @ShellMethod(key = "ro.service.cat", value = "eg: ro.service.cat servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_cat(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_cat(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl cat %s", s));
     }
 
     @ShellMethod(key = "ro.service.enable", value = "eg: ro.service_log servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_enable(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class) String s) {
+    void service_enable(@ShellOption(value = { "--ser",
+            "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
         scmd(String.format("systemctl enable %s", s));
     }
 
@@ -222,38 +279,26 @@ public class RemoteCommands extends CommonCommands {
         return serviceNames;
     }
 
-    public static List<String> extractFilenamesFromLs(String lsOutput) {
-        List<String> fileNames = new ArrayList<>();
-        // Split the entire output into individual lines
-        String[] lines = lsOutput.split("\\r?\\n");
+    public static List<String> parseFilenamesFromls(String lsOutput) throws IOException {
+        List<String> filenames = new ArrayList<>();
 
-        // Iterate over each line
-        for (String line : lines) {
-            // Trim leading/trailing whitespace
-            line = line.trim();
-            // Skip any empty lines
-            if (line.isEmpty()) {
-                continue;
-            }
-
-            // A more robust way to handle the filename extraction is with a regex that
-            // captures everything after the timestamp or link indicator.
-            // This pattern handles standard files/directories, as well as symbolic links.
-            // It looks for a sequence of non-whitespace characters, followed by a variable
-            // number of
-            // whitespace-separated fields, and then captures the last non-whitespace group.
-            Pattern p = Pattern.compile(".*?\\s+(.*)"); // Regular expression
-            Matcher m = p.matcher(line);
-
-            if (m.matches()) {
-                String potentialFilename = m.group(1);
-                // Handle symbolic links: The filename is before the "->"
-                if (potentialFilename.contains(" -> ")) {
-                    potentialFilename = potentialFilename.substring(0, potentialFilename.indexOf(" -> "));
+        try (BufferedReader reader = new BufferedReader(new StringReader(lsOutput))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank() || line.startsWith("total")) {
+                    continue; // skip empty or "total" lines
                 }
-                fileNames.add(potentialFilename);
+
+                // Split by whitespace into at most 9 parts
+                String[] parts = line.split("\\s+", 9);
+
+                if (parts.length >= 9) {
+                    // For symlinks, keep only the part before "->"
+                    String name = parts[8].split(" -> ")[0];
+                    filenames.add(name);
+                }
             }
         }
-        return fileNames;
+        return filenames;
     }
 }

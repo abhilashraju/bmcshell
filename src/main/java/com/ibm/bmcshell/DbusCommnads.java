@@ -104,13 +104,15 @@ public class DbusCommnads extends CommonCommands {
 
     @Component
     public static class MethodProvider implements ValueProvider {
-       
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (InterfaceProvider.introspectables != null) {
                 String userInput = context.currentWordUpToCursor();
-                return InterfaceProvider.introspectables.get(InterfaceProvider.currentInterface).getInterfaces().stream()
+                return InterfaceProvider.introspectables.get(InterfaceProvider.currentInterface).getInterfaces()
+                        .stream()
                         .flatMap(iface -> iface.getMembers().stream())
+                        .filter(m -> m.getType().equals("method"))
                         .filter(nm -> nm.getName().startsWith(userInput))
                         .map(iname -> iname.getName())
                         .map(CompletionProposal::new)
@@ -119,16 +121,18 @@ public class DbusCommnads extends CommonCommands {
             return null;
         }
     }
-     @Component
+
+    @Component
     public static class SignatureProvider implements ValueProvider {
-       
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (InterfaceProvider.introspectables != null) {
                 String userInput = context.currentWordUpToCursor();
-                return InterfaceProvider.introspectables.get(InterfaceProvider.currentInterface).getInterfaces().stream()
+                return InterfaceProvider.introspectables.get(InterfaceProvider.currentInterface).getInterfaces()
+                        .stream()
                         .flatMap(iface -> iface.getMembers().stream())
-                        .filter(nm->nm.getSignature()!=null)
+                        .filter(nm -> nm.getSignature() != null)
                         .filter(nm -> nm.getSignature().startsWith(userInput))
                         .map(iname -> iname.getSignature())
                         .map(CompletionProposal::new)
@@ -168,11 +172,10 @@ public class DbusCommnads extends CommonCommands {
         });
         System.out.println(outputStream.toString());
         ObjectMapper mapper = new ObjectMapper();
-        if (!InterfaceProvider.introspectables.containsKey(InterfaceProvider.currentInterface)) {
-            ServiceDescription serviceInterfaces = mapper.readValue(convertToIntrospectJson(outputStream.toString()),
-                    ServiceDescription.class);
-            InterfaceProvider.introspectables.put(InterfaceProvider.currentInterface, serviceInterfaces);
-        }
+
+        ServiceDescription serviceInterfaces = mapper.readValue(convertToIntrospectJson(outputStream.toString()),
+                ServiceDescription.class);
+        InterfaceProvider.introspectables.put(InterfaceProvider.currentInterface, serviceInterfaces);
 
     }
 
@@ -282,9 +285,9 @@ public class DbusCommnads extends CommonCommands {
             }
         });
         System.out.println(outputStream);
-        if (!PathNameProvider.pathnames.containsKey(service)) {
-            PathNameProvider.pathnames.put(service, convertTreeToPaths(outputStream.toString()));
-        }
+
+        PathNameProvider.pathnames.put(service, convertTreeToPaths(outputStream.toString()));
+
     }
 
     public static List<String> convertTreeToPaths(String treeString) {
@@ -371,8 +374,9 @@ public class DbusCommnads extends CommonCommands {
             @ShellOption(value = { "--path", "-p" }, defaultValue = "") String path,
             @ShellOption(value = { "--iface",
                     "-i" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
-            @ShellOption(value = { "--method", "-m" },valueProvider = MethodProvider.class) String method,
-            @ShellOption(value = { "--sig", "-s" }, defaultValue = "",valueProvider = SignatureProvider.class) String sig,
+            @ShellOption(value = { "--method", "-m" }, valueProvider = MethodProvider.class) String method,
+            @ShellOption(value = { "--sig",
+                    "-s" }, defaultValue = "", valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args) {
         if (service.equals("")) {
             service = currentService;
@@ -406,20 +410,27 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.call", value = "eg: bs.call xyz.openbmc_project.ObjectMapper GetObject sas /xyz/openbmc_project/sensors/power/total_power 1 xyz.openbmc_project.Sensor.Value")
     @ShellMethodAvailability("availabilityCheck")
-    public void call(@ShellOption(value = { "--iface", "-i" }, defaultValue = "",valueProvider = InterfaceProvider.class) String iface,
-            @ShellOption(value = { "--method", "-m" },valueProvider = MethodProvider.class) String method,
-            @ShellOption(value = { "--sig", "-s" }, defaultValue = "",valueProvider = SignatureProvider.class) String sig,
+    public void call(
+            @ShellOption(value = { "--iface",
+                    "-i" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--method", "-m" }, valueProvider = MethodProvider.class) String method,
+            @ShellOption(value = { "--sig",
+                    "-s" }, defaultValue = "", valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args) {
         call(currentService, currentPath, iface, method, sig, args);
     }
 
     @ShellMethod(key = "bs.setproperty", value = "eg: bs.setproperty xyz.openbmc_project.EntityManager /xyz/openbmc_project/inventory/system/chassis/Tacoma_Rack_Controller/aggregated0 xyz.openbmc_project.Configuration.SatelliteController Hostname s Tacoma_Rack_Controller")
     @ShellMethodAvailability("availabilityCheck")
-    public void setProperty(@ShellOption(value = { "--ser", "-s" }, defaultValue = "",valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "",valueProvider = PathNameProvider.class) String path,
-            @ShellOption(value = { "--iface", "-i" }, defaultValue = "",valueProvider = InterfaceProvider.class) String iFace,
-            @ShellOption(value = { "--property", "-pn" },valueProvider = MethodProvider.class) String property,
-            @ShellOption(value = { "--sig", "-si" },valueProvider = SignatureProvider.class) String sig,
+    public void setProperty(
+            @ShellOption(value = { "--ser",
+                    "-s" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path",
+                    "-p" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = { "--iface",
+                    "-i" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iFace,
+            @ShellOption(value = { "--property", "-pn" }, valueProvider = MethodProvider.class) String property,
+            @ShellOption(value = { "--sig", "-si" }, valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args", "-a" }) String args) {
         if (service.equals("")) {
             service = currentService;

@@ -82,6 +82,23 @@ public class InstallCommands extends CommonCommands {
         System.out.println(command);
         scmd(command);
     }
+    @ShellMethod(key = "opkg.install", value = "eg: opkg.install")
+    void opkgInstall() throws InterruptedException {
+        scmd("ls /tmp/*.ipk");
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter image id from above : ");
+        String imageid = scanner.nextLine();
+        String[] paths =imageid.split("/");
+        String pkgname=paths[paths.length-1];
+        pkgname=pkgname.split("_")[0];
+
+        String command = String.format(
+                "opkg remove %s; opkg install --force-depends %s",
+                pkgname,imageid);
+        System.out.println(command);
+        scmd(command);
+        scmd(String.format("rm %s", imageid));
+    }
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
     void upload(String imagepath) {
@@ -135,21 +152,5 @@ public class InstallCommands extends CommonCommands {
         scmd(String.format("chmod 777 /tmp/%s; mv /tmp/%s %s", subpaths[subpaths.length - 1],subpaths[subpaths.length - 1],dest));
     }
 
-    @ShellMethod(key = "acfupload", value = "eg: acfupload acfpath ")
-    void acfupload(String imagepath) throws URISyntaxException {
-        try {
-            File file = new File(imagepath);
-            FileInputStream fileInputStream = new FileInputStream(file);
-            byte[] fileBytes = new byte[(int) file.length()];
-            fileInputStream.read(fileBytes);
-            fileInputStream.close();
-            String encodedString = Base64.getEncoder().encodeToString(fileBytes);
-            System.out.println("Base64 Encoded String: " + encodedString);
-            patch("AccountService/Accounts/service",
-                    String.format("{\"Oem\":{\"IBM\":{\"ACF\":{\"ACFFile\":\"%s\"}}}}", encodedString));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-    }
+    
 }
