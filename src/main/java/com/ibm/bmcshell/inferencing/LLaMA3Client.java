@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import org.apache.http.HttpHeaders;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -19,7 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class LLaMA3Client {
     private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
     private static final ObjectMapper mapper = new ObjectMapper();
-    private static String DEFAULT_MODEL = "codellama";
+    public static String DEFAULT_MODEL = "codellama";
 
     public static String complete(String question, String model) throws IOException {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
@@ -129,17 +130,9 @@ public class LLaMA3Client {
         return null;
     }
 
-    public static void listModels() {
-        System.out.println("Available models:");
-        for (String model : new LLaMA3Client().getModels()) {
+    public static List<String> listModels() {
+        return new LLaMA3Client().getModels();
 
-            if (model.contains(DEFAULT_MODEL)) {
-                System.out.print("* ");
-            } else {
-                System.out.print("  ");
-            }
-            System.out.println(model);
-        }
     }
 
     public static void pullModel(String modelName) {

@@ -1,5 +1,7 @@
 package com.ibm.bmcshell;
 
+
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -7,16 +9,46 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.stream.Collectors;
 
+import org.springframework.shell.CompletionContext;
+import org.springframework.shell.CompletionProposal;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.standard.ValueProvider;
+import org.springframework.stereotype.Component;
 
+import com.ibm.bmcshell.DbusCommnads.BusNameProvider;
 import com.ibm.bmcshell.inferencing.LLaMA3Client;
 
 @ShellComponent
 public class AiCommands extends CommonCommands {
     static boolean useContext = false;
+
+    @Component
+    public static class ModelProvider implements ValueProvider {
+        static List<String> models;
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+
+            String userInput = context.currentWordUpToCursor();
+            try {
+
+                return models
+                        .stream()
+                        .filter(name -> name.startsWith(userInput))
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            } catch (Exception e) {
+                return List.of();
+            }
+
+        }
+    }
 
     AiCommands() throws IOException, URISyntaxException {
         super();
@@ -63,8 +95,19 @@ public class AiCommands extends CommonCommands {
 
     @ShellMethod(key = "ai.ls")
     public void listModels() throws Exception {
+        if (ModelProvider.models == null) {
+            ModelProvider.models = LLaMA3Client.listModels();
+        }
+        System.out.println("Available models:");
+        for (String model : ModelProvider.models) {
 
-        LLaMA3Client.listModels();
+            if (model.contains(LLaMA3Client.DEFAULT_MODEL)) {
+                System.out.print("* ");
+            } else {
+                System.out.print("  ");
+            }
+            System.out.println(model);
+        }
 
     }
 
@@ -87,7 +130,7 @@ public class AiCommands extends CommonCommands {
 
     @ShellMethod(key = "ai.set-model")
     public void setModel(
-            @ShellOption(value = { "-m", "--model" }, help = "set model to use", defaultValue = "codellama") String m)
+            @ShellOption(value = { "-m", "--model" }, help = "set model to use", defaultValue = "codellama",valueProvider = ModelProvider.class) String m)
             throws Exception {
         LLaMA3Client.setModel(m);
         System.out.println("Model set to " + m);
