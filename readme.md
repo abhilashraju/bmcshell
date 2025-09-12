@@ -69,3 +69,39 @@ Common commands
     repeat <name save before> <no of times to execute>
 ``` 
 
+### Build instructions
+
+Prerequisites
+- JDK 21 or newer installed and JAVA_HOME set.
+- Maven (3.6+) or Gradle (6+) installed if the project uses them.
+- Git (to clone the repository) and Docker (optional, for container images).
+
+Quick steps (Maven)
+1. Clone and enter repo:
+    ```bash
+    git clone <repo-url>
+    cd <repo-root>
+    ```
+2. Build the executable JAR:
+    ```bash
+    mvn -B clean package
+    ```
+    - The artifact will appear under target/, e.g. target/bmcshell-*.jar
+
+
+
+Run locally
+- Start with default port 8443:
+  ```bash
+  java -Dserver.port=8443 -jar target/bmcshell-*.jar
+  ```
+
+Docker (optional)
+- Build image:
+  ```bash
+  docker build -t bmcshell:latest .
+  ```
+- Run container:
+  ```bash
+  docker run -p 8443:8443 --name bmcshell bmcshell:latest
+  ```
