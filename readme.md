@@ -54,37 +54,18 @@ Common commands
     ro.service.status <service name>
     
 
-Inferencing 
-- 
+- inferencing
+```ssh
+    q ask your questions
+    ai.ls to show list of available inference engines
+    ai.testcase generate test case for last redfish command executed
+```
+ 
 
-Scripting and repeatable workflows
-- Save current session commands to a script:
-    script save my-maintenance-script.bms
-- Execute a saved script:
-    script run my-maintenance-script.bms
-- Repeat a script N times or on a schedule:
-    script run --repeat 10 my-maintenance-script.bms
-    script run --interval 60 my-maintenance-script.bms  # every 60s
+- Scripting and repeatable workflows
+```ssh
+    save <name to save> <count of previous commands to save>
+    r -f <name saved before>
+    repeat <name save before> <no of times to execute>
+``` 
 
-Configuration
-- Default config file: ~/.bmcshell/config.yaml
-- Typical settings:
-    - Redfish endpoint and credentials
-    - SSH keys and known hosts handling
-    - Ollama endpoint and models
-    - Logging and timeouts
-
-Security notes
-- Store credentials securely (use OS keyring where supported)
-- Limit access to saved scripts and config files (restrict filesystem permissions)
-- Verify host keys for SSH connections and use TLS/HTTPS for Redfish endpoints when possible
-
-Contributing
-- Follow repository CONTRIBUTING.md for code style, testing, and PR process
-- Provide tests for new protocol handlers or integrations
-
-License and support
-- See LICENSE in the project root for licensing details
-- For issues and feature requests, open an issue in the project tracker
-
-This README provides a concise overview. Use bmcshell --help for full command reference and examples.
