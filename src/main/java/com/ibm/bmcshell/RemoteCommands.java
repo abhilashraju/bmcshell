@@ -203,6 +203,15 @@ public class RemoteCommands extends CommonCommands {
         currentService=s;
         scmd(String.format("systemctl enable %s", s));
     }
+    @ShellMethod(key = "ro.service.dependencies", value = "eg: ro.service.dependencies servicename")
+    @ShellMethodAvailability("availabilityCheck")
+    void service_dependencies(@ShellOption(value = { "--ser"}, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        currentService=s;
+        scmd(String.format("systemctl list-dependencies %s", s));
+    }
 
     @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
     @ShellMethodAvailability("availabilityCheck")
@@ -244,6 +253,7 @@ public class RemoteCommands extends CommonCommands {
     void ping(String ip) {
         scmd(String.format("ping -c 1 %s", ip));
     }
+
 
     public static List<String> extractServiceNamesFromSysctl(String systemctlOutput) {
         List<String> serviceNames = new ArrayList<>();
