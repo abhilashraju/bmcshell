@@ -51,4 +51,4 @@ COPY start.sh /start.sh
 RUN chmod +x /start.sh
 #RUN echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
 #CMD ollama serve & ./bmc-shell.sh ; bash
-ENTRYPOINT ["start.sh"]
+ENTRYPOINT ["/start.sh"]
