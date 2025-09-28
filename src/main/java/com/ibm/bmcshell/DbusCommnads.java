@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import com.ibm.bmcshell.Introspectables.Interface;
 import com.ibm.bmcshell.Introspectables.Member;
 import com.ibm.bmcshell.Introspectables.ServiceDescription;
@@ -41,15 +42,16 @@ import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 
 @ShellComponent
 public class DbusCommnads extends CommonCommands {
-    
 
     @Component
     public static class BusNameProvider implements ValueProvider {
         public static List<String> busnames;
         public static String currentService;
-        static String serViceName(){
+
+        static String serViceName() {
             return currentService;
         }
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (busnames != null) {
@@ -63,33 +65,37 @@ public class DbusCommnads extends CommonCommands {
             return List.of();
         }
     }
-    static String  getArg(List<String> args, String key) {
+
+    static String getArg(List<String> args, String key) {
         int index = args.indexOf(key);
         if (index != -1 && index + 1 < args.size()) {
             return args.get(index + 1);
         }
         return null;
     }
+
     @Component
     public static class PathNameProvider implements ValueProvider {
         public static HashMap<String, List<String>> pathnames = new HashMap<>();
         public static String currentPath;
-        public static String currentPathName(){
+
+        public static String currentPathName() {
             return currentPath;
         }
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (pathnames != null) {
                 String sername = getArg(context.getWords(), "--ser");
-                if(sername!=null){    
-                    BusNameProvider.currentService = sername; 
-                }     
-                var stream =pathnames.get(BusNameProvider.currentService);
+                if (sername != null) {
+                    BusNameProvider.currentService = sername;
+                }
+                var stream = pathnames.get(BusNameProvider.currentService);
                 String userInput = context.currentWordUpToCursor();
-                if(stream==null){
+                if (stream == null) {
                     return List.of(new CompletionProposal(userInput));
                 }
-                
+
                 return stream
                         .stream()
                         .filter(name -> name.startsWith(userInput))
@@ -103,19 +109,24 @@ public class DbusCommnads extends CommonCommands {
     @Component
     public static class InterfaceProvider implements ValueProvider {
         public static HashMap<String, ServiceDescription> introspectables = new HashMap<>();
-        public static List<Interface> getCurrentInterfaces(){
-            if(!introspectables.containsKey(getCurrentKey())){
+
+        public static List<Interface> getCurrentInterfaces() {
+            if (!introspectables.containsKey(getCurrentKey())) {
                 return List.of();
             }
-            return introspectables.get(getCurrentKey()).getInterfaces();    
+            return introspectables.get(getCurrentKey()).getInterfaces();
         }
+
         static String currentInterface;
-        static String getCurrentInterface(){
+
+        static String getCurrentInterface() {
             return currentInterface;
         }
-        static String getCurrentKey(){
+
+        static String getCurrentKey() {
             return BusNameProvider.currentService + PathNameProvider.currentPath;
         }
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (introspectables != null) {
@@ -142,6 +153,7 @@ public class DbusCommnads extends CommonCommands {
     @Component
     public static class MethodProvider implements ValueProvider {
         static String currentMethod;
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (InterfaceProvider.introspectables != null) {
@@ -193,6 +205,7 @@ public class DbusCommnads extends CommonCommands {
             return List.of();
         }
     }
+
     public static class PropertyProvider implements ValueProvider {
 
         @Override
@@ -215,6 +228,32 @@ public class DbusCommnads extends CommonCommands {
             }
             return List.of();
         }
+
+    }
+    @Component
+    public static class SignalValueProvider implements ValueProvider {
+        static String currentSignal;
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (InterfaceProvider.introspectables != null) {
+                var interfaceName = getArg(context.getWords(), "--iface");
+                if (interfaceName != null) {
+                    InterfaceProvider.currentInterface = interfaceName;
+                }
+                String userInput = context.currentWordUpToCursor();
+                return InterfaceProvider.getCurrentInterfaces()
+                        .stream()
+                        .filter(iface -> iface.getName().equals(InterfaceProvider.currentInterface))
+                        .flatMap(iface -> iface.getMembers().stream())
+                        .filter(m -> m.getType().equals("signal"))
+                        .filter(nm -> nm.getName().startsWith(userInput))
+                        .map(iname -> iname.getName())
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return List.of();
+        }
     }
 
     protected DbusCommnads() throws IOException {
@@ -223,10 +262,8 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethod(key = "bs.introspect", value = "eg: bs.introspect xyz.openbmc_project.Network.Hypervisor /xyz/openbmc_project/network/hypervisor/eth0/ipv4")
     @ShellMethodAvailability("availabilityCheck")
     public void introspect(
-            @ShellOption(value = { "--ser",
-                    "-s" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path",
-                    "-p" }, defaultValue = "", valueProvider = PathNameProvider.class) String path)
+            @ShellOption(value = { "--ser" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path)
             throws Exception {
         if (service.equals("")) {
             service = BusNameProvider.currentService;
@@ -321,7 +358,10 @@ public class DbusCommnads extends CommonCommands {
             getBusNames();
         }
         BusNameProvider.busnames.stream().filter(a -> a.toLowerCase().contains(service.toLowerCase()))
-                .forEach(n -> {System.out.println(n);tree(n);});
+                .forEach(n -> {
+                    System.out.println(n);
+                    tree(n);
+                });
     }
 
     @ShellMethod(key = "bs.list", value = "eg: bs.list ")
@@ -367,6 +407,7 @@ public class DbusCommnads extends CommonCommands {
         PathNameProvider.pathnames.put(service, convertTreeToPaths(outputStream.toString()));
 
     }
+
     public static List<String> convertTreeToPaths(String input) {
         List<String> result = new ArrayList<>();
         // Regex matches strings like -/path or `-/path or |-/path
@@ -378,7 +419,6 @@ public class DbusCommnads extends CommonCommands {
         }
         return result;
     }
-    
 
     @ShellMethod(key = "bs.managed_objects", value = "eg: bs.managed_objects xyz.openbmc_project.Network /xyz/openbmc_project/network")
     @ShellMethodAvailability("availabilityCheck")
@@ -422,13 +462,15 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.call", value = "eg: bs.call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas /xyz/openbmc_project/sensors/power/total_power 1 xyz.openbmc_project.Sensor.Value")
     @ShellMethodAvailability("availabilityCheck")
-    public void call(@ShellOption(value = { "--ser"}, defaultValue = "",valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path"}, defaultValue = "",valueProvider = PathNameProvider.class) String path,
-            @ShellOption(value = { "--iface",
-                    "-i" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
-            @ShellOption(value = { "--method"}, valueProvider = MethodProvider.class) String method,
-            @ShellOption(value = { "--sig"}, defaultValue = "", valueProvider = SignatureProvider.class) String sig,
-            @ShellOption(value = { "--args"}, defaultValue = "") String args) {
+    public void call(
+            @ShellOption(value = { "--ser" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = {
+                    "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--method" }, valueProvider = MethodProvider.class) String method,
+            @ShellOption(value = {
+                    "--signature" }, defaultValue = "", valueProvider = SignatureProvider.class) String sig,
+            @ShellOption(value = { "--args" }, defaultValue = "") String args) {
         if (service.equals("")) {
             service = BusNameProvider.currentService;
             System.out.println("Service is null, using previous service " + service);
@@ -461,20 +503,16 @@ public class DbusCommnads extends CommonCommands {
         scmd(commd);
     }
 
-   
-
     @ShellMethod(key = "bs.setproperty", value = "eg: bs.setproperty xyz.openbmc_project.EntityManager /xyz/openbmc_project/inventory/system/chassis/Tacoma_Rack_Controller/aggregated0 xyz.openbmc_project.Configuration.SatelliteController Hostname s Tacoma_Rack_Controller")
     @ShellMethodAvailability("availabilityCheck")
     public void setProperty(
-            @ShellOption(value = { "--ser",
-                    "-s" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path",
-                    "-p" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
-            @ShellOption(value = { "--iface",
-                    "-i" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iFace,
-            @ShellOption(value = { "--property", "-pn" }, valueProvider = MethodProvider.class) String property,
-            @ShellOption(value = { "--sig", "-si" }, valueProvider = SignatureProvider.class) String sig,
-            @ShellOption(value = { "--args", "-a" }) String args) {
+            @ShellOption(value = { "--ser" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = {
+                    "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iFace,
+            @ShellOption(value = { "--property" }, valueProvider = MethodProvider.class) String property,
+            @ShellOption(value = { "--signature" }, valueProvider = SignatureProvider.class) String sig,
+            @ShellOption(value = { "--args" }) String args) {
         if (service.equals("")) {
             service = BusNameProvider.currentService;
             System.out.println("Service is null, using previous service " + service);
@@ -512,10 +550,13 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.property", value = "eg: bs.property xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable true")
     @ShellMethodAvailability("availabilityCheck")
-    public void property(@ShellOption(value = { "--ser", "-s" }, defaultValue = "",valueProvider = BusNameProvider.class) String service,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "",valueProvider = PathNameProvider.class) String path,
-            @ShellOption(value = { "--iface", "-i" }, defaultValue = "",valueProvider = InterfaceProvider.class) String iface,
-            @ShellOption(value = { "--prop", "-pn" }, defaultValue = "",valueProvider = PropertyProvider.class) String prop) {
+    public void property(
+            @ShellOption(value = { "--ser",
+                    "-s" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
+            @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = {
+                    "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--prop" }, defaultValue = "", valueProvider = PropertyProvider.class) String prop) {
         runCommand(Util.fullMachineName(machine), userName, passwd,
                 String.format("busctl get-property %s %s %s %s %s", service, path, iface, prop, "--verbos"));
 
@@ -539,6 +580,56 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void serial_number() throws IOException {
         String commd = " busctl get-property xyz.openbmc_project.Inventory.Manager /xyz/openbmc_project/inventory/system xyz.openbmc_project.Inventory.Decorator.Asset SerialNumber";
+        scmd(commd);
+    }
+
+    @ShellMethod(key = "bs.emit_signal", value = "eg: bs.emit_signal --ser xyz.openbmc_project.Service --path /xyz/openbmc_project/path --iface xyz.openbmc_project.Interface --signal MySignal --sig s --args value1|value2")
+    @ShellMethodAvailability("availabilityCheck")
+    public void emit_signal(
+            @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = {
+                    "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--signal" }, valueProvider = SignalValueProvider.class) String signal,
+            @ShellOption(value = {
+                    "--signature" }, defaultValue = "", valueProvider = SignatureProvider.class) String sig,
+            @ShellOption(value = { "--args" }, defaultValue = "") String args) {
+
+        if (path.equals("")) {
+            path = PathNameProvider.currentPath;
+            System.out.println("Path is null, using previous path " + path);
+        }
+        if (iface.equals("")) {
+            iface = InterfaceProvider.currentInterface;
+            System.out.println("Interface is null, using default interface " + iface);
+        }
+
+        PathNameProvider.currentPath = path;
+        InterfaceProvider.currentInterface = iface;
+
+        String commd;
+        String argsPart = "";
+        if (args != null && !args.isBlank()) {
+            argsPart = Arrays.stream(args.split("\\|"))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    // .map(a -> "\"" + a.replace("\"", "\\\"") + "\"")
+                    .reduce((a, b) -> a + " " + b)
+                    .orElse("");
+        }
+
+        if (sig != null && !sig.isBlank()) {
+            commd = String.format("busctl --system emit %s %s %s %s %s", path, iface, signal, sig,
+                    argsPart);
+        } else {
+            // no signature provided
+            commd = String.format("busctl --system emit %s %s %s", path, iface, signal);
+            if (!argsPart.isBlank()) {
+                commd = commd + " " + argsPart;
+            }
+        }
+
+        commd = commd + " --verbose";
+        System.err.println("Executing: " + commd);
         scmd(commd);
     }
 
