@@ -47,5 +47,8 @@ RUN cd /root/openpower-pel-parsers ;python3 setup.py install;pip3 install .
 
 RUN cd /root/bmcshell && git pull && mvn package #run14
 RUN rm -rf /root/.ssh
-RUN echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
-CMD ollama serve & ./bmc-shell.sh ; bash
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+#RUN echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
+#CMD ollama serve & ./bmc-shell.sh ; bash
+ENTRYPOINT ["/root/start.sh"]
