@@ -200,7 +200,6 @@ public class AccountServiceCommand extends CommonCommands {
             fileInputStream.read(fileBytes);
             fileInputStream.close();
             String encodedString = Base64.getEncoder().encodeToString(fileBytes);
-            System.out.println("Base64 Encoded String: " + encodedString);
             patch("AccountService/Accounts/service",
                     String.format("{\"Oem\":{\"IBM\":{\"ACF\":{\"ACFFile\":\"%s\"}}}}", encodedString));
         } catch (IOException e) {

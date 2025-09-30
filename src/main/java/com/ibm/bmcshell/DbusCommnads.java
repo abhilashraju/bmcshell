@@ -43,6 +43,8 @@ import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 @ShellComponent
 public class DbusCommnads extends CommonCommands {
 
+    Thread busMonitorThread = null;
+
     @Component
     public static class BusNameProvider implements ValueProvider {
         public static List<String> busnames;
@@ -230,6 +232,7 @@ public class DbusCommnads extends CommonCommands {
         }
 
     }
+
     @Component
     public static class SignalValueProvider implements ValueProvider {
         static String currentSignal;
@@ -354,7 +357,7 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void search(@ShellOption(valueProvider = BusNameProvider.class, value = { "--ser", "-s" }) String service)
             throws JsonParseException, JsonProcessingException {
-        if (BusNameProvider.busnames == null) {
+        if (BusNameProvider.busnames == null || BusNameProvider.busnames.size() == 0) {
             getBusNames();
         }
         BusNameProvider.busnames.stream().filter(a -> a.toLowerCase().contains(service.toLowerCase()))
@@ -561,19 +564,75 @@ public class DbusCommnads extends CommonCommands {
                 String.format("busctl get-property %s %s %s %s %s", service, path, iface, prop, "--verbos"));
 
     }
+    @Component
+    public static class TypeValueProvider implements ValueProvider {
+     
 
-    @ShellMethod(key = "bs.monitor", value = "eg: bs.monitor output-filename")
-    @ShellMethodAvailability("availabilityCheck")
-    public void monitor(String filename) throws IOException {
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try {
-            redirector(outputStream, () -> scmd("busctl monitor"));
-        } catch (Exception e) {
-
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            if (InterfaceProvider.introspectables != null) {
+                
+                String userInput = context.currentWordUpToCursor();
+                var list = List.of("method_call","method_return","error","signal");
+                return list.stream()
+                        .filter(nm -> nm.startsWith(userInput))
+                        .map(CompletionProposal::new)
+                        .collect(Collectors.toList());
+            }
+            return List.of();
         }
-        new FileOutputStream(new File(filename)).write(outputStream.toByteArray());
-        System.out.println("Content is available in " + filename);
+    }
+    @ShellMethod(key = "bs.monitor.start", value = "eg: bs.monitor filter")
+    @ShellMethodAvailability("availabilityCheck")
+    public void monitor(@ShellOption(value = { "--type" }, defaultValue = "",valueProvider = TypeValueProvider.class) String type,
+            @ShellOption(value = { "--path" }, defaultValue = "",valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = { "--iface" }, defaultValue = "",valueProvider=InterfaceProvider.class) String iface,
+            @ShellOption(value = { "--sender" }, defaultValue = "",valueProvider = BusNameProvider.class) String sender,
+            @ShellOption(value = { "--member" }, defaultValue = "",valueProvider=SignalValueProvider.class) String member) throws IOException {
+        monitorStop(); // Stop any existing monitor thread
+        StringBuffer command = new StringBuffer();
+        command.append("busctl monitor");
+        if (type != null && !type.isBlank()) {
+            command.append(" ").append("--match=\"%s\"");
+            StringBuffer rules = new StringBuffer();
+            if (type != null && !type.isBlank()) {
+                rules.append("type='").append(type).append("'");
+            }
+            if (path != null && !path.isBlank()) {
+                rules.append(", path='").append(path).append("'");
+            }
+            if (iface != null && !iface.isBlank()) {
+                rules.append(", interface='").append(iface).append("'");
+            }
+
+            if (member != null && !member.isBlank()) {
+                rules.append(", member='").append(member).append("'");
+            }
+            if (sender != null && !sender.isBlank()) {
+                rules.append(", sender='").append(sender).append("'");
+            }
+            String monitor = String.format(command.toString(), rules.toString().trim());
+            Thread busThread = new Thread(() -> scmd(monitor));
+            busThread.setName("BusMonitorThread");
+            busThread.start();
+            // Store the thread reference for control commands
+            this.busMonitorThread = busThread;
+            return ;
+        }
+        Thread busThread = new Thread(() -> scmd(command.toString()));
+        busThread.setName("BusMonitorThread");
+        busThread.start();
+        // Store the thread reference for control commands
+        this.busMonitorThread = busThread;  
+        return;
+    }
+
+    @ShellMethod(key = "bs.monitor.stop", value = "eg: bs.monitor.stop")
+    void monitorStop() {
+        if (busMonitorThread != null && busMonitorThread.isAlive()) {
+            busMonitorThread.interrupt();
+            System.out.println("Bus Monitor thread stopped.");
+        }
     }
 
     @ShellMethod(key = "bs.serial_number", value = "eg: bs.serial_number")

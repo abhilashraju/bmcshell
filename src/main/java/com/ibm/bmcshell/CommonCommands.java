@@ -868,7 +868,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
     void journalctl(@ShellOption(value = { "--filter", "-f" }, defaultValue = "*") String filter) throws IOException {
-
+        journalctlStop(); // Stop any existing journal thread
         StringBuffer command = new StringBuffer();
         command.append("journalctl -f");
         if (!filter.equals("*")) {
@@ -887,6 +887,7 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "journal.search", value = "eg: journal.search arg ")
     void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
             @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
+        journalctlStop(); // Stop any existing journal thread
         scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
 
     }
@@ -896,9 +897,7 @@ public class CommonCommands implements ApplicationContextAware {
         if (journalThread != null && journalThread.isAlive()) {
             journalThread.interrupt();
             System.out.println("JournalCtl thread stopped.");
-        } else {
-            System.out.println("No active JournalCtl thread to stop.");
-        }
+        } 
     }
 
     @ShellMethod(key = "journal.clear", value = "eg: journal.clear")
