@@ -99,6 +99,11 @@ public class InstallCommands extends CommonCommands {
         scmd(command);
         scmd(String.format("rm %s", imageid));
     }
+    @ShellMethod(key = "opkg.copy", value = "eg: opkg.copy path_to_ipk_file")
+    void opkgCopy(String path) throws InterruptedException {
+        String fileName=path.split("/")[path.split("/").length-1];
+        scp(path, String.format("/tmp/%s",fileName));
+    }
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
     void upload(String imagepath) {
