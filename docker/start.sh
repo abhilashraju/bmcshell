@@ -20,4 +20,5 @@ fi
 echo "Executing Java application..."
 ollama serve &
 java -jar "$JAR_PATH"
+bash
 
