@@ -150,6 +150,10 @@ public class DbusCommnads extends CommonCommands {
             }
             return List.of();
         }
+
+        public static String makeKey(String service, String path) {
+            return service + path;
+        }
     }
 
     @Component
@@ -208,6 +212,7 @@ public class DbusCommnads extends CommonCommands {
         }
     }
 
+    @Component
     public static class PropertyProvider implements ValueProvider {
 
         @Override
@@ -278,23 +283,27 @@ public class DbusCommnads extends CommonCommands {
         }
         BusNameProvider.currentService = service;
         PathNameProvider.currentPath = path;
-        final String ser = service;
-        final String pth = path;
+        System.out.println(populateIntrospectables(service, path));
+
+    }
+
+    public String populateIntrospectables(String service, String path) throws Exception {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        redirector(outputStream, () -> {
-            try {
-                runCommandShort(Util.fullMachineName(machine), userName, passwd,
-                        String.format("busctl introspect --json=pretty %s %s", ser, pth));
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-        System.out.println(outputStream.toString());
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("busctl introspect --json=pretty %s %s", service, path));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        String ret = outputStream.toString();
+
         ObjectMapper mapper = new ObjectMapper();
 
-        ServiceDescription serviceInterfaces = mapper.readValue(convertToIntrospectJson(outputStream.toString()),
+        ServiceDescription serviceInterfaces = mapper.readValue(convertToIntrospectJson(ret),
                 ServiceDescription.class);
-        InterfaceProvider.introspectables.put(InterfaceProvider.getCurrentKey(), serviceInterfaces);
+        InterfaceProvider.introspectables.put(InterfaceProvider.makeKey(service, path), serviceInterfaces);
+        return ret;
 
     }
 
@@ -371,14 +380,14 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     List<String> getBusNames() throws JsonParseException, JsonProcessingException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        redirector(outputStream, () -> {
-            try {
-                runCommandShort(Util.fullMachineName(machine), userName, passwd,
-                        String.format("busctl --json=short list"));
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
+
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("busctl --json=short list"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
         ObjectMapper mapper = new ObjectMapper();
         String out = new String(outputStream.toByteArray());
         JsonNode rootNode = mapper.readTree(out);
@@ -397,18 +406,37 @@ public class DbusCommnads extends CommonCommands {
             BusNameProvider.currentService = service;
         }
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        redirector(outputStream, () -> {
+
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("busctl tree %s", service.equals("*") ? "" : service));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        System.out.println(outputStream);
+        var paths = convertTreeToPaths(outputStream.toString());
+        PathNameProvider.pathnames.put(service, paths);
+        populateInterfaceList(paths, service);
+
+    }
+
+    void populateInterfaceList(List<String> paths, String service) {
+        Thread thread = new Thread(() -> {
             try {
-                runCommandShort(Util.fullMachineName(machine), userName, passwd,
-                        String.format("busctl tree %s", service.equals("*") ? "" : service));
+                for (String path : paths) {
+                    if (!InterfaceProvider.introspectables.containsKey(InterfaceProvider.makeKey(service, path))) {
+                        populateIntrospectables(service, path);
+                    }
+                }
+
+            } catch (IOException e) {
+                e.printStackTrace();
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
-        System.out.println(outputStream);
-
-        PathNameProvider.pathnames.put(service, convertTreeToPaths(outputStream.toString()));
-
+        thread.start(); // Start the thread
     }
 
     public static List<String> convertTreeToPaths(String input) {
@@ -513,7 +541,7 @@ public class DbusCommnads extends CommonCommands {
             @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
             @ShellOption(value = {
                     "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iFace,
-            @ShellOption(value = { "--property" }, valueProvider = MethodProvider.class) String property,
+            @ShellOption(value = { "--prop" }, valueProvider = PropertyProvider.class) String property,
             @ShellOption(value = { "--signature" }, valueProvider = SignatureProvider.class) String sig,
             @ShellOption(value = { "--args" }) String args) {
         if (service.equals("")) {
@@ -560,20 +588,32 @@ public class DbusCommnads extends CommonCommands {
             @ShellOption(value = {
                     "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
             @ShellOption(value = { "--prop" }, defaultValue = "", valueProvider = PropertyProvider.class) String prop) {
+        if (service.equals("")) {
+            service = BusNameProvider.currentService;
+            System.out.println("Service is null, using previous service " + service);
+        }
+        if (path.equals("")) {
+            path = PathNameProvider.currentPath;
+            System.out.println("Path is null, using previous path " + path);
+        }
+        if (iface.equals("")) {
+            iface = InterfaceProvider.currentInterface;
+            System.out.println("Interface is null, using default interface " + iface);
+        }
         runCommand(Util.fullMachineName(machine), userName, passwd,
                 String.format("busctl get-property %s %s %s %s %s", service, path, iface, prop, "--verbos"));
 
     }
+
     @Component
     public static class TypeValueProvider implements ValueProvider {
-     
 
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (InterfaceProvider.introspectables != null) {
-                
+
                 String userInput = context.currentWordUpToCursor();
-                var list = List.of("method_call","method_return","error","signal");
+                var list = List.of("method_call", "method_return", "error", "signal");
                 return list.stream()
                         .filter(nm -> nm.startsWith(userInput))
                         .map(CompletionProposal::new)
@@ -582,13 +622,19 @@ public class DbusCommnads extends CommonCommands {
             return List.of();
         }
     }
+
     @ShellMethod(key = "bs.monitor.start", value = "eg: bs.monitor filter")
     @ShellMethodAvailability("availabilityCheck")
-    public void monitor(@ShellOption(value = { "--type" }, defaultValue = "",valueProvider = TypeValueProvider.class) String type,
-            @ShellOption(value = { "--path" }, defaultValue = "",valueProvider = PathNameProvider.class) String path,
-            @ShellOption(value = { "--iface" }, defaultValue = "",valueProvider=InterfaceProvider.class) String iface,
-            @ShellOption(value = { "--sender" }, defaultValue = "",valueProvider = BusNameProvider.class) String sender,
-            @ShellOption(value = { "--member" }, defaultValue = "",valueProvider=SignalValueProvider.class) String member) throws IOException {
+    public void monitor(
+            @ShellOption(value = { "--type" }, defaultValue = "", valueProvider = TypeValueProvider.class) String type,
+            @ShellOption(value = { "--path" }, defaultValue = "", valueProvider = PathNameProvider.class) String path,
+            @ShellOption(value = {
+                    "--iface" }, defaultValue = "", valueProvider = InterfaceProvider.class) String iface,
+            @ShellOption(value = {
+                    "--sender" }, defaultValue = "", valueProvider = BusNameProvider.class) String sender,
+            @ShellOption(value = {
+                    "--member" }, defaultValue = "", valueProvider = SignalValueProvider.class) String member)
+            throws IOException {
         monitorStop(); // Stop any existing monitor thread
         StringBuffer command = new StringBuffer();
         command.append("busctl monitor");
@@ -617,13 +663,13 @@ public class DbusCommnads extends CommonCommands {
             busThread.start();
             // Store the thread reference for control commands
             this.busMonitorThread = busThread;
-            return ;
+            return;
         }
         Thread busThread = new Thread(() -> scmd(command.toString()));
         busThread.setName("BusMonitorThread");
         busThread.start();
         // Store the thread reference for control commands
-        this.busMonitorThread = busThread;  
+        this.busMonitorThread = busThread;
         return;
     }
 

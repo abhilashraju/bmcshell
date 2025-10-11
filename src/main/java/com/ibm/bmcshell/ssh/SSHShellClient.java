@@ -149,7 +149,7 @@ public class SSHShellClient {
 
         }
     }
-    public static void runCommandShort(String host, String user, String password, String command)
+    public static void runCommandShort(ByteArrayOutputStream out,String host, String user, String password, String command)
     {
         try {
 
@@ -166,23 +166,18 @@ public class SSHShellClient {
 
             channel.setCommand(command);
 //            channel.setInputStream(System.in,true);
-            channel.setOutputStream(System.out);
-            InputStream in = channel.getInputStream();
-
+            channel.setOutputStream(out);
+             // Set error stream to a separate stream to capture errors
+            ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+            channel.setErrStream(errStream);
             channel.connect();
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
-            BufferedReader errorReader = new BufferedReader(new InputStreamReader(channel.getErrStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                System.out.println(line);
+ 
+            while (channel.isConnected()) {
+                Thread.sleep(100);
             }
-            if((line = errorReader.readLine())  != null){
+            if(errStream.size() > 0){
                 System.out.println("\nStandard Error: ");
-                System.out.println(ColorPrinter.red(line));
-                while ((line = errorReader.readLine()) != null) {
-                    System.out.println(line);
-                }
+                System.out.println(ColorPrinter.red(errStream.toString()));
             }
             channel.setInputStream(null);
             channel.disconnect();
@@ -192,4 +187,3 @@ public class SSHShellClient {
         }
     }
 }
-

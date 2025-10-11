@@ -75,35 +75,40 @@ public class RemoteCommands extends CommonCommands {
         scmd(String.format("cat %s", p));
     }
 
+    @ShellMethod(key = "ro.service.list", value = "eg: ro.service.list")
+    @ShellMethodAvailability("availabilityCheck")
+    void serviceList() throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("systemctl list-units --type=service"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        ByteArrayOutputStream outputStream2 = new ByteArrayOutputStream();
+
+        try {
+            runCommandShort(outputStream2, Util.fullMachineName(machine), userName, passwd,
+                    String.format("ls -alhS /etc/systemd/system"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        ServiceProvider.serviceNames = extractServiceNamesFromSysctl(outputStream.toString());
+        var filenames = parseFilenamesFromls(outputStream2.toString());
+        filenames.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
+                .forEach(a -> ServiceProvider.serviceNames.add(a));
+        System.out.println("Services fetched");
+    }
+
     @ShellMethod(key = "ro.service", value = "eg: ro.service servicename")
     @ShellMethodAvailability("availabilityCheck")
     void service(@ShellOption(value = { "--service", "-s" }, defaultValue = "") String s) throws IOException {
 
         if (ServiceProvider.serviceNames == null) {
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            redirector(outputStream, () -> {
-                try {
-                    runCommandShort(Util.fullMachineName(machine), userName, passwd,
-                            String.format("systemctl list-units --type=service"));
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            ByteArrayOutputStream outputStream2 = new ByteArrayOutputStream();
-            redirector(outputStream2, () -> {
-                try {
-                    runCommandShort(Util.fullMachineName(machine), userName, passwd,
-                            String.format("ls -alhS /etc/systemd/system"));
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            });
-
-            ServiceProvider.serviceNames = extractServiceNamesFromSysctl(outputStream.toString());
-            var filenames = parseFilenamesFromls(outputStream2.toString());
-            filenames.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
-                    .forEach(a -> ServiceProvider.serviceNames.add(a));
-
+            serviceList();
         }
 
         ServiceProvider.serviceNames.stream().filter(nm -> {
@@ -111,18 +116,22 @@ public class RemoteCommands extends CommonCommands {
                 return true;
             else
                 return nm.contains(s);
-        }).forEach(nm -> {System.out.println(nm);currentService=nm;});
+        }).forEach(nm -> {
+            System.out.println(nm);
+            currentService = nm;
+        });
 
     }
 
     @ShellMethod(key = "ro.service.show", value = "eg: ro.service_show servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_show(@ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s,
+    void service_show(
+            @ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s,
             @ShellOption(value = { "--reg", "-r" }, defaultValue = ".") String reg) {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl show %s |grep %s", s, reg));
 
     }
@@ -134,7 +143,7 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl status %s", s));
     }
 
@@ -145,7 +154,7 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl start %s", s));
     }
 
@@ -156,7 +165,7 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl stop %s", s));
     }
 
@@ -167,7 +176,7 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl restart %s", s));
     }
 
@@ -178,7 +187,7 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("journalctl -u %s", s));
     }
 
@@ -189,7 +198,7 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl cat %s", s));
     }
 
@@ -200,16 +209,18 @@ public class RemoteCommands extends CommonCommands {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl enable %s", s));
     }
+
     @ShellMethod(key = "ro.service.dependencies", value = "eg: ro.service.dependencies servicename")
     @ShellMethodAvailability("availabilityCheck")
-    void service_dependencies(@ShellOption(value = { "--ser"}, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
+    void service_dependencies(
+            @ShellOption(value = { "--ser" }, valueProvider = ServiceProvider.class, defaultValue = "") String s) {
         if (s == null || s.isEmpty()) {
             s = currentService;
         }
-        currentService=s;
+        currentService = s;
         scmd(String.format("systemctl list-dependencies %s", s));
     }
 
@@ -253,7 +264,6 @@ public class RemoteCommands extends CommonCommands {
     void ping(String ip) {
         scmd(String.format("ping -c 1 %s", ip));
     }
-
 
     public static List<String> extractServiceNamesFromSysctl(String systemctlOutput) {
         List<String> serviceNames = new ArrayList<>();
