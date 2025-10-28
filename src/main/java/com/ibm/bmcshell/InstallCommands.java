@@ -1,5 +1,8 @@
 package com.ibm.bmcshell;
 
+import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
+
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -9,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
+import java.util.stream.Stream;
 
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
@@ -82,52 +86,77 @@ public class InstallCommands extends CommonCommands {
         System.out.println(command);
         scmd(command);
     }
+
     @ShellMethod(key = "opkg.install", value = "eg: opkg.install")
     void opkgInstall() throws InterruptedException {
-        scmd("ls /tmp/*.ipk");
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter image id from above : ");
-        String imageid = scanner.nextLine();
-        String[] paths =imageid.split("/");
-        String pkgname=paths[paths.length-1];
-        pkgname=pkgname.split("_")[0];
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-        String command = String.format(
-                "opkg remove %s; opkg install --force-depends %s",
-                pkgname,imageid);
-        System.out.println(command);
-        scmd(command);
-        scmd(String.format("rm %s", imageid));
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("ls /tmp/*.ipk"));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        String output = outputStream.toString();
+        var lines = output.split("\n");
+        Stream.of(lines).forEach(a -> {
+            System.out.println(a);
+            a.trim();
+            String[] paths = a.split("/");
+            String pkgname = paths[paths.length - 1];
+            pkgname = pkgname.split("_")[0];
+
+            String command = String.format(
+                    "opkg remove %s; opkg install --force-depends %s",
+                    pkgname, a);
+            System.out.println(command);
+            scmd(command);
+            scmd(String.format("rm %s", a));
+        });
+        // Scanner scanner = new Scanner(System.in);
+        // System.out.print("Enter image id from above : ");
+        // String imageid = scanner.nextLine();
+        // String[] paths = imageid.split("/");
+        // String pkgname = paths[paths.length - 1];
+        // pkgname = pkgname.split("_")[0];
+
+        // String command = String.format(
+        //         "opkg remove %s; opkg install --force-depends %s",
+        //         pkgname, imageid);
+        // System.out.println(command);
+        // scmd(command);
+        // scmd(String.format("rm %s", imageid));
     }
+
     @ShellMethod(key = "opkg.copy", value = "eg: opkg.copy path_to_ipk_file")
     void opkgCopy(String path) throws InterruptedException {
-        String fileName=path.split("/")[path.split("/").length-1];
-        scp(path, String.format("/tmp/%s",fileName));
+        String fileName = path.split("/")[path.split("/").length - 1];
+        scp(path, String.format("/tmp/%s", fileName));
     }
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
     void upload(String imagepath) {
-        String url = String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/UpdateService/update",machine);
+        String url = String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/UpdateService/update", machine);
         String token = getToken();
         String filePath = imagepath; // path argument is the file to upload
         try {
             File file = new File(filePath);
             WebClient webClient = WebClient.builder()
-                .baseUrl(url)
-                .build();
+                    .baseUrl(url)
+                    .build();
 
             String response = webClient.post()
-                .uri("")
-                .header("X-Auth-Token", token)
-                .header("Content-Type", "application/octet-stream")
-                .bodyValue(Files.newInputStream(file.toPath()))
-                .retrieve()
-                .bodyToMono(String.class)
-                .doOnError(Throwable::printStackTrace)
-                .block();
+                    .uri("")
+                    .header("X-Auth-Token", token)
+                    .header("Content-Type", "application/octet-stream")
+                    .bodyValue(Files.newInputStream(file.toPath()))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .doOnError(Throwable::printStackTrace)
+                    .block();
             System.out.println("Response: " + response);
             return;
-            
+
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -135,7 +164,7 @@ public class InstallCommands extends CommonCommands {
 
     @ShellMethod(key = "scp", value = "eg: scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
     @ShellMethodAvailability("availabilityCheck")
-    void scp(String path,String dest) {
+    void scp(String path, String dest) {
         System.out.println(passwd);
         StringBuilder cmdBuilder = new StringBuilder();
 
@@ -149,13 +178,13 @@ public class InstallCommands extends CommonCommands {
         cmdBuilder.append("@");
         cmdBuilder.append(Util.fullMachineName(machine));
         cmdBuilder.append(":/tmp");
-        
+
         system(cmdBuilder.toString());
         var subpaths = dest.split("/");
         scmd(String.format("mkdir -p %s", dest.substring(0, dest.lastIndexOf('/'))));
-       
-        scmd(String.format("chmod 777 /tmp/%s; mv /tmp/%s %s", subpaths[subpaths.length - 1],subpaths[subpaths.length - 1],dest));
+
+        scmd(String.format("chmod 777 /tmp/%s; mv /tmp/%s %s", subpaths[subpaths.length - 1],
+                subpaths[subpaths.length - 1], dest));
     }
 
-    
 }
