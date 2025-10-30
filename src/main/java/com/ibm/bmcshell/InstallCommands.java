@@ -121,6 +121,7 @@ public class InstallCommands extends CommonCommands {
     void opkgCopy(@ShellOption(value = { "--path", "-p"}, defaultValue = "/",valueProvider = FileCompleter.class) String path) throws InterruptedException {
         String fileName = path.split("/")[path.split("/").length - 1];
         scp(path, String.format("/tmp/%s", fileName));
+        opkgInstall();
     }
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
