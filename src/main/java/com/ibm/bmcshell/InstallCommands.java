@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
+import org.springframework.shell.standard.ShellOption;
 
 import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.ssh.SSHShellClient;
@@ -32,7 +33,7 @@ public class InstallCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "update_version", value = "eg update_version To update version of an image")
-    public void updateImageVersion(String imagepath, String name) throws IOException {
+    public void updateImageVersion(@ShellOption(value = { "--image", "-i"}, defaultValue = "/",valueProvider = FileCompleter.class) String imagepath, String name) throws IOException {
         system(String.format("tar -xvf %s MANIFEST", imagepath));
         // Modify the MANIFEST with a valid version, ex:
         var f = new FileInputStream(new File("MANIFEST"));
@@ -99,7 +100,7 @@ public class InstallCommands extends CommonCommands {
         }
         String output = outputStream.toString();
         var lines = output.split("\n");
-        Stream.of(lines).forEach(a -> {
+        Stream.of(lines).filter(a->a.endsWith(".ipk")).forEach(a -> {
             System.out.println(a);
             a.trim();
             String[] paths = a.split("/");
@@ -113,29 +114,17 @@ public class InstallCommands extends CommonCommands {
             scmd(command);
             scmd(String.format("rm %s", a));
         });
-        // Scanner scanner = new Scanner(System.in);
-        // System.out.print("Enter image id from above : ");
-        // String imageid = scanner.nextLine();
-        // String[] paths = imageid.split("/");
-        // String pkgname = paths[paths.length - 1];
-        // pkgname = pkgname.split("_")[0];
-
-        // String command = String.format(
-        //         "opkg remove %s; opkg install --force-depends %s",
-        //         pkgname, imageid);
-        // System.out.println(command);
-        // scmd(command);
-        // scmd(String.format("rm %s", imageid));
+        
     }
 
     @ShellMethod(key = "opkg.copy", value = "eg: opkg.copy path_to_ipk_file")
-    void opkgCopy(String path) throws InterruptedException {
+    void opkgCopy(@ShellOption(value = { "--path", "-p"}, defaultValue = "/",valueProvider = FileCompleter.class) String path) throws InterruptedException {
         String fileName = path.split("/")[path.split("/").length - 1];
         scp(path, String.format("/tmp/%s", fileName));
     }
 
     @ShellMethod(key = "uploadimage", value = "eg: uploadimage imagepath . To flash images")
-    void upload(String imagepath) {
+    void upload(@ShellOption(value = { "--image", "-i"}, defaultValue = "/",valueProvider = FileCompleter.class) String imagepath) {
         String url = String.format("https://%s.aus.stglabs.ibm.com/redfish/v1/UpdateService/update", machine);
         String token = getToken();
         String filePath = imagepath; // path argument is the file to upload
@@ -164,7 +153,7 @@ public class InstallCommands extends CommonCommands {
 
     @ShellMethod(key = "scp", value = "eg: scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
     @ShellMethodAvailability("availabilityCheck")
-    void scp(String path, String dest) {
+    void scp(@ShellOption(value = { "--path", "-p"}, defaultValue = "/",valueProvider = FileCompleter.class) String path, String dest) {
         System.out.println(passwd);
         StringBuilder cmdBuilder = new StringBuilder();
 

@@ -33,7 +33,7 @@ public class CertificateCommands extends CommonCommands {
 
     @ShellMethod(key = "crt.installTrustore", value = "eg: crt.install path_to_crt_file")
     @ShellMethodAvailability("availabilityCheck")
-    public void installCertificate(String fileName,
+    public void installCertificate(@ShellOption(value = { "--cert", "-c"}, defaultValue = "/",valueProvider = FileCompleter.class) String fileName,
             @ShellOption(value = { "-f", "--format" }, defaultValue = "PEM") String type) throws Exception {
 
         String target = "/redfish/v1/Managers/bmc/Truststore/Certificates/";
@@ -42,7 +42,7 @@ public class CertificateCommands extends CommonCommands {
 
     @ShellMethod(key = "crt.installHttps", value = "List all certificates in truststore")
     @ShellMethodAvailability("availabilityCheck")
-    public void installHttpsCertificate(String fileName,
+    public void installHttpsCertificate(@ShellOption(value = { "--cert", "-c"}, defaultValue = "/",valueProvider = FileCompleter.class) String fileName,
             @ShellOption(value = { "-f", "--format" }, defaultValue = "PEM") String type) throws Exception {
         String target = "/redfish/v1/Managers/bmc/NetworkProtocol/HTTPS/Certificates/";
         installCertificate(target, fileName, type);

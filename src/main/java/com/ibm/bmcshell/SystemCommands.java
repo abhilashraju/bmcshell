@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.nio.file.StandardCopyOption;
 
 import org.springframework.shell.standard.ShellComponent;
@@ -16,13 +17,13 @@ public class SystemCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "sys.ls")
-    protected void list(@ShellOption(value = { "--args", "-a" }, defaultValue = ".") String args)
+    protected void list(@ShellOption(value = { "--dir", "-d" }, defaultValue = "./",valueProvider = FileCompleter.class) String args)
             throws IOException, InterruptedException {
         system(String.format("ls %s", args));
     }
 
     @ShellMethod(key = "sys.cat")
-    protected void cat(String file) throws IOException, InterruptedException {
+    protected void cat(@ShellOption(value = { "--file", "-f" }, defaultValue = "./",valueProvider = FileCompleter.class) String file) throws IOException, InterruptedException {
         system(String.format("cat %s", file));
     }
 
