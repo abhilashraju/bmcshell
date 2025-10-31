@@ -867,13 +867,14 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
-    void journalctl(@ShellOption(value = { "--unit", "-u" }, defaultValue = "*",valueProvider = RemoteCommands.ServiceProvider.class) String filter) throws IOException {
+    void journalctl(@ShellOption(value = { "-u" }, valueProvider = RemoteCommands.ServiceProvider.class) String[] filter) throws IOException {
         journalctlStop(); // Stop any existing journal thread
         StringBuffer command = new StringBuffer();
         command.append("journalctl -f");
-        if (!filter.equals("*")) {
-            command.append(" -u ").append(filter);
+        for(var f : filter) {
+            command.append(" -u ").append(f);
         }
+        
         Thread journalThread = new Thread(() -> scmd(command.toString()));
         journalThread.setName("JournalCtlThread");
         journalThread.start();
