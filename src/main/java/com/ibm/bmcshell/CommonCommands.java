@@ -3,6 +3,7 @@ package com.ibm.bmcshell;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -10,6 +11,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.URI;
@@ -21,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -28,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -59,6 +64,13 @@ import com.ibm.bmcshell.Utils.ZipUtils;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
 import com.ibm.bmcshell.redfish.SchemaFetcher;
 import com.ibm.bmcshell.ssh.SSHShellClient;
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.KeyPair;
+import com.jcraft.jsch.Session;
+
+import static com.ibm.bmcshell.ssh.SSHShellClient.port;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runShell;
 
@@ -90,8 +102,6 @@ public class CommonCommands implements ApplicationContextAware {
     static String lastCurlResponse;
 
     private Stack<List<Util.EndPoints>> endPoints = new Stack<>();
-
-    protected Thread journalThread;
 
     public static String getUserName() {
         return userName;
@@ -866,64 +876,7 @@ public class CommonCommands implements ApplicationContextAware {
         scmd(String.format("systemctl restart %s", service));
     }
 
-    @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
-    void journalctl(@ShellOption(value = { "-u" }, valueProvider = RemoteCommands.ServiceProvider.class) String[] filter) throws IOException {
-        journalctlStop(); // Stop any existing journal thread
-        StringBuffer command = new StringBuffer();
-        command.append("journalctl -f");
-        for(var f : filter) {
-            command.append(" -u ").append(f);
-        }
-        
-        Thread journalThread = new Thread(() -> scmd(command.toString()));
-        journalThread.setName("JournalCtlThread");
-        journalThread.start();
-
-        // Store the thread reference for control commands
-        this.journalThread = journalThread;
-        return;
-
-    }
-
-    @ShellMethod(key = "journal.search", value = "eg: journal.search arg ")
-    void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
-            @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
-        journalctlStop(); // Stop any existing journal thread
-        scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
-
-    }
-
-    @ShellMethod(key = "journal.stop", value = "eg: journal.stop")
-    void journalctlStop() {
-        if (journalThread != null && journalThread.isAlive()) {
-            journalThread.interrupt();
-            System.out.println("JournalCtl thread stopped.");
-        } 
-    }
-
-    @ShellMethod(key = "journal.clear", value = "eg: journal.clear")
-    void journalctlClear() {
-        scmd("journalctl --rotate; journalctl --vacuum-time=1s");
-    }
-
-    @ShellMethod(key = "subscribe.journal", value = "eg: subscribe.journal")
-    void subscribe_journal(String ip, String port) throws IOException {
-        try {
-            String url = String.format("https://%s:8080/subscribe", Util.fullMachineName(machine));
-            String data = String.format("https://%s:%s/journals", ip, port);
-            var response = client.post()
-                    .uri(new URI(url))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(data)
-                    .retrieve()
-                    .toEntity(String.class)
-                    .block();
-            System.out.println(response.getBody());
-        } catch (Exception e) {
-            System.err.println("Failed to subscribe: " + e.getMessage());
-        }
-
-    }
+    
 
     @ShellMethod(key = "display_session", value = "eg: display_session")
     void display_session() {
@@ -959,6 +912,107 @@ public class CommonCommands implements ApplicationContextAware {
         resetToken();
         return passwd;
     }
+    public static void setupSSHKey(String user, String host, String password) {
+        try {
+            
+            String homeDir = System.getProperty("user.home");
+            String publicKeyPath = homeDir + File.separator + ".ssh" + File.separator + "id_rsa_bmcshell.pub";
+            if(!Files.exists(Paths.get(publicKeyPath))) {
+                generateSSHKeyPair(user);
+            }
+            if(!Files.exists(Paths.get(publicKeyPath))) {
+                throw new FileNotFoundException("Public key file not found after generation attempt.");
+            }
+           
+            String publicKey = Files.readString(Paths.get(publicKeyPath), StandardCharsets.UTF_8);
+            installKeyOnRemote(user, host, password, publicKey);
+        } catch (Exception e) {
+            System.err.println("Error during SSH key setup: " + e.getMessage());
+        }
+    }
+     private static void generateSSHKeyPair(String username) throws Exception {
+        System.out.println("Generating SSH key pair locally...");
+        JSch jsch = new JSch();
+        String homeDir = System.getProperty("user.home");
+        String keyPath = homeDir + File.separator + ".ssh" + File.separator + "id_rsa_bmcshell";
+
+        KeyPair kpr = KeyPair.genKeyPair(jsch, KeyPair.RSA);
+        kpr.writePrivateKey(keyPath);
+        kpr.writePublicKey(keyPath + ".pub", username + "@localmachine");
+        kpr.dispose();
+        Set<PosixFilePermission> perms = PosixFilePermissions.fromString("rw-------");
+        Files.setPosixFilePermissions(Paths.get(keyPath), perms);
+        System.out.println("Key generation successful at: " + keyPath);
+    }
+    public static void installKeyOnRemote(String user, String host, String password, String publicKey) throws JSchException, IOException, InterruptedException {
+        System.out.println("Installing key on remote server: " + host);
+        Session session = null;
+        ChannelExec channel = null;
+
+        try {
+            JSch jsch = new JSch();
+            session = jsch.getSession(user, host, port);
+            session.setPassword(password);
+            
+            // Avoids the "The authenticity of host 'host' can't be established" message
+            session.setConfig("StrictHostKeyChecking", "no"); 
+            session.connect();
+
+            // Command to create .ssh directory and append the key to authorized_keys
+            String command = String.format("mkdir -p ~/.ssh && echo '%s' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys", publicKey.trim());
+            
+            channel = (ChannelExec) session.openChannel("exec");
+            channel.setCommand(command);
+            
+            // Redirect standard error/output to see if anything fails
+            channel.setInputStream(null);
+            channel.setErrStream(System.err);
+
+            channel.connect();
+
+            InputStream input = channel.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+            channel.setErrStream(null);
+            channel.disconnect();
+            System.out.println("Key installation completed successfully.");
+            addRemoteToSSHConfig(host+String.valueOf(port), host, user);
+            session.disconnect();
+            session= null;
+        } finally {
+            if (session != null) {
+                session.disconnect();
+            }
+        }
+    }
+    private static void addRemoteToSSHConfig(String alias, String hostname, String user) throws IOException {
+        Path sshConfigPath = Paths.get(System.getProperty("user.home"), ".ssh", "config");
+        
+        // Ensure the .ssh directory exists
+        if (!Files.exists(sshConfigPath.getParent())) {
+            Files.createDirectory(sshConfigPath.getParent());
+            // Set permissions (optional but good practice)
+            // Files.setPosixFilePermissions(sshConfigPath.getParent(), PosixFilePermissions.fromString("rwx------"));
+        }
+
+        // Check if the host already exists in the config (simple check)
+        if (Files.exists(sshConfigPath) && Files.readString(sshConfigPath).contains("Host " + alias)) {
+            System.out.println("Host alias '" + alias + "' already exists in config. Skipping.");
+            return;
+        }
+
+        String configEntry = String.format("\nHost %s\n  HostName %s\n  Port %s\n  User %s\n  IdentityFile ~/.ssh/id_rsa_bmcshell\n",
+                                           alias, hostname, port,user);
+
+        // Append the new entry to the file, creating it if it doesn't exist
+        Files.write(sshConfigPath, configEntry.getBytes(), 
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        
+        System.out.println("Added new entry to ~/.ssh/config for alias: " + alias);
+    }
 
     @ShellMethod(key = "ssh", value = "eg: ssh . You can ssh in to the machine")
     @ShellMethodAvailability("availabilityCheck")
@@ -967,7 +1021,11 @@ public class CommonCommands implements ApplicationContextAware {
         System.out.println("Exited Shell");
         displayCurrent();
     }
-
+    @ShellMethod(key = "sshkeysetup", value = "eg: sshkeysetup . Sets up ssh key based authentication")
+    @ShellMethodAvailability("availabilityCheck")
+    void sshkeysetup() {
+        setupSSHKey(userName, Util.fullMachineName(machine), passwd);
+    }
     @ShellMethod(key = "scmd", value = "eg: scmd 'ls /tmp/' .The specified command will be executed in machine with super user privilege")
     @ShellMethodAvailability("availabilityCheck")
     public void scmd(String command) {

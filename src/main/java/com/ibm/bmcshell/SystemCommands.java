@@ -23,7 +23,7 @@ public class SystemCommands extends CommonCommands {
     }
 
     @ShellMethod(key = "sys.cat")
-    protected void cat(@ShellOption(value = { "--file", "-f" }, defaultValue = "./",valueProvider = FileCompleter.class) String file) throws IOException, InterruptedException {
+    protected void cat(@ShellOption(value = { "-f" }, defaultValue = "./",valueProvider = FileCompleter.class) String file) throws IOException, InterruptedException {
         system(String.format("cat %s", file));
     }
 

@@ -30,7 +30,7 @@ import com.ibm.bmcshell.Utils.Util;
 public class RemoteCommands extends CommonCommands {
     @Component
     public static class ServiceProvider implements ValueProvider {
-        public static List<String> serviceNames;
+        public static List<String> serviceNames= new ArrayList<>();
 
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
@@ -107,7 +107,7 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     void service(@ShellOption(value = { "--service", "-s" }, defaultValue = "") String s) throws IOException {
 
-        if (ServiceProvider.serviceNames == null) {
+        if (ServiceProvider.serviceNames.isEmpty()) {
             serviceList();
         }
 
