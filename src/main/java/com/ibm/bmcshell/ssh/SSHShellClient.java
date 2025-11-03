@@ -22,6 +22,22 @@ public class SSHShellClient {
 
     }
     public static int port=22;
+    public static JSch jsch = new JSch();
+    public static Session session;
+    static Session getSession(String host, String user, String password,int port){
+        if(session == null || !session.isConnected()){
+            try {
+            session = jsch.getSession(user, host, port);
+            session.setPassword(password);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+            }catch (Exception e){
+                e.printStackTrace();
+                return null;
+            }
+        }
+        return session;
+    }
     public static void runShell(String host,String user,String password){
 
         runShell(host,user,password,port);
@@ -47,15 +63,9 @@ public class SSHShellClient {
     {
         try{
 
-                JSch jsch = new JSch();
+               
 
-
-
-
-                Session session = jsch.getSession(user, host, port);
-                session.setPassword(password);
-                session.setConfig("StrictHostKeyChecking", "no");
-                session.connect();
+                Session session = getSession(host, user, password, port);
                 Channel channel = session.openChannel("shell");
                 channel.setInputStream(System.in,true);
                 channel.setOutputStream(System.out,true);
@@ -65,7 +75,6 @@ public class SSHShellClient {
                     Thread.sleep(1000);
                 }
                 channel.disconnect();
-                session.disconnect();
             } catch (Exception e) {
                 e.printStackTrace();
 
@@ -77,14 +86,9 @@ public class SSHShellClient {
     {
         try {
 
-            JSch jsch = new JSch();
-//            jsch.setConfig("kex", "hmac-sha2-256");
+  
 
-
-            Session session = jsch.getSession(user, host, port);
-            session.setPassword(password);
-            session.setConfig("StrictHostKeyChecking", "no");
-            session.connect();
+            Session session = getSession(host, user, password, port);
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
 
 
@@ -102,7 +106,6 @@ public class SSHShellClient {
             }
             channel.setInputStream(null);
             channel.disconnect();
-            session.disconnect();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -111,14 +114,7 @@ public class SSHShellClient {
     {
         try {
 
-            JSch jsch = new JSch();
-//            jsch.setConfig("kex", "hmac-sha2-256");
-
-
-            Session session = jsch.getSession(user, host, port);
-            session.setPassword(password);
-            session.setConfig("StrictHostKeyChecking", "no");
-            session.connect();
+            Session session = getSession(host, user, password, port);
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
 
 
@@ -144,7 +140,6 @@ public class SSHShellClient {
             }
             channel.setInputStream(null);
             channel.disconnect();
-            session.disconnect();
         } catch (Exception e) {
 
         }
@@ -153,14 +148,11 @@ public class SSHShellClient {
     {
         try {
 
-            JSch jsch = new JSch();
+            
 //            jsch.setConfig("kex", "hmac-sha2-256");
 
-
-            Session session = jsch.getSession(user, host, port);
-            session.setPassword(password);
-            session.setConfig("StrictHostKeyChecking", "no");
-            session.connect();
+            Session session = getSession(host, user, password,port);
+           
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
 
 
@@ -181,7 +173,6 @@ public class SSHShellClient {
             }
             channel.setInputStream(null);
             channel.disconnect();
-            session.disconnect();
         } catch (Exception e) {
 
         }
