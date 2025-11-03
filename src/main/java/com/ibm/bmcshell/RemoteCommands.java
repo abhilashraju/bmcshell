@@ -228,7 +228,7 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     void findFile(String filename,
             @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
-        scmd(String.format("find %s -iname %s", path, filename));
+        scmd(String.format("find %s -iname *%s*", path, filename));
     }
 
     @ShellMethod(key = "ro.grep", value = "eg: ro.grep pattern [<path>]")

@@ -25,6 +25,7 @@ public class SSHShellClient {
     public static JSch jsch = new JSch();
     public static Session session;
     static Session getSession(String host, String user, String password,int port){
+        
         if(session == null || !session.isConnected()){
             try {
             session = jsch.getSession(user, host, port);
@@ -176,5 +177,17 @@ public class SSHShellClient {
         } catch (Exception e) {
 
         }
+    }
+    public static void setPort(int port2) {
+        if(port2 > 0 && port2 != port) {
+            port = port2;
+            clearSession();
+        }
+    }
+    public static void clearSession() {
+         if(session != null && session.isConnected()){
+                session.disconnect();
+        }
+        session = null;
     }
 }

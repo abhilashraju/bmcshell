@@ -550,6 +550,7 @@ public class CommonCommands implements ApplicationContextAware {
         machine = m;
         getToken();
         serialise();
+        SSHShellClient.clearSession();
         Util.addToMachineList(machine);
         return machine;
     }
@@ -899,7 +900,7 @@ public class CommonCommands implements ApplicationContextAware {
         userName = u;
         serialise();
         resetToken();
-
+        SSHShellClient.clearSession();
     }
 
     @ShellMethod(key = "password")
@@ -1055,9 +1056,11 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "sshport", value = "eg sshport portnumber .Set default port for ssh")
     @ShellMethodAvailability("availabilityCheck")
     int sshport(@ShellOption(value = { "--port", "-p" }, defaultValue = "-1") int port) throws IOException {
-        if (port > 0) {
-            SSHShellClient.port = port;
+        if (port > 0 ) {
+            SSHShellClient.setPort(port);
             serialise();
+            
+
         }
         return SSHShellClient.port;
     }
