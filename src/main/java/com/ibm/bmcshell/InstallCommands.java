@@ -108,7 +108,7 @@ public class InstallCommands extends CommonCommands {
             pkgname = pkgname.split("_")[0];
 
             String command = String.format(
-                    "opkg remove %s; opkg install --force-depends %s",
+                    "opkg remove --force-remove %s;opkg install --force-reinstall --force-depends %s",
                     pkgname, a);
             System.out.println(command);
             scmd(command);
