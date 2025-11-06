@@ -30,7 +30,7 @@ import com.ibm.bmcshell.Utils.Util;
 public class RemoteCommands extends CommonCommands {
     @Component
     public static class ServiceProvider implements ValueProvider {
-        public static List<String> serviceNames= new ArrayList<>();
+        public static List<String> serviceNames = new ArrayList<>();
 
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
@@ -83,24 +83,26 @@ public class RemoteCommands extends CommonCommands {
         try {
             runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
                     String.format("systemctl list-units --type=service"));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
 
-        ByteArrayOutputStream outputStream2 = new ByteArrayOutputStream();
+            ByteArrayOutputStream outputStream2 = new ByteArrayOutputStream();
 
-        try {
             runCommandShort(outputStream2, Util.fullMachineName(machine), userName, passwd,
                     String.format("ls -alhS /etc/systemd/system"));
+            ByteArrayOutputStream outputStream3 = new ByteArrayOutputStream();
+            runCommandShort(outputStream3, Util.fullMachineName(machine), userName, passwd,
+                    String.format("ls -alhS /usr/lib/systemd/system"));
+
+            ServiceProvider.serviceNames = extractServiceNamesFromSysctl(outputStream.toString());
+            var filenames = parseFilenamesFromls(outputStream2.toString());
+            filenames.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
+                    .forEach(a -> ServiceProvider.serviceNames.add(a));
+            var filenames2 = parseFilenamesFromls(outputStream3.toString());
+            filenames2.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
+                    .forEach(a -> ServiceProvider.serviceNames.add(a));
+            System.out.println("Services fetched");
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-
-        ServiceProvider.serviceNames = extractServiceNamesFromSysctl(outputStream.toString());
-        var filenames = parseFilenamesFromls(outputStream2.toString());
-        filenames.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
-                .forEach(a -> ServiceProvider.serviceNames.add(a));
-        System.out.println("Services fetched");
     }
 
     @ShellMethod(key = "ro.service", value = "eg: ro.service servicename")
