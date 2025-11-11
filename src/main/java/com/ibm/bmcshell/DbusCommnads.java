@@ -457,7 +457,7 @@ public class DbusCommnads extends CommonCommands {
             @ShellOption(valueProvider = BusNameProvider.class, value = { "--ser", "-s" }) String service,
             String path) {
         runCommand(Util.fullMachineName(machine), userName, passwd, String.format(
-                "busctl call %s %s org.freedesktop.DBus.ObjectManager GetManagedObjects --verbose", service, path));
+                "busctl --json=pretty call %s %s org.freedesktop.DBus.ObjectManager GetManagedObjects --verbose", service, path));
     }
 
     @ShellMethod(key = "bs.subtree", value = "eg: bs.subtree /xyz/openbmc_project/inventory 0 xyz.openbmc_project.Inventory.Item.Cable")
@@ -476,18 +476,19 @@ public class DbusCommnads extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void GetAssociatedSubTreePaths(String obj, int depth, String iface) {
         execMapperCall(iface, "GetAssociatedSubTreePaths", obj, depth, "ooias");
+          
     }
 
     @ShellMethod(key = "bs.object", value = "eg: bs.object /xyz/openbmc_project/sensors/power/total_power xyz.openbmc_project.Sensor.Value")
     @ShellMethodAvailability("availabilityCheck")
     public void getObject(String obj, String iface) {
-        var format = "busctl call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas %s %d";
+        var format = "busctl --json=pretty call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas %s %d";
         var infaces = iface.split(",");
         var commd = String.format(format, obj, infaces.length);
         for (var iF : infaces) {
             commd = commd + " " + iF;
         }
-        commd = commd + " --verbose";
+        commd = commd;
         scmd(commd);
     }
 
@@ -518,7 +519,7 @@ public class DbusCommnads extends CommonCommands {
         PathNameProvider.currentPath = path;
         InterfaceProvider.currentInterface = iface;
         var formatwitharg = "busctl call %s %s %s %s %s %s";
-        var format = "busctl call %s %s %s %s";
+        var format = "busctl --json=pretty call %s %s %s %s";
         String commd;
         if (args != null) {
 
@@ -568,15 +569,24 @@ public class DbusCommnads extends CommonCommands {
 
     }
 
-    private void execMapperCall(String iface, String method, String obj, int depth, String argformat) {
-        var format = "busctl call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper %s %s %s %d %d";
+    private String execMapperCall(String iface, String method, String obj, int depth, String argformat) {
+        var format = "sudo -i busctl --json=pretty call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper %s %s %s %d %d";
         var infaces = iface.split(",");
         var commd = String.format(format, method, argformat, obj, depth, infaces.length);
         for (var iF : infaces) {
             commd = commd + " " + iF;
         }
         commd = commd + " --verbose";
-        scmd(commd);
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    commd);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println(outputStream);
+        return outputStream.toString();
     }
 
     @ShellMethod(key = "bs.property", value = "eg: bs.property xyz.openbmc_project.BIOSConfigManager /xyz/openbmc_project/bios_config/manager xyz.openbmc_project.BIOSConfig.Manager BaseBIOSTable true")
