@@ -1,20 +1,23 @@
 package com.ibm.bmcshell;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import org.springframework.shell.CompletionContext;
@@ -32,9 +35,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import com.ibm.bmcshell.Introspectables.Interface;
-import com.ibm.bmcshell.Introspectables.Member;
 import com.ibm.bmcshell.Introspectables.ServiceDescription;
 import com.ibm.bmcshell.Utils.Util;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommand;
@@ -44,6 +45,42 @@ import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 public class DbusCommnads extends CommonCommands {
 
     Thread busMonitorThread = null;
+    
+    // Data structures for capturing bus communications
+    private static class BusMessage {
+        String timestamp;
+        String type;
+        String sender;
+        String destination;
+        String path;
+        String iface;
+        String member;
+        String signature;
+        String body;
+        
+        public BusMessage(String timestamp, String type, String sender, String destination,
+                         String path, String iface, String member, String signature, String body) {
+            this.timestamp = timestamp;
+            this.type = type;
+            this.sender = sender;
+            this.destination = destination;
+            this.path = path;
+            this.iface = iface;
+            this.member = member;
+            this.signature = signature;
+            this.body = body;
+        }
+        
+        @Override
+        public String toString() {
+            return String.format("[%s] %s: %s -> %s | %s.%s(%s)",
+                timestamp, type, sender, destination, iface, member, signature);
+        }
+    }
+    
+    private Queue<BusMessage> capturedMessages = new LinkedList<>();
+    private volatile boolean isCapturing = false;
+    private int maxCapturedMessages = 1000; // Limit to prevent memory issues
 
     @Component
     public static class BusNameProvider implements ValueProvider {
@@ -367,7 +404,7 @@ public class DbusCommnads extends CommonCommands {
     public void search(@ShellOption(valueProvider = BusNameProvider.class, value = { "--ser", "-s" }) String service)
             throws JsonParseException, JsonProcessingException {
         if (BusNameProvider.busnames == null || BusNameProvider.busnames.size() == 0) {
-            getBusNames();
+            getBusNames(false);
         }
         BusNameProvider.busnames.stream().filter(a -> a.toLowerCase().contains(service.toLowerCase()))
                 .forEach(n -> {
@@ -378,7 +415,7 @@ public class DbusCommnads extends CommonCommands {
 
     @ShellMethod(key = "bs.list", value = "eg: bs.list ")
     @ShellMethodAvailability("availabilityCheck")
-    List<String> getBusNames() throws JsonParseException, JsonProcessingException {
+    List<String> getBusNames(@ShellOption(defaultValue = "true") boolean displayMode) throws JsonParseException, JsonProcessingException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
         try {
@@ -391,11 +428,40 @@ public class DbusCommnads extends CommonCommands {
         ObjectMapper mapper = new ObjectMapper();
         String out = new String(outputStream.toByteArray());
         JsonNode rootNode = mapper.readTree(out);
-        BusNameProvider.busnames = StreamSupport.stream(rootNode.spliterator(), false)
-                .filter(JsonNode::isObject) // Filter out any non-object nodes
-                .filter(busNode -> busNode.has("name")) // Ensure the "name" field exists
-                .map(busNode -> busNode.get("name").asText()) // Extract the "name" as a String
-                .collect(Collectors.toList()); // Collect the results into a List<String>
+        
+        // Parse all bus service details
+        List<JsonNode> busServices = StreamSupport.stream(rootNode.spliterator(), false)
+                .filter(JsonNode::isObject)
+                .collect(Collectors.toList());
+        
+        // Extract names for the provider
+        BusNameProvider.busnames = busServices.stream()
+                .filter(busNode -> busNode.has("name"))
+                .map(busNode -> busNode.get("name").asText())
+                .collect(Collectors.toList());
+        
+        // Display details in tabular format if displayMode is true
+        if (displayMode) {
+            System.out.println("\n" + "=".repeat(120));
+            System.out.printf("%-50s %-15s %-15s %-15s %-20s%n",
+                "NAME", "PID", "PROCESS", "USER", "CONNECTION");
+            System.out.println("=".repeat(120));
+            
+            for (JsonNode busNode : busServices) {
+                String name = busNode.has("name") ? busNode.get("name").asText() : "";
+                String pid = busNode.has("pid") ? busNode.get("pid").asText() : "-";
+                String process = busNode.has("process") ? busNode.get("process").asText() : "-";
+                String user = busNode.has("user") ? busNode.get("user").asText() : "-";
+                String connection = busNode.has("connection") ? busNode.get("connection").asText() : "-";
+                
+                System.out.printf("%-50s %-15s %-15s %-15s %-20s%n",
+                    name, pid, process, user, connection);
+            }
+            System.out.println("=".repeat(120));
+            System.out.println("Total services: " + busServices.size() + "\n");
+            return null;
+        }
+        
         return BusNameProvider.busnames;
     }
 
@@ -492,7 +558,7 @@ public class DbusCommnads extends CommonCommands {
         scmd(commd);
     }
 
-    @ShellMethod(key = "bs.call", value = "eg: bs.call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas /xyz/openbmc_project/sensors/power/total_power 1 xyz.openbmc_project.Sensor.Value")
+    @ShellMethod(key = "bs.call", value = "eg: bs.call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas \"3 1 2 3 test123 0\"")
     @ShellMethodAvailability("availabilityCheck")
     public void call(
             @ShellOption(value = { "--ser" }, defaultValue = "", valueProvider = BusNameProvider.class) String service,
@@ -502,7 +568,7 @@ public class DbusCommnads extends CommonCommands {
             @ShellOption(value = { "--method" }, valueProvider = MethodProvider.class) String method,
             @ShellOption(value = {
                     "--signature" }, defaultValue = "", valueProvider = SignatureProvider.class) String sig,
-            @ShellOption(value = { "--args" }, defaultValue = "") String args) {
+            @ShellOption(defaultValue = "") String args) {
         if (service.equals("")) {
             service = BusNameProvider.currentService;
             System.out.println("Service is null, using previous service " + service);
@@ -518,15 +584,38 @@ public class DbusCommnads extends CommonCommands {
         BusNameProvider.currentService = service;
         PathNameProvider.currentPath = path;
         InterfaceProvider.currentInterface = iface;
+        
         var formatwitharg = "busctl call %s %s %s %s %s %s";
         var format = "busctl --json=pretty call %s %s %s %s";
         String commd;
-        if (args != null) {
-
-            var str = Arrays.stream(args.split("\\|")).map(a -> "\"" + a + "\" ").reduce((a, b) -> a + b).orElse("");
-            commd = String.format(formatwitharg, service, path, iface, method, sig, str);
+        
+        // Check if args were provided
+        boolean hasArgs = args != null && !args.isEmpty();
+        
+        if (hasArgs) {
+            // Split args by space, but preserve quoted strings
+            List<String> argList = new ArrayList<>();
+            Pattern pattern = Pattern.compile("\"([^\"]*)\"|\\S+");
+            Matcher matcher = pattern.matcher(args);
+            while (matcher.find()) {
+                if (matcher.group(1) != null) {
+                    // Quoted string - keep the quotes
+                    argList.add("\"" + matcher.group(1) + "\"");
+                } else {
+                    // Unquoted token
+                    String token = matcher.group();
+                    // If it's a number, keep as-is; otherwise quote it
+                    if (token.matches("-?\\d+(\\.\\d+)?")) {
+                        argList.add(token);
+                    } else {
+                        argList.add("\"" + token + "\"");
+                    }
+                }
+            }
+            
+            String processedArgs = String.join(" ", argList);
+            commd = String.format(formatwitharg, service, path, iface, method, sig, processedArgs);
         }
-
         else
             commd = String.format(format, service, path, iface, method);
 
@@ -632,8 +721,193 @@ public class DbusCommnads extends CommonCommands {
             return List.of();
         }
     }
+    
+    // Parse busctl monitor output line and extract message information
+    private BusMessage parseBusMessage(String line) {
+        try {
+            // Example busctl monitor output format:
+            // ‣ Type=signal  Endian=l  Flags=1  Version=1  Priority=0 Cookie=123
+            //   Sender=:1.23  Destination=n/a  Path=/xyz/openbmc_project/sensors/temperature/CPU
+            //   Interface=org.freedesktop.DBus.Properties  Member=PropertiesChanged
+            //   UniqueName=:1.23
+            
+            if (line.trim().startsWith("‣") || line.trim().startsWith("Type=")) {
+                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
+                String type = extractValue(line, "Type=");
+                String sender = "";
+                String destination = "";
+                String path = "";
+                String iface = "";
+                String member = "";
+                String signature = "";
+                String body = "";
+                
+                return new BusMessage(timestamp, type, sender, destination, path, iface, member, signature, body);
+            } else if (line.trim().startsWith("Sender=")) {
+                // This is a continuation line with more details
+                return null; // Will be handled by accumulating lines
+            }
+        } catch (Exception e) {
+            // Ignore parse errors
+        }
+        return null;
+    }
+    
+    private String extractValue(String line, String key) {
+        int start = line.indexOf(key);
+        if (start == -1) return "";
+        start += key.length();
+        int end = line.indexOf(" ", start);
+        if (end == -1) end = line.length();
+        return line.substring(start, end).trim();
+    }
+    
+    // Parse complete busctl monitor message from multiple lines
+    private BusMessage parseCompleteBusMessage(List<String> lines) {
+        if (lines.isEmpty()) return null;
+        
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"));
+        String type = "";
+        String sender = "";
+        String destination = "";
+        String path = "";
+        String iface = "";
+        String member = "";
+        String signature = "";
+        String body = "";
+        
+        for (String line : lines) {
+            if (line.contains("Type=")) type = extractValue(line, "Type=");
+            if (line.contains("Sender=")) sender = extractValue(line, "Sender=");
+            if (line.contains("Destination=")) destination = extractValue(line, "Destination=");
+            if (line.contains("Path=")) path = extractValue(line, "Path=");
+            if (line.contains("Interface=")) iface = extractValue(line, "Interface=");
+            if (line.contains("Member=")) member = extractValue(line, "Member=");
+            if (line.contains("Signature=")) signature = extractValue(line, "Signature=");
+        }
+        
+        return new BusMessage(timestamp, type, sender, destination, path, iface, member, signature, body);
+    }
+    
+    // Generate ASCII sequence diagram from captured messages
+    private String generateSequenceDiagram() {
+        if (capturedMessages.isEmpty()) {
+            return "No messages captured yet.";
+        }
+        
+        StringBuilder diagram = new StringBuilder();
+        diagram.append("\n╔════════════════════════════════════════════════════════════════════════════════╗\n");
+        diagram.append("║                    D-Bus Communication Sequence Diagram                        ║\n");
+        diagram.append("╚════════════════════════════════════════════════════════════════════════════════╝\n\n");
+        
+        // Collect unique services
+        Map<String, Integer> servicePositions = new LinkedHashMap<>();
+        int position = 0;
+        for (BusMessage msg : capturedMessages) {
+            if (!msg.sender.isEmpty() && !servicePositions.containsKey(msg.sender)) {
+                servicePositions.put(msg.sender, position++);
+            }
+            if (!msg.destination.isEmpty() && !msg.destination.equals("n/a") &&
+                !servicePositions.containsKey(msg.destination)) {
+                servicePositions.put(msg.destination, position++);
+            }
+        }
+        
+        // Draw service headers
+        diagram.append("Services:\n");
+        for (Map.Entry<String, Integer> entry : servicePositions.entrySet()) {
+            diagram.append(String.format("  [%d] %s\n", entry.getValue(),
+                entry.getKey().length() > 40 ? entry.getKey().substring(0, 37) + "..." : entry.getKey()));
+        }
+        diagram.append("\n");
+        
+        // Draw messages
+        diagram.append("Timeline:\n");
+        diagram.append("─".repeat(80)).append("\n");
+        
+        int msgCount = 0;
+        for (BusMessage msg : capturedMessages) {
+            if (++msgCount > 50) { // Limit display
+                diagram.append("... (").append(capturedMessages.size() - 50).append(" more messages)\n");
+                break;
+            }
+            
+            String senderLabel = servicePositions.containsKey(msg.sender) ?
+                "[" + servicePositions.get(msg.sender) + "]" : msg.sender;
+            String destLabel = servicePositions.containsKey(msg.destination) ?
+                "[" + servicePositions.get(msg.destination) + "]" : msg.destination;
+            
+            String arrow = msg.type.equals("signal") ? "~~>" : "--->";
+            String methodInfo = msg.member.isEmpty() ? "" : "." + msg.member + "()";
+            
+            diagram.append(String.format("[%s] %s %s %s : %s%s\n",
+                msg.timestamp,
+                senderLabel,
+                arrow,
+                destLabel,
+                msg.iface.isEmpty() ? msg.type : msg.iface,
+                methodInfo
+            ));
+        }
+        
+        diagram.append("─".repeat(80)).append("\n");
+        diagram.append(String.format("\nTotal messages captured: %d\n", capturedMessages.size()));
+        
+        return diagram.toString();
+    }
+    
+    // Generate statistics from captured messages
+    private String generateStatistics() {
+        if (capturedMessages.isEmpty()) {
+            return "No messages captured yet.";
+        }
+        
+        Map<String, Integer> typeCount = new HashMap<>();
+        Map<String, Integer> interfaceCount = new HashMap<>();
+        Map<String, Integer> senderCount = new HashMap<>();
+        
+        for (BusMessage msg : capturedMessages) {
+            typeCount.put(msg.type, typeCount.getOrDefault(msg.type, 0) + 1);
+            if (!msg.iface.isEmpty()) {
+                interfaceCount.put(msg.iface, interfaceCount.getOrDefault(msg.iface, 0) + 1);
+            }
+            if (!msg.sender.isEmpty()) {
+                senderCount.put(msg.sender, senderCount.getOrDefault(msg.sender, 0) + 1);
+            }
+        }
+        
+        StringBuilder stats = new StringBuilder();
+        stats.append("\n╔════════════════════════════════════════════════════════════════════════════════╗\n");
+        stats.append("║                         D-Bus Communication Statistics                         ║\n");
+        stats.append("╚════════════════════════════════════════════════════════════════════════════════╝\n\n");
+        
+        stats.append("Message Types:\n");
+        typeCount.entrySet().stream()
+            .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+            .forEach(e -> stats.append(String.format("  %-20s : %d\n", e.getKey(), e.getValue())));
+        
+        stats.append("\nTop Interfaces:\n");
+        interfaceCount.entrySet().stream()
+            .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+            .limit(10)
+            .forEach(e -> stats.append(String.format("  %-50s : %d\n",
+                e.getKey().length() > 50 ? e.getKey().substring(0, 47) + "..." : e.getKey(),
+                e.getValue())));
+        
+        stats.append("\nTop Senders:\n");
+        senderCount.entrySet().stream()
+            .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+            .limit(10)
+            .forEach(e -> stats.append(String.format("  %-50s : %d\n",
+                e.getKey().length() > 50 ? e.getKey().substring(0, 47) + "..." : e.getKey(),
+                e.getValue())));
+        
+        stats.append(String.format("\nTotal messages: %d\n", capturedMessages.size()));
+        
+        return stats.toString();
+    }
 
-    @ShellMethod(key = "bs.monitor.start", value = "eg: bs.monitor filter")
+    @ShellMethod(key = "bs.monitor.start", value = "eg: bs.monitor.start --type signal --capture true")
     @ShellMethodAvailability("availabilityCheck")
     public void monitor(
             @ShellOption(value = { "--type" }, defaultValue = "", valueProvider = TypeValueProvider.class) String type,
@@ -643,9 +917,22 @@ public class DbusCommnads extends CommonCommands {
             @ShellOption(value = {
                     "--sender" }, defaultValue = "", valueProvider = BusNameProvider.class) String sender,
             @ShellOption(value = {
-                    "--member" }, defaultValue = "", valueProvider = SignalValueProvider.class) String member)
+                    "--member" }, defaultValue = "", valueProvider = SignalValueProvider.class) String member,
+            @ShellOption(value = { "--capture" }, defaultValue = "false") boolean capture)
             throws IOException {
         monitorStop(); // Stop any existing monitor thread
+        
+        // Clear previous captures if starting new capture
+        if (capture) {
+            capturedMessages.clear();
+            isCapturing = true;
+            System.out.println("📊 Bus monitoring started in background with message capture enabled");
+            System.out.println("💡 Capturing silently - no output will be displayed");
+            System.out.println("💡 Use 'bs.monitor.diagram' to view sequence diagram");
+            System.out.println("💡 Use 'bs.monitor.stats' to view statistics");
+            System.out.println("💡 Use 'bs.monitor.stop' to stop monitoring");
+        }
+        
         StringBuffer command = new StringBuffer();
         command.append("busctl monitor");
         if (type != null && !type.isBlank()) {
@@ -667,27 +954,192 @@ public class DbusCommnads extends CommonCommands {
             if (sender != null && !sender.isBlank()) {
                 rules.append(", sender='").append(sender).append("'");
             }
-            String monitor = String.format(command.toString(), rules.toString().trim());
-            Thread busThread = new Thread(() -> scmd(monitor));
-            busThread.setName("BusMonitorThread");
-            busThread.start();
-            // Store the thread reference for control commands
-            this.busMonitorThread = busThread;
+            String monitorCmd = String.format(command.toString(), rules.toString().trim());
+            
+            if (capture) {
+                Thread busThread = new Thread(() -> runMonitorWithCapture(monitorCmd));
+                busThread.setName("BusMonitorThread");
+                busThread.start();
+                this.busMonitorThread = busThread;
+            } else {
+                Thread busThread = new Thread(() -> scmd(monitorCmd));
+                busThread.setName("BusMonitorThread");
+                busThread.start();
+                this.busMonitorThread = busThread;
+            }
             return;
         }
-        Thread busThread = new Thread(() -> scmd(command.toString()));
-        busThread.setName("BusMonitorThread");
-        busThread.start();
-        // Store the thread reference for control commands
-        this.busMonitorThread = busThread;
+        
+        if (capture) {
+            Thread busThread = new Thread(() -> runMonitorWithCapture(command.toString()));
+            busThread.setName("BusMonitorThread");
+            busThread.start();
+            this.busMonitorThread = busThread;
+        } else {
+            Thread busThread = new Thread(() -> scmd(command.toString()));
+            busThread.setName("BusMonitorThread");
+            busThread.start();
+            this.busMonitorThread = busThread;
+        }
         return;
+    }
+    
+    // Run busctl monitor and capture messages using SSH (silent mode - no console output)
+    private void runMonitorWithCapture(String command) {
+        try {
+            String name = userName.equals("root") ? userName : "service";
+            String fullCommand = name.equals("root") ? command : "sudo -i " + command;
+            
+            com.jcraft.jsch.Session session = com.ibm.bmcshell.ssh.SSHShellClient.jsch.getSession(
+                name, Util.fullMachineName(machine), com.ibm.bmcshell.ssh.SSHShellClient.port);
+            session.setPassword(passwd);
+            session.setConfig("StrictHostKeyChecking", "no");
+            session.connect();
+            
+            com.jcraft.jsch.ChannelExec channel = (com.jcraft.jsch.ChannelExec) session.openChannel("exec");
+            channel.setCommand(fullCommand);
+            
+            InputStream in = channel.getInputStream();
+            InputStream err = channel.getErrStream();
+            
+            channel.connect();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(err));
+            
+            List<String> messageLines = new ArrayList<>();
+            String line;
+            
+            // Read output in a loop (silently - no console output in capture mode)
+            while (!Thread.currentThread().isInterrupted()) {
+                // Check if data is available
+                if (in.available() > 0) {
+                    line = reader.readLine();
+                    if (line == null) break;
+                    
+                    // DO NOT print to console in capture mode - silent background capture
+                    
+                    if (isCapturing) {
+                        // Check if this is the start of a new message
+                        if (line.trim().startsWith("‣") || line.trim().startsWith("Type=")) {
+                            // Process previous message if exists
+                            if (!messageLines.isEmpty()) {
+                                BusMessage msg = parseCompleteBusMessage(messageLines);
+                                if (msg != null) {
+                                    capturedMessages.offer(msg);
+                                    // Limit queue size
+                                    while (capturedMessages.size() > maxCapturedMessages) {
+                                        capturedMessages.poll();
+                                    }
+                                }
+                                messageLines.clear();
+                            }
+                        }
+                        messageLines.add(line);
+                    }
+                }
+                
+                // Check for errors (also silent in capture mode)
+                if (err.available() > 0) {
+                    line = errorReader.readLine();
+                    // Errors are also not printed in capture mode
+                }
+                
+                // Check if channel is closed
+                if (channel.isClosed()) {
+                    if (in.available() > 0) continue; // Still data to read
+                    break;
+                }
+                
+                Thread.sleep(100); // Small delay to avoid busy waiting
+            }
+            
+            // Process last message
+            if (!messageLines.isEmpty() && isCapturing) {
+                BusMessage msg = parseCompleteBusMessage(messageLines);
+                if (msg != null) {
+                    capturedMessages.offer(msg);
+                }
+            }
+            
+            channel.disconnect();
+            session.disconnect();
+        } catch (Exception e) {
+            if (!Thread.currentThread().isInterrupted()) {
+                System.err.println("⚠️  Error in bus monitor: " + e.getMessage());
+            }
+        }
     }
 
     @ShellMethod(key = "bs.monitor.stop", value = "eg: bs.monitor.stop")
     void monitorStop() {
+        isCapturing = false;
         if (busMonitorThread != null && busMonitorThread.isAlive()) {
             busMonitorThread.interrupt();
-            System.out.println("Bus Monitor thread stopped.");
+            try {
+                busMonitorThread.join(2000); // Wait up to 2 seconds for thread to stop
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+            System.out.println("🛑 Bus Monitor stopped.");
+            if (!capturedMessages.isEmpty()) {
+                System.out.println(String.format("📊 Captured %d messages", capturedMessages.size()));
+            }
+        }
+    }
+    
+    @ShellMethod(key = "bs.monitor.diagram", value = "Display sequence diagram of captured D-Bus messages")
+    @ShellMethodAvailability("availabilityCheck")
+    public void monitorDiagram() {
+        // Auto-stop any running capture before displaying
+        if (busMonitorThread != null && busMonitorThread.isAlive()) {
+            System.out.println("⏸️  Stopping capture to display diagram...");
+            monitorStop();
+        }
+        System.out.println(generateSequenceDiagram());
+    }
+    
+    @ShellMethod(key = "bs.monitor.stats", value = "Display statistics of captured D-Bus messages")
+    @ShellMethodAvailability("availabilityCheck")
+    public void monitorStats() {
+        // Auto-stop any running capture before displaying stats
+        if (busMonitorThread != null && busMonitorThread.isAlive()) {
+            System.out.println("⏸️  Stopping capture to display statistics...");
+            monitorStop();
+        }
+        System.out.println(generateStatistics());
+    }
+    
+    @ShellMethod(key = "bs.monitor.clear", value = "Clear captured D-Bus messages")
+    @ShellMethodAvailability("availabilityCheck")
+    public void monitorClear() {
+        int count = capturedMessages.size();
+        capturedMessages.clear();
+        System.out.println(String.format("🗑️  Cleared %d captured messages", count));
+    }
+    
+    @ShellMethod(key = "bs.monitor.export", value = "Export captured messages to file")
+    @ShellMethodAvailability("availabilityCheck")
+    public void monitorExport(
+            @ShellOption(value = { "--file" }, defaultValue = "dbus_capture.txt") String filename) {
+        try {
+            StringBuilder content = new StringBuilder();
+            content.append("D-Bus Message Capture Export\n");
+            content.append("Generated: ").append(LocalDateTime.now()).append("\n");
+            content.append("Total Messages: ").append(capturedMessages.size()).append("\n\n");
+            content.append(generateSequenceDiagram()).append("\n\n");
+            content.append(generateStatistics()).append("\n\n");
+            content.append("Detailed Messages:\n");
+            content.append("=".repeat(80)).append("\n");
+            
+            for (BusMessage msg : capturedMessages) {
+                content.append(msg.toString()).append("\n");
+            }
+            
+            java.nio.file.Files.write(java.nio.file.Paths.get(filename), content.toString().getBytes());
+            System.out.println(String.format("✅ Exported %d messages to %s", capturedMessages.size(), filename));
+        } catch (IOException e) {
+            System.err.println("❌ Error exporting messages: " + e.getMessage());
         }
     }
 
