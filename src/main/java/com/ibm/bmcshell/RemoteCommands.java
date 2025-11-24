@@ -125,7 +125,7 @@ public class RemoteCommands extends CommonCommands {
             if (s == null || s.isEmpty())
                 return true;
             else
-                return nm.contains(s);
+                return nm.toLowerCase().contains(s.toLowerCase());
         }).forEach(nm -> {
             System.out.println(nm);
             currentService = nm;
