@@ -1,14 +1,16 @@
 package com.ibm.bmcshell;
 
-import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
-
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -22,9 +24,9 @@ import org.springframework.shell.standard.ShellOption;
 import org.springframework.shell.standard.ValueProvider;
 import org.springframework.stereotype.Component;
 
-import com.ibm.bmcshell.DbusCommnads.InterfaceProvider;
 import com.ibm.bmcshell.RemoteCommands.ServiceProvider;
 import com.ibm.bmcshell.Utils.Util;
+import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 
 @ShellComponent
 public class RemoteCommands extends CommonCommands {
@@ -46,6 +48,11 @@ public class RemoteCommands extends CommonCommands {
     }
 
     String currentService;
+    
+    // Cache for service dependencies to improve performance
+    private static Map<String, Map<String, Set<String>>> serviceDependencyCache = new HashMap<>();
+    private static Map<String, Long> cacheTimestamps = new HashMap<>();
+    private static final long CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
     protected RemoteCommands() throws IOException {
 
@@ -224,6 +231,212 @@ public class RemoteCommands extends CommonCommands {
         }
         currentService = s;
         scmd(String.format("systemctl list-dependencies %s", s));
+    }
+
+    @ShellMethod(key = "ro.service.graph", value = "eg: ro.service.graph [servicename] [--depth 2] [--nocache]")
+    @ShellMethodAvailability("availabilityCheck")
+    void service_graph(
+            @ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class, defaultValue = "") String s,
+            @ShellOption(value = { "--depth", "-d" }, defaultValue = "2") int depth,
+            @ShellOption(value = { "--reverse", "-r" }, defaultValue = "false") boolean reverse,
+            @ShellOption(value = { "--nocache" }, defaultValue = "false") boolean noCache) {
+        if (s == null || s.isEmpty()) {
+            s = currentService;
+        }
+        if (s == null || s.isEmpty()) {
+            System.out.println("Please specify a service name or use ro.service to set current service");
+            return;
+        }
+        currentService = s;
+        
+        try {
+            String cacheKey = getCacheKey(s, depth, reverse);
+            Map<String, Set<String>> serviceGraph = null;
+            
+            // Check cache if not disabled
+            if (!noCache && isCacheValid(cacheKey)) {
+                serviceGraph = serviceDependencyCache.get(cacheKey);
+                System.out.println(ColorPrinter.cyan("Using cached data..."));
+            }
+            
+            // Build graph if not in cache or cache disabled
+            if (serviceGraph == null) {
+                serviceGraph = buildServiceGraph(s, depth, reverse);
+                // Store in cache
+                serviceDependencyCache.put(cacheKey, serviceGraph);
+                cacheTimestamps.put(cacheKey, System.currentTimeMillis());
+                System.out.println(ColorPrinter.green("Data cached for future queries"));
+            }
+            
+            displayServiceGraph(s, serviceGraph, reverse);
+        } catch (Exception e) {
+            System.err.println("Error building service graph: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    @ShellMethod(key = "ro.service.graph.clear", value = "Clear service graph cache")
+    @ShellMethodAvailability("availabilityCheck")
+    void service_graph_clear() {
+        int size = serviceDependencyCache.size();
+        serviceDependencyCache.clear();
+        cacheTimestamps.clear();
+        System.out.println(ColorPrinter.green("Cache cleared. Removed " + size + " cached entries."));
+    }
+    
+    @ShellMethod(key = "ro.service.graph.cache", value = "Show cache statistics")
+    @ShellMethodAvailability("availabilityCheck")
+    void service_graph_cache() {
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  Service Graph Cache Statistics"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println("Total cached entries: " + serviceDependencyCache.size());
+        System.out.println("Cache expiry time: " + (CACHE_EXPIRY_MS / 1000 / 60) + " minutes");
+        
+        if (!serviceDependencyCache.isEmpty()) {
+            System.out.println("\n" + ColorPrinter.yellow("Cached Entries:"));
+            long currentTime = System.currentTimeMillis();
+            for (Map.Entry<String, Long> entry : cacheTimestamps.entrySet()) {
+                String key = entry.getKey();
+                long timestamp = entry.getValue();
+                long ageSeconds = (currentTime - timestamp) / 1000;
+                long remainingSeconds = (CACHE_EXPIRY_MS - (currentTime - timestamp)) / 1000;
+                
+                String status = remainingSeconds > 0 ?
+                    ColorPrinter.green("Valid (" + remainingSeconds + "s remaining)") :
+                    ColorPrinter.red("Expired");
+                    
+                System.out.println("  " + key + " - Age: " + ageSeconds + "s - " + status);
+            }
+        }
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+    
+    private String getCacheKey(String service, int depth, boolean reverse) {
+        return service + "|" + depth + "|" + (reverse ? "R" : "F");
+    }
+    
+    private boolean isCacheValid(String cacheKey) {
+        if (!serviceDependencyCache.containsKey(cacheKey)) {
+            return false;
+        }
+        Long timestamp = cacheTimestamps.get(cacheKey);
+        if (timestamp == null) {
+            return false;
+        }
+        long age = System.currentTimeMillis() - timestamp;
+        return age < CACHE_EXPIRY_MS;
+    }
+
+    private Map<String, Set<String>> buildServiceGraph(String rootService, int maxDepth, boolean reverse) throws IOException {
+        Map<String, Set<String>> graph = new LinkedHashMap<>();
+        Set<String> visited = new HashSet<>();
+        buildServiceGraphRecursive(rootService, graph, visited, 0, maxDepth, reverse);
+        return graph;
+    }
+
+    private void buildServiceGraphRecursive(String service, Map<String, Set<String>> graph,
+                                           Set<String> visited, int currentDepth, int maxDepth, boolean reverse) throws IOException {
+        if (currentDepth > maxDepth || visited.contains(service)) {
+            return;
+        }
+        
+        visited.add(service);
+        Set<String> dependencies = getServiceDependencies(service, reverse);
+        graph.put(service, dependencies);
+        
+        if (currentDepth < maxDepth) {
+            for (String dep : dependencies) {
+                buildServiceGraphRecursive(dep, graph, visited, currentDepth + 1, maxDepth, reverse);
+            }
+        }
+    }
+
+    private Set<String> getServiceDependencies(String service, boolean reverse) throws IOException {
+        Set<String> dependencies = new HashSet<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        
+        try {
+            String command = reverse ?
+                String.format("systemctl list-dependencies --reverse --plain %s", service) :
+                String.format("systemctl list-dependencies --plain %s", service);
+                
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, command);
+            String output = outputStream.toString();
+            
+            // Parse the output to extract service names
+            String[] lines = output.split("\\R");
+            for (String line : lines) {
+                // Skip the first line (the service itself) and empty lines
+                if (line.trim().isEmpty() || line.trim().equals(service)) {
+                    continue;
+                }
+                
+                // Remove tree characters and extract service name
+                String cleaned = line.replaceAll("[│├└─●\\s]+", "").trim();
+                if (!cleaned.isEmpty() && cleaned.endsWith(".service")) {
+                    dependencies.add(cleaned);
+                } else if (!cleaned.isEmpty() && !cleaned.contains(".")) {
+                    // Some dependencies might not have .service extension
+                    dependencies.add(cleaned);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching dependencies for " + service + ": " + e.getMessage());
+        }
+        
+        return dependencies;
+    }
+
+    private void displayServiceGraph(String rootService, Map<String, Set<String>> graph, boolean reverse) {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  Service Dependency Graph" + (reverse ? " (Reverse)" : "")));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.yellow("Root Service: ") + rootService);
+        System.out.println(ColorPrinter.yellow("Direction: ") +
+                          (reverse ? "Services that depend on this service" : "Services this service depends on"));
+        System.out.println(ColorPrinter.cyan("───────────────────────────────────────────────────────") + "\n");
+        
+        // Display graph in tree format
+        Set<String> displayed = new HashSet<>();
+        displayServiceNode(rootService, graph, displayed, "", true, reverse);
+        
+        // Display summary
+        System.out.println("\n" + ColorPrinter.cyan("───────────────────────────────────────────────────────"));
+        System.out.println(ColorPrinter.green("Summary:"));
+        System.out.println("  Total services in graph: " + graph.size());
+        int totalDeps = graph.values().stream().mapToInt(Set::size).sum();
+        System.out.println("  Total relationships: " + totalDeps);
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════") + "\n");
+    }
+
+    private void displayServiceNode(String service, Map<String, Set<String>> graph,
+                                    Set<String> displayed, String prefix, boolean isRoot, boolean reverse) {
+        if (displayed.contains(service)) {
+            System.out.println(prefix + ColorPrinter.magenta(service + " (already shown)"));
+            return;
+        }
+        
+        displayed.add(service);
+        
+        if (isRoot) {
+            System.out.println(ColorPrinter.green("● " + service));
+        } else {
+            System.out.println(prefix + ColorPrinter.blue(service));
+        }
+        
+        Set<String> dependencies = graph.getOrDefault(service, new HashSet<>());
+        if (!dependencies.isEmpty()) {
+            List<String> depList = new ArrayList<>(dependencies);
+            for (int i = 0; i < depList.size(); i++) {
+                boolean isLast = (i == depList.size() - 1);
+                String connector = isLast ? "└── " : "├── ";
+                String childPrefix = prefix + (isLast ? "    " : "│   ");
+                
+                System.out.print(prefix + connector);
+                displayServiceNode(depList.get(i), graph, displayed, childPrefix, false, reverse);
+            }
+        }
     }
 
     @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
