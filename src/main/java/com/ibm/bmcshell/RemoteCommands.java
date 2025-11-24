@@ -60,13 +60,14 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = "ro.ls", value = "eg: ro.ls path")
     @ShellMethodAvailability("availabilityCheck")
-    void ls(String path) {
+    void ls(@ShellOption(valueProvider = RemoteFileCompleter.class) String path) {
         scmd(String.format("ls -alhS %s", path));
     }
 
-    @ShellMethod(key = "ro.mv", value = "eg: ro.ls path")
+    @ShellMethod(key = "ro.mv", value = "eg: ro.mv source dest")
     @ShellMethodAvailability("availabilityCheck")
-    void mv(String source, String dest) {
+    void mv(@ShellOption(valueProvider = RemoteFileCompleter.class) String source,
+            @ShellOption(valueProvider = RemoteFileCompleter.class) String dest) {
         scmd(String.format("mv %s %s", source, dest));
     }
 
@@ -76,9 +77,9 @@ public class RemoteCommands extends CommonCommands {
         scmd(cmd);
     }
 
-    @ShellMethod(key = "ro.cat", value = "eg: ro.cmd filepath")
+    @ShellMethod(key = "ro.cat", value = "eg: ro.cat filepath")
     @ShellMethodAvailability("availabilityCheck")
-    void cat(String p) {
+    void cat(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
         scmd(String.format("cat %s", p));
     }
 
@@ -442,14 +443,14 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void findFile(String filename,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
+            @ShellOption(value = { "--path", "-p" }, valueProvider = RemoteFileCompleter.class, defaultValue = "/") String path) {
         scmd(String.format("find %s -iname *%s*", path, filename));
     }
 
     @ShellMethod(key = "ro.grep", value = "eg: ro.grep pattern [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void grep(String pattern,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
+            @ShellOption(value = { "--path", "-p" }, valueProvider = RemoteFileCompleter.class, defaultValue = "/") String path) {
         scmd(String.format("grep -nr %s %s", pattern, path));
     }
 
@@ -462,7 +463,7 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = "ro.makefile", value = "eg: ro.makefile path content")
     @ShellMethodAvailability("availabilityCheck")
-    void makeFile(String path, String data) {
+    void makeFile(@ShellOption(valueProvider = RemoteFileCompleter.class) String path, String data) {
         scmd(String.format("mkdir -p %s", path.substring(0, path.lastIndexOf('/'))));
         scmd(String.format("chmod 777 %s;echo %s > %s", path, data, path));
         scmd(String.format("ls -lh %s", path));
@@ -470,7 +471,7 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = "ro.digest", value = "eg: ro.digest path to file")
     @ShellMethodAvailability("availabilityCheck")
-    void digest(String path) {
+    void digest(@ShellOption(valueProvider = RemoteFileCompleter.class) String path) {
         scmd(String.format("openssl dgst -sha256 %s", path));
     }
 
