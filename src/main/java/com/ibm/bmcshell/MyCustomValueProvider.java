@@ -13,13 +13,11 @@ import com.ibm.bmcshell.inferencing.LLaMA3Client;
 public class MyCustomValueProvider implements ValueProvider {
     @Override
     public List<CompletionProposal> complete(CompletionContext context) {
-        String userInput = context.currentWordUpToCursor();
         try {
-            var suggestions = LLaMA3Client.suggest(userInput);
+            var suggestions = LLaMA3Client.suggest(context.currentWordUpToCursor());
              return List.of (new CompletionProposal(suggestions));
         } catch (Exception e) {
-            
-            return List.of(new CompletionProposal(userInput));
+            return List.of();
         }
 
     }

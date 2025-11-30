@@ -1,10 +1,4 @@
 package com.ibm.bmcshell;
-import org.springframework.shell.CompletionContext;
-import org.springframework.shell.CompletionProposal;
-import org.springframework.shell.completion.CompletionProvider;
-import org.springframework.shell.standard.ValueProvider;
-import org.springframework.stereotype.Component;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,6 +6,11 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.springframework.shell.CompletionContext;
+import org.springframework.shell.CompletionProposal;
+import org.springframework.shell.standard.ValueProvider;
+import org.springframework.stereotype.Component;
 
 @Component
 public class FileCompleter implements ValueProvider {
@@ -57,11 +56,18 @@ public class FileCompleter implements ValueProvider {
                         relativePath = userInput+p.toString();
                     }
                     
+                    boolean isDirectory = Files.isDirectory(p);
                     // Append a slash for directories to make completion seamless
-                    if (Files.isDirectory(p)) {
+                    if (isDirectory) {
                         relativePath += "/";
                     }
-                    return new CompletionProposal(relativePath);
+                    
+                    // Create completion proposal with proper settings
+                    // For directories: dontQuote(true) prevents space after completion
+                    // For files: complete(true) adds space after completion
+                    return new CompletionProposal(relativePath)
+                        .dontQuote(isDirectory)
+                        .complete(!isDirectory);
                 })
                 .collect(Collectors.toList());
         } catch (IOException e) {

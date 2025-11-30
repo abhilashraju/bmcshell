@@ -94,10 +94,8 @@ public class DbusCommnads extends CommonCommands {
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (busnames != null) {
-                String userInput = context.currentWordUpToCursor();
                 return busnames.stream()
-                        .filter(name -> name.startsWith(userInput)) // Filter based on user
-                                                                    // input
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -130,14 +128,13 @@ public class DbusCommnads extends CommonCommands {
                     BusNameProvider.currentService = sername;
                 }
                 var stream = pathnames.get(BusNameProvider.currentService);
-                String userInput = context.currentWordUpToCursor();
                 if (stream == null) {
-                    return List.of(new CompletionProposal(userInput));
+                    return List.of();
                 }
 
                 return stream
                         .stream()
-                        .filter(name -> name.startsWith(userInput))
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -178,10 +175,9 @@ public class DbusCommnads extends CommonCommands {
                     PathNameProvider.currentPath = pathName;
                 }
 
-                String userInput = context.currentWordUpToCursor();
                 return getCurrentInterfaces().stream()
-                        .filter(nm -> nm.getName().startsWith(userInput))
                         .map(iname -> iname.getName())
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -204,14 +200,13 @@ public class DbusCommnads extends CommonCommands {
                 if (interfaceName != null) {
                     InterfaceProvider.currentInterface = interfaceName;
                 }
-                String userInput = context.currentWordUpToCursor();
                 return InterfaceProvider.getCurrentInterfaces()
                         .stream()
                         .filter(iface -> iface.getName().equals(InterfaceProvider.currentInterface))
                         .flatMap(iface -> iface.getMembers().stream())
                         .filter(m -> m.getType().equals("method"))
-                        .filter(nm -> nm.getName().startsWith(userInput))
                         .map(iname -> iname.getName())
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -233,15 +228,14 @@ public class DbusCommnads extends CommonCommands {
                 if (methodName != null) {
                     MethodProvider.currentMethod = methodName;
                 }
-                String userInput = context.currentWordUpToCursor();
                 return InterfaceProvider.getCurrentInterfaces()
                         .stream()
                         .filter(iface -> iface.getName().equals(InterfaceProvider.currentInterface))
                         .flatMap(iface -> iface.getMembers().stream())
                         .filter(nm -> nm.getName().equals(MethodProvider.currentMethod))
                         .filter(nm -> nm.getSignature() != null)
-                        .filter(nm -> nm.getSignature().startsWith(userInput))
                         .map(iname -> iname.getSignature())
+                        .filter(sig -> !sig.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -259,14 +253,13 @@ public class DbusCommnads extends CommonCommands {
                 if (interfaceName != null) {
                     InterfaceProvider.currentInterface = interfaceName;
                 }
-                String userInput = context.currentWordUpToCursor();
                 return InterfaceProvider.getCurrentInterfaces()
                         .stream()
                         .filter(iface -> iface.getName().equals(InterfaceProvider.currentInterface))
                         .flatMap(iface -> iface.getMembers().stream())
                         .filter(m -> m.getType().equals("property"))
-                        .filter(nm -> nm.getName().startsWith(userInput))
                         .map(iname -> iname.getName())
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -286,14 +279,13 @@ public class DbusCommnads extends CommonCommands {
                 if (interfaceName != null) {
                     InterfaceProvider.currentInterface = interfaceName;
                 }
-                String userInput = context.currentWordUpToCursor();
                 return InterfaceProvider.getCurrentInterfaces()
                         .stream()
                         .filter(iface -> iface.getName().equals(InterfaceProvider.currentInterface))
                         .flatMap(iface -> iface.getMembers().stream())
                         .filter(m -> m.getType().equals("signal"))
-                        .filter(nm -> nm.getName().startsWith(userInput))
                         .map(iname -> iname.getName())
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -710,11 +702,8 @@ public class DbusCommnads extends CommonCommands {
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (InterfaceProvider.introspectables != null) {
-
-                String userInput = context.currentWordUpToCursor();
                 var list = List.of("method_call", "method_return", "error", "signal");
                 return list.stream()
-                        .filter(nm -> nm.startsWith(userInput))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
@@ -1201,3 +1190,4 @@ public class DbusCommnads extends CommonCommands {
     }
 
 }
+

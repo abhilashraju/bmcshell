@@ -87,7 +87,14 @@ public class RemoteFileCompleter implements ValueProvider {
                 })
                 .map(file -> {
                     String completionValue = finalPrefix + file;
-                    return new CompletionProposal(completionValue);
+                    boolean isDirectory = file.endsWith("/");
+                    
+                    // Create completion proposal with proper settings
+                    // For directories: dontQuote(true) prevents space after completion
+                    // For files: complete(true) adds space after completion
+                    return new CompletionProposal(completionValue)
+                        .dontQuote(isDirectory)
+                        .complete(!isDirectory);
                 })
                 .collect(Collectors.toList());
                 

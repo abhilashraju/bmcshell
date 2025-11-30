@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URISyntaxException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -21,7 +20,6 @@ import org.springframework.shell.standard.ShellOption;
 import org.springframework.shell.standard.ValueProvider;
 import org.springframework.stereotype.Component;
 
-import com.ibm.bmcshell.DbusCommnads.BusNameProvider;
 import com.ibm.bmcshell.inferencing.LLaMA3Client;
 
 @ShellComponent
@@ -34,13 +32,10 @@ public class AiCommands extends CommonCommands {
 
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
-
-            String userInput = context.currentWordUpToCursor();
             try {
-
                 return models
                         .stream()
-                        .filter(name -> name.startsWith(userInput))
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             } catch (Exception e) {

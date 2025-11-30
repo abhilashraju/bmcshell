@@ -10,7 +10,6 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,7 +23,6 @@ import org.springframework.shell.standard.ValueProvider;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 @ShellComponent
 public class AccountServiceCommand extends CommonCommands {
@@ -34,10 +32,9 @@ public class AccountServiceCommand extends CommonCommands {
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             var fileNames=getAcfFiles(libPath+"/acffiles",".acf");
-            String userInput = context.currentWordUpToCursor();
             return fileNames
                     .stream()
-                    .filter(name -> name.startsWith(userInput))
+                    .filter(name -> !name.startsWith("-"))
                     .map(CompletionProposal::new)
                     .collect(Collectors.toList());
 

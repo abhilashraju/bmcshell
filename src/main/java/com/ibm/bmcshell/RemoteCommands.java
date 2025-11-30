@@ -37,9 +37,8 @@ public class RemoteCommands extends CommonCommands {
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             if (serviceNames != null) {
-                String userInput = context.currentWordUpToCursor();
                 return serviceNames.stream()
-                        .filter(nm -> nm.startsWith(userInput))
+                        .filter(name -> !name.startsWith("-"))
                         .map(CompletionProposal::new)
                         .collect(Collectors.toList());
             }
