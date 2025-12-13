@@ -141,7 +141,7 @@ public class RemoteCommands extends CommonCommands {
             s = currentService;
         }
         currentService = s;
-        scmd(String.format("systemctl show %s |grep %s", s, reg));
+        scmd(String.format("systemctl show %s |grep -i %s", s, reg));
 
     }
 
