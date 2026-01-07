@@ -484,6 +484,82 @@ public class RemoteCommands extends CommonCommands {
     void ping(String ip) {
         scmd(String.format("ping -c 1 %s", ip));
     }
+    @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat processname - Display memory statistics from /proc/<pid>/statm")
+    @ShellMethodAvailability("availabilityCheck")
+    void mem_stat(String processname) {
+        try {
+            // Get connection details
+            String machine = CommonCommands.machine;
+            String userName = CommonCommands.getUserName();
+            String passwd = CommonCommands.getPasswd();
+            
+            // Step 1: Find the process ID
+            ByteArrayOutputStream pidOutput = new ByteArrayOutputStream();
+            String pidCommand = String.format("pgrep -f '%s' | head -n 1", processname);
+            runCommandShort(pidOutput, Util.fullMachineName(machine), userName, passwd, pidCommand);
+            
+            String pid = pidOutput.toString().trim();
+            if (pid.isEmpty()) {
+                System.out.println("Error: Process '" + processname + "' not found");
+                return;
+            }
+            
+            System.out.println("Process: " + processname + " (PID: " + pid + ")");
+            System.out.println("======================================");
+            
+            // Step 2: Read /proc/<pid>/statm
+            ByteArrayOutputStream statmOutput = new ByteArrayOutputStream();
+            String statmCommand = String.format("cat /proc/%s/statm", pid);
+            runCommandShort(statmOutput, Util.fullMachineName(machine), userName, passwd, statmCommand);
+            
+            String statmData = statmOutput.toString().trim();
+            if (statmData.isEmpty()) {
+                System.out.println("Error: Could not read /proc/" + pid + "/statm");
+                return;
+            }
+            
+            // Parse and display the statm values
+            String[] values = statmData.split("\\s+");
+            String[] headers = {
+                "size     - Total program size (pages)",
+                "resident - Resident set size (pages)",
+                "shared   - Shared pages",
+                "text     - Text (code) pages",
+                "lib      - Library pages (unused since Linux 2.6)",
+                "data     - Data + stack pages",
+                "dt       - Dirty pages (unused since Linux 2.6)"
+            };
+            
+            System.out.println("\nField       Value      Description");
+            System.out.println("--------------------------------------");
+            for (int i = 0; i < Math.min(values.length, headers.length); i++) {
+                String[] parts = headers[i].split(" - ");
+                System.out.printf("%-11s %-10s %s%n", parts[0].trim(), values[i], parts.length > 1 ? parts[1] : "");
+            }
+            
+            System.out.println("\nNote: Values are in pages. Page size is typically 4096 bytes (4 KB)");
+            
+            // Display human-readable format
+            if (values.length >= 2) {
+                try {
+                    long totalPages = Long.parseLong(values[0]);
+                    long residentPages = Long.parseLong(values[1]);
+                    long totalBytes = totalPages * 4096;
+                    long residentBytes = residentPages * 4096;
+                    
+                    System.out.println("\nHuman-readable format:");
+                    System.out.printf("  Total size: %s%n", formatBytes(totalBytes));
+                    System.out.printf("  Resident:   %s%n", formatBytes(residentBytes));
+                } catch (NumberFormatException e) {
+                    // Ignore parsing errors
+                }
+            }
+            
+        } catch (Exception e) {
+            System.out.println("Error: " + e.getMessage());
+        }
+    }
+
 
     public static List<String> extractServiceNamesFromSysctl(String systemctlOutput) {
         List<String> serviceNames = new ArrayList<>();
@@ -1089,7 +1165,7 @@ public class RemoteCommands extends CommonCommands {
                     long vszKB = Long.parseLong(parts[4]);
                     // Convert KB to MB for display
                     double memMB = vszKB / 1024.0;
-                    processes.add(new ProcessMemInfo(processName, memMB));
+                    processes.add(new ProcessMemInfo(parts[0],processName, memMB));
                 } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
                     // Skip invalid lines
                 }
@@ -1106,14 +1182,15 @@ public class RemoteCommands extends CommonCommands {
         if (!processes.isEmpty()) {
             double maxMem = processes.stream().mapToDouble(p -> p.memPercent).max().orElse(1.0);
             int maxNameLength = processes.stream().mapToInt(p -> p.name.length()).max().orElse(10);
-            maxNameLength = Math.min(maxNameLength, 30);
+            maxNameLength = Math.min(maxNameLength, 50);
             
             for (ProcessMemInfo proc : processes) {
-                String name = proc.name.length() > 30 ? proc.name.substring(0, 27) + "..." : proc.name;
+                String name = String.format("%s %s", proc.id,proc.name);
+                name = name.length() > maxNameLength ? name.substring(0, maxNameLength-3) + "..." : name;
                 int barLength = (int) ((proc.memPercent / maxMem) * 50);
                 String bar = "█".repeat(Math.max(0, barLength));
                 
-                System.out.printf("%-30s │ %s %.2f MB\n", name, bar, proc.memPercent);
+                System.out.printf("%-50s │ %s %.2f MB\n", name, bar, proc.memPercent);
             }
             System.out.println("                               └" + "─".repeat(50) + ">");
             System.out.println("                                Memory Usage (MB)");
@@ -1167,14 +1244,15 @@ public class RemoteCommands extends CommonCommands {
         if (!processes.isEmpty()) {
             double maxCpu = processes.stream().mapToDouble(p -> p.cpuPercent).max().orElse(1.0);
             int maxNameLength = processes.stream().mapToInt(p -> p.name.length()).max().orElse(10);
-            maxNameLength = Math.min(maxNameLength, 30);
+            maxNameLength = Math.min(maxNameLength, 50);
             
             for (ProcessCpuInfo proc : processes) {
-                String name = proc.name.length() > 30 ? proc.name.substring(0, 27) + "..." : proc.name;
+
+                String name = proc.name.length() > maxNameLength ? proc.name.substring(0, maxNameLength-3) + "..." : proc.name;
                 int barLength = (int) ((proc.cpuPercent / maxCpu) * 50);
                 String bar = "█".repeat(Math.max(0, barLength));
                 
-                System.out.printf("%-30s │ %s %.1f%%\n", name, bar, proc.cpuPercent);
+                System.out.printf("%-50s │ %s %.1f%%\n", name, bar, proc.cpuPercent);
             }
             System.out.println("                               └" + "─".repeat(50) + ">");
             System.out.println("                                CPU Usage (%)");
@@ -1220,15 +1298,15 @@ public class RemoteCommands extends CommonCommands {
         if (!binaries.isEmpty()) {
             long maxSize = binaries.stream().mapToLong(b -> b.sizeBytes).max().orElse(1L);
             int maxNameLength = binaries.stream().mapToInt(b -> b.name.length()).max().orElse(10);
-            maxNameLength = Math.min(maxNameLength, 30);
+            maxNameLength = Math.min(maxNameLength, 50);
             
             for (BinaryDiskInfo binary : binaries) {
-                String name = binary.name.length() > 30 ? binary.name.substring(0, 27) + "..." : binary.name;
+                String name = binary.name.length() > maxNameLength ? binary.name.substring(0, maxNameLength-3) + "..." : binary.name;
                 int barLength = (int) ((binary.sizeBytes / (double) maxSize) * 50);
                 String bar = "█".repeat(Math.max(0, barLength));
                 String sizeStr = formatBytes(binary.sizeBytes);
                 
-                System.out.printf("%-30s │ %s %s\n", name, bar, sizeStr);
+                System.out.printf("%-50s │ %s %s\n", name, bar, sizeStr);
             }
             System.out.println("                               └" + "─".repeat(50) + ">");
             System.out.println("                                Disk Usage");
@@ -1244,10 +1322,12 @@ public class RemoteCommands extends CommonCommands {
     
     // Helper classes for statistics
     private static class ProcessMemInfo {
+        String id;
         String name;
         double memPercent;
         
-        ProcessMemInfo(String name, double memPercent) {
+        ProcessMemInfo(String id,String name, double memPercent) {
+            this.id = id;
             this.name = name;
             this.memPercent = memPercent;
         }
