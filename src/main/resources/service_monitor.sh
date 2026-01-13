@@ -1,15 +1,16 @@
 #!/bin/sh
 
 # Service Resource Monitor Script (BusyBox compatible)
-# Usage: service_monitor.sh <service_name> <log_file> <interval_seconds> [pid_file]
+# Usage: service_monitor.sh <service_name> <log_file> <interval_seconds> [pid_file] [get_process_name_script]
 
 SERVICE_NAME="$1"
 LOG_FILE="$2"
 INTERVAL="${3:-5}"
 PID_FILE="${4:-/tmp/monitor_${SERVICE_NAME}.pid}"
+GET_PROCESS_NAME_SCRIPT="${5:-/tmp/get_process_name.sh}"
 
 if [ -z "$SERVICE_NAME" ] || [ -z "$LOG_FILE" ]; then
-    echo "Usage: $0 <service_name> <log_file> [interval_seconds] [pid_file]"
+    echo "Usage: $0 <service_name> <log_file> [interval_seconds] [pid_file] [get_process_name_script]"
     exit 1
 fi
 
@@ -28,59 +29,26 @@ echo "Logging to: $LOG_FILE" >> "$DEBUG_LOG"
 echo "PID file: $PID_FILE" >> "$DEBUG_LOG"
 echo "Interval: ${INTERVAL}s" >> "$DEBUG_LOG"
 echo "Monitor PID: $$" >> "$DEBUG_LOG"
+echo "Get process name script: $GET_PROCESS_NAME_SCRIPT" >> "$DEBUG_LOG"
 
-# Function to get process name from service
-get_process_name_from_service() {
-    local service="$1"
+# Source the get_process_name utility script
+if [ -f "$GET_PROCESS_NAME_SCRIPT" ]; then
+    . "$GET_PROCESS_NAME_SCRIPT"
+    echo "Sourced get_process_name script successfully" >> "$DEBUG_LOG"
+else
+    echo "WARNING: get_process_name script not found at $GET_PROCESS_NAME_SCRIPT" >> "$DEBUG_LOG"
+    echo "Falling back to inline function" >> "$DEBUG_LOG"
     
-    echo "Attempting to find process name for service: $service" >> "$DEBUG_LOG"
-    
-    # Priority 1: Get from currently running MainPID (most accurate)
-    local main_pid=$(systemctl show "$service" -p MainPID --value 2>/dev/null)
-    if [ -n "$main_pid" ] && [ "$main_pid" != "0" ]; then
-        # BusyBox ps uses different format
-        local proc_name=$(ps -o comm -p "$main_pid" 2>/dev/null | tail -n 1)
-        if [ -n "$proc_name" ] && [ "$proc_name" != "COMMAND" ]; then
-            echo "Found running process from MainPID $main_pid: $proc_name" >> "$DEBUG_LOG"
-            echo "$proc_name"
-            return 0
-        fi
-    fi
-    
-    # Priority 2: Try to get ExecStart from service file
-    local exec_start=$(systemctl cat "$service" 2>/dev/null | grep -E "^ExecStart=" | head -n 1 | sed 's/ExecStart=//' | awk '{print $1}')
-    
-    if [ -n "$exec_start" ]; then
-        # Extract just the binary name
-        local process_name=$(basename "$exec_start")
-        echo "Found process from ExecStart: $process_name" >> "$DEBUG_LOG"
-        echo "$process_name"
-        return 0
-    fi
-    
-    # Priority 3: Try to find any process matching the service name pattern
-    local service_base="${service%.service}"
-    local found_pid=$(busybox pidof "$service_base" 2>/dev/null | awk '{print $1}')
-    if [ -z "$found_pid" ]; then
-        found_pid=$(ps | grep "$service_base" | grep -v grep | awk '{print $1}' | head -n 1)
-    fi
-    
-    if [ -n "$found_pid" ]; then
-        local proc_name=$(ps -o comm -p "$found_pid" 2>/dev/null | tail -n 1)
-        if [ -n "$proc_name" ] && [ "$proc_name" != "COMMAND" ]; then
-            echo "Found process by pattern match: $proc_name (PID: $found_pid)" >> "$DEBUG_LOG"
-            echo "$proc_name"
-            return 0
-        fi
-    fi
-    
-    # Last resort: use service name without .service extension
-    echo "Using fallback process name: $service_base" >> "$DEBUG_LOG"
-    echo "$service_base"
-}
+    # Fallback: inline function if script not available
+    get_process_name_from_service() {
+        local service="$1"
+        local service_base="${service%.service}"
+        echo "$service_base"
+    }
+fi
 
 # Get the actual process name - will be updated dynamically if service starts
-PROCESS_NAME=$(get_process_name_from_service "$SERVICE_NAME")
+PROCESS_NAME=$(get_process_name_from_service "$SERVICE_NAME" "$DEBUG_LOG")
 echo "Initial process name to monitor: $PROCESS_NAME" >> "$DEBUG_LOG"
 
 # Trap to cleanup on exit
@@ -247,7 +215,7 @@ while true; do
         # Service not running - try to update process name for next iteration
         if [ "$PROCESS_NAME" = "${SERVICE_NAME%.service}" ]; then
             # Still using fallback name, try to get better name from service definition
-            NEW_NAME=$(get_process_name_from_service "$SERVICE_NAME")
+            NEW_NAME=$(get_process_name_from_service "$SERVICE_NAME" "$DEBUG_LOG")
             if [ -n "$NEW_NAME" ] && [ "$NEW_NAME" != "$PROCESS_NAME" ]; then
                 echo "Updated process name to: $NEW_NAME (service not running yet)" >> "$DEBUG_LOG"
                 PROCESS_NAME="$NEW_NAME"

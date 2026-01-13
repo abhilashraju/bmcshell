@@ -57,6 +57,13 @@ public class RemoteCommands extends CommonCommands {
     private String monitoringService = null;
     private String monitorLogFile = null;
     private String monitorPidFile = null;
+    
+    // Memory monitoring state
+    private Thread memMonitorThread = null;
+    private volatile boolean memMonitorRunning = false;
+    private String memMonitoringService = null;
+    private List<MemStatData> memDataPoints = null;
+    private String memMonitorPid = null;
 
     protected RemoteCommands() throws IOException {
 
@@ -484,80 +491,292 @@ public class RemoteCommands extends CommonCommands {
     void ping(String ip) {
         scmd(String.format("ping -c 1 %s", ip));
     }
-    @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat processname - Display memory statistics from /proc/<pid>/statm")
+    @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat servicename [--interval 2] - Start live memory monitoring")
     @ShellMethodAvailability("availabilityCheck")
-    void mem_stat(String processname) {
+    void mem_stat(
+            @ShellOption(valueProvider = ServiceProvider.class) String servicename,
+            @ShellOption(value = { "--interval", "-i" }, defaultValue = "2") int interval) {
+        
+        if (memMonitorRunning) {
+            System.out.println(ColorPrinter.yellow("Memory monitoring already running for service: " + memMonitoringService));
+            System.out.println("Stop current monitoring with ro.mem.stat.stop before starting a new one");
+            return;
+        }
+        
         try {
             // Get connection details
             String machine = CommonCommands.machine;
             String userName = CommonCommands.getUserName();
             String passwd = CommonCommands.getPasswd();
             
-            // Step 1: Find the process ID
+            // Step 1: Deploy get_process_name.sh script if not already present
+            String remoteGetProcessNameScript = "/tmp/get_process_name.sh";
+            try {
+                String getProcessNameScriptContent = new String(
+                    getClass().getResourceAsStream("/get_process_name.sh").readAllBytes()
+                );
+                
+                ByteArrayOutputStream deployStream = new ByteArrayOutputStream();
+                String deployCmd = String.format(
+                    "cat > %s << 'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %s",
+                    remoteGetProcessNameScript, getProcessNameScriptContent, remoteGetProcessNameScript
+                );
+                runCommandShort(deployStream, Util.fullMachineName(machine), userName, passwd, deployCmd);
+            } catch (Exception e) {
+                System.out.println(ColorPrinter.yellow("Warning: Could not deploy get_process_name.sh: " + e.getMessage()));
+            }
+            
+            // Step 2: Get the actual process name from the service
+            ByteArrayOutputStream processNameOutput = new ByteArrayOutputStream();
+            String getProcessNameCmd = String.format("%s '%s'", remoteGetProcessNameScript, servicename);
+            runCommandShort(processNameOutput, Util.fullMachineName(machine), userName, passwd, getProcessNameCmd);
+            
+            String processname = processNameOutput.toString().trim();
+            if (processname.isEmpty()) {
+                System.out.println(ColorPrinter.red("Error: Could not determine process name for service '" + servicename + "'"));
+                return;
+            }
+            
+            // Step 3: Find the process ID
             ByteArrayOutputStream pidOutput = new ByteArrayOutputStream();
-            String pidCommand = String.format("pgrep -f '%s' | head -n 1", processname);
+            String pidCommand = String.format("pgrep -x '%s' | head -n 1", processname);
             runCommandShort(pidOutput, Util.fullMachineName(machine), userName, passwd, pidCommand);
             
             String pid = pidOutput.toString().trim();
             if (pid.isEmpty()) {
-                System.out.println("Error: Process '" + processname + "' not found");
-                return;
-            }
-            
-            System.out.println("Process: " + processname + " (PID: " + pid + ")");
-            System.out.println("======================================");
-            
-            // Step 2: Read /proc/<pid>/statm
-            ByteArrayOutputStream statmOutput = new ByteArrayOutputStream();
-            String statmCommand = String.format("cat /proc/%s/statm", pid);
-            runCommandShort(statmOutput, Util.fullMachineName(machine), userName, passwd, statmCommand);
-            
-            String statmData = statmOutput.toString().trim();
-            if (statmData.isEmpty()) {
-                System.out.println("Error: Could not read /proc/" + pid + "/statm");
-                return;
-            }
-            
-            // Parse and display the statm values
-            String[] values = statmData.split("\\s+");
-            String[] headers = {
-                "size     - Total program size (pages)",
-                "resident - Resident set size (pages)",
-                "shared   - Shared pages",
-                "text     - Text (code) pages",
-                "lib      - Library pages (unused since Linux 2.6)",
-                "data     - Data + stack pages",
-                "dt       - Dirty pages (unused since Linux 2.6)"
-            };
-            
-            System.out.println("\nField       Value      Description");
-            System.out.println("--------------------------------------");
-            for (int i = 0; i < Math.min(values.length, headers.length); i++) {
-                String[] parts = headers[i].split(" - ");
-                System.out.printf("%-11s %-10s %s%n", parts[0].trim(), values[i], parts.length > 1 ? parts[1] : "");
-            }
-            
-            System.out.println("\nNote: Values are in pages. Page size is typically 4096 bytes (4 KB)");
-            
-            // Display human-readable format
-            if (values.length >= 2) {
-                try {
-                    long totalPages = Long.parseLong(values[0]);
-                    long residentPages = Long.parseLong(values[1]);
-                    long totalBytes = totalPages * 4096;
-                    long residentBytes = residentPages * 4096;
-                    
-                    System.out.println("\nHuman-readable format:");
-                    System.out.printf("  Total size: %s%n", formatBytes(totalBytes));
-                    System.out.printf("  Resident:   %s%n", formatBytes(residentBytes));
-                } catch (NumberFormatException e) {
-                    // Ignore parsing errors
+                // Try alternative method using systemctl
+                ByteArrayOutputStream mainPidOutput = new ByteArrayOutputStream();
+                String mainPidCmd = String.format("systemctl show '%s' -p MainPID --value", servicename);
+                runCommandShort(mainPidOutput, Util.fullMachineName(machine), userName, passwd, mainPidCmd);
+                pid = mainPidOutput.toString().trim();
+                
+                if (pid.isEmpty() || pid.equals("0")) {
+                    System.out.println(ColorPrinter.red("Error: Process '" + processname + "' not found or service '" + servicename + "' is not running"));
+                    return;
                 }
             }
             
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.cyan("  Live Memory Monitoring"));
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.yellow("Service: ") + servicename);
+            System.out.println(ColorPrinter.yellow("Process: ") + processname);
+            System.out.println(ColorPrinter.yellow("PID: ") + pid);
+            System.out.println(ColorPrinter.yellow("Interval: ") + interval + " seconds");
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            
+            // Initialize monitoring state
+            memMonitoringService = servicename;
+            memMonitorPid = pid;
+            memDataPoints = new ArrayList<>();
+            memMonitorRunning = true;
+            
+            final String finalPid = pid;
+            final int finalInterval = interval;
+            
+            // Start monitoring in a separate thread
+            memMonitorThread = new Thread(() -> {
+                long startTime = System.currentTimeMillis();
+                int count = 0;
+                
+                System.out.println(ColorPrinter.green("\n✓ Monitoring started in background"));
+                System.out.println(ColorPrinter.yellow("Use 'ro.mem.stat.stop' to stop monitoring and view results\n"));
+                
+                while (memMonitorRunning) {
+                    try {
+                        // Read /proc/<pid>/statm
+                        ByteArrayOutputStream statmOutput = new ByteArrayOutputStream();
+                        String statmCommand = String.format("cat /proc/%s/statm 2>/dev/null || echo 'ERROR'", finalPid);
+                        runCommandShort(statmOutput, Util.fullMachineName(machine), userName, passwd, statmCommand);
+                        
+                        String statmData = statmOutput.toString().trim();
+                        if (statmData.isEmpty() || statmData.equals("ERROR")) {
+                            System.out.println(ColorPrinter.red("\n✗ Process terminated or not accessible"));
+                            memMonitorRunning = false;
+                            break;
+                        }
+                        
+                        // Parse statm values
+                        String[] values = statmData.split("\\s+");
+                        if (values.length >= 2) {
+                            long totalPages = Long.parseLong(values[0]);
+                            long residentPages = Long.parseLong(values[1]);
+                            long sharedPages = values.length > 2 ? Long.parseLong(values[2]) : 0;
+                            long textPages = values.length > 3 ? Long.parseLong(values[3]) : 0;
+                            long dataPages = values.length > 5 ? Long.parseLong(values[5]) : 0;
+                            
+                            long totalBytes = totalPages * 4096;
+                            long residentBytes = residentPages * 4096;
+                            long sharedBytes = sharedPages * 4096;
+                            
+                            MemStatData data = new MemStatData(
+                                System.currentTimeMillis() - startTime,
+                                totalBytes,
+                                residentBytes,
+                                sharedBytes,
+                                textPages,
+                                dataPages
+                            );
+                            
+                            synchronized (memDataPoints) {
+                                memDataPoints.add(data);
+                            }
+                            
+                            count++;
+                            
+                            // Display current reading every 10 samples
+                            if (count % 10 == 0) {
+                                System.out.printf("\r[%d samples] Total: %8s | Resident: %8s | Shared: %8s",
+                                    count,
+                                    formatBytes(totalBytes),
+                                    formatBytes(residentBytes),
+                                    formatBytes(sharedBytes));
+                                System.out.flush();
+                            }
+                        }
+                        
+                        // Sleep for interval
+                        Thread.sleep(finalInterval * 1000);
+                        
+                    } catch (InterruptedException e) {
+                        memMonitorRunning = false;
+                        break;
+                    } catch (Exception e) {
+                        System.out.println(ColorPrinter.red("\nError reading memory stats: " + e.getMessage()));
+                        memMonitorRunning = false;
+                        break;
+                    }
+                }
+            });
+            
+            memMonitorThread.setDaemon(true);
+            memMonitorThread.start();
+            
         } catch (Exception e) {
-            System.out.println("Error: " + e.getMessage());
+            System.out.println(ColorPrinter.red("\nError: " + e.getMessage()));
+            e.printStackTrace();
+            memMonitorRunning = false;
+            memMonitoringService = null;
+            memDataPoints = null;
         }
+    }
+    
+    @ShellMethod(key = "ro.mem.stat.stop", value = "Stop memory monitoring and display results")
+    @ShellMethodAvailability("availabilityCheck")
+    void mem_stat_stop() {
+        if (!memMonitorRunning) {
+            System.out.println(ColorPrinter.yellow("No memory monitoring is currently running"));
+            return;
+        }
+        
+        System.out.println(ColorPrinter.cyan("\nStopping memory monitoring..."));
+        memMonitorRunning = false;
+        
+        // Wait for thread to finish
+        if (memMonitorThread != null) {
+            try {
+                memMonitorThread.join(5000); // Wait up to 5 seconds
+            } catch (InterruptedException e) {
+                System.out.println(ColorPrinter.yellow("Warning: Thread join interrupted"));
+            }
+        }
+        
+        // Display results
+        if (memDataPoints == null || memDataPoints.isEmpty()) {
+            System.out.println(ColorPrinter.red("\nNo data collected"));
+            memMonitoringService = null;
+            memDataPoints = null;
+            return;
+        }
+        
+        List<MemStatData> dataPoints;
+        synchronized (memDataPoints) {
+            dataPoints = new ArrayList<>(memDataPoints);
+        }
+        
+        System.out.println("\n\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  Memory Statistics Summary"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        
+        // Calculate statistics
+        double avgTotal = dataPoints.stream().mapToLong(d -> d.totalBytes).average().orElse(0);
+        long maxTotal = dataPoints.stream().mapToLong(d -> d.totalBytes).max().orElse(0);
+        long minTotal = dataPoints.stream().mapToLong(d -> d.totalBytes).min().orElse(0);
+        
+        double avgResident = dataPoints.stream().mapToLong(d -> d.residentBytes).average().orElse(0);
+        long maxResident = dataPoints.stream().mapToLong(d -> d.residentBytes).max().orElse(0);
+        long minResident = dataPoints.stream().mapToLong(d -> d.residentBytes).min().orElse(0);
+        
+        double avgShared = dataPoints.stream().mapToLong(d -> d.sharedBytes).average().orElse(0);
+        long maxShared = dataPoints.stream().mapToLong(d -> d.sharedBytes).max().orElse(0);
+        
+        System.out.println(ColorPrinter.yellow("Service: ") + memMonitoringService);
+        System.out.println(ColorPrinter.yellow("PID: ") + memMonitorPid);
+        System.out.println(ColorPrinter.yellow("Data Points Collected: ") + dataPoints.size());
+        System.out.println(ColorPrinter.yellow("Monitoring Duration: ") +
+            String.format("%.1f seconds", (dataPoints.get(dataPoints.size() - 1).timestamp) / 1000.0));
+        System.out.println();
+        
+        System.out.println(ColorPrinter.green("Total Virtual Memory (VSZ):"));
+        System.out.println("  Average: " + formatBytes((long)avgTotal));
+        System.out.println("  Maximum: " + formatBytes(maxTotal));
+        System.out.println("  Minimum: " + formatBytes(minTotal));
+        System.out.println();
+        
+        System.out.println(ColorPrinter.green("Resident Set Size (RSS):"));
+        System.out.println("  Average: " + formatBytes((long)avgResident));
+        System.out.println("  Maximum: " + formatBytes(maxResident));
+        System.out.println("  Minimum: " + formatBytes(minResident));
+        System.out.println();
+        
+        System.out.println(ColorPrinter.green("Shared Memory:"));
+        System.out.println("  Average: " + formatBytes((long)avgShared));
+        System.out.println("  Maximum: " + formatBytes(maxShared));
+        
+        // Display graphs for Total and Resident memory
+        System.out.println("\n" + ColorPrinter.cyan("Memory Usage Over Time:"));
+        displayChart(
+            dataPoints.stream().mapToDouble(d -> d.totalBytes / (1024.0 * 1024.0)).toArray(),
+            "Total (VSZ) - MB", 20, 60
+        );
+        displayChart(
+            dataPoints.stream().mapToDouble(d -> d.residentBytes / (1024.0 * 1024.0)).toArray(),
+            "Resident (RSS) - MB", 20, 60
+        );
+        
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        
+        // Clean up
+        memMonitoringService = null;
+        memDataPoints = null;
+        memMonitorPid = null;
+        memMonitorThread = null;
+    }
+    
+    @ShellMethod(key = "ro.mem.stat.status", value = "Check memory monitoring status")
+    @ShellMethodAvailability("availabilityCheck")
+    void mem_stat_status() {
+        if (!memMonitorRunning) {
+            System.out.println(ColorPrinter.yellow("No memory monitoring is currently running"));
+            return;
+        }
+        
+        int dataCount = 0;
+        if (memDataPoints != null) {
+            synchronized (memDataPoints) {
+                dataCount = memDataPoints.size();
+            }
+        }
+        
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  Memory Monitoring Status"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.green("✓ Monitoring is active"));
+        System.out.println(ColorPrinter.yellow("Service: ") + memMonitoringService);
+        System.out.println(ColorPrinter.yellow("PID: ") + memMonitorPid);
+        System.out.println(ColorPrinter.yellow("Data points collected: ") + dataCount);
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println("\nUse 'ro.mem.stat.stop' to stop monitoring and view results");
     }
 
 
@@ -656,7 +875,7 @@ public class RemoteCommands extends CommonCommands {
                 "  sleep 1;\n" +
                 "fi;\n" +
                 "# Clean up files\n" +
-                "rm -f %s /tmp/service_monitor_*.sh /tmp/monitor_%s_*.csv /tmp/monitor_debug_*.log 2>/dev/null;\n" +
+                "rm -f %s /tmp/service_monitor_*.sh /tmp/get_process_name.sh /tmp/monitor_%s_*.csv /tmp/monitor_debug_*.log 2>/dev/null;\n" +
                 "echo 'Cleanup complete'",
                 sanitizedName, tempPidFile, sanitizedName
             );
@@ -674,27 +893,35 @@ public class RemoteCommands extends CommonCommands {
         monitorPidFile = tempPidFile;
         
         try {
-            // Read the monitoring script from resources
-            String scriptContent = new String(
+            // Read both scripts from resources
+            String monitorScriptContent = new String(
                 getClass().getResourceAsStream("/service_monitor.sh").readAllBytes()
             );
-            
-            // Upload script to remote machine
-            String remoteScriptPath = "/tmp/service_monitor_" + System.currentTimeMillis() + ".sh";
-            ByteArrayOutputStream uploadStream = new ByteArrayOutputStream();
-            
-            // Create the script on remote machine
-            String createScriptCmd = String.format(
-                "cat > %s << 'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %s",
-                remoteScriptPath, scriptContent, remoteScriptPath
+            String getProcessNameScriptContent = new String(
+                getClass().getResourceAsStream("/get_process_name.sh").readAllBytes()
             );
             
-            runCommandShort(uploadStream, Util.fullMachineName(machine), userName, passwd, createScriptCmd);
+            // Upload scripts to remote machine
+            String remoteMonitorScriptPath = "/tmp/service_monitor_" + System.currentTimeMillis() + ".sh";
+            String remoteGetProcessNameScriptPath = "/tmp/get_process_name.sh";
+            ByteArrayOutputStream uploadStream = new ByteArrayOutputStream();
             
-            // Start monitoring in background - pass sanitized name for PID file
+            // Create both scripts on remote machine
+            String createScriptsCmd = String.format(
+                "cat > %s << 'EOFSCRIPT1'\n%s\nEOFSCRIPT1\n" +
+                "chmod +x %s\n" +
+                "cat > %s << 'EOFSCRIPT2'\n%s\nEOFSCRIPT2\n" +
+                "chmod +x %s",
+                remoteGetProcessNameScriptPath, getProcessNameScriptContent, remoteGetProcessNameScriptPath,
+                remoteMonitorScriptPath, monitorScriptContent, remoteMonitorScriptPath
+            );
+            
+            runCommandShort(uploadStream, Util.fullMachineName(machine), userName, passwd, createScriptsCmd);
+            
+            // Start monitoring in background - pass sanitized name for PID file and get_process_name script path
             String startCmd = String.format(
-                "nohup %s '%s' '%s' %d '%s' > /dev/null 2>&1 &",
-                remoteScriptPath, s, monitorLogFile, interval, monitorPidFile
+                "nohup %s '%s' '%s' %d '%s' '%s' > /dev/null 2>&1 &",
+                remoteMonitorScriptPath, s, monitorLogFile, interval, monitorPidFile, remoteGetProcessNameScriptPath
             );
             
             ByteArrayOutputStream startStream = new ByteArrayOutputStream();
@@ -808,7 +1035,7 @@ public class RemoteCommands extends CommonCommands {
                         "  kill $DEAD_PID 2>/dev/null; " +
                         "  rm -f %s; " +
                         "fi; " +
-                        "rm -f /tmp/service_monitor_*.sh /tmp/monitor_debug_%s.log 2>/dev/null; " +
+                        "rm -f /tmp/service_monitor_*.sh /tmp/get_process_name.sh /tmp/monitor_debug_%s.log 2>/dev/null; " +
                         "echo 'Cleanup done'",
                         monitorPidFile, monitorPidFile, monitorPidFile, sanitizedName
                     );
@@ -925,7 +1152,7 @@ public class RemoteCommands extends CommonCommands {
             // Clean up all related files
             ByteArrayOutputStream cleanupStream = new ByteArrayOutputStream();
             runCommandShort(cleanupStream, Util.fullMachineName(machine), userName, passwd,
-                "rm -f /tmp/monitor_*.pid /tmp/service_monitor_*.sh /tmp/monitor_debug_*.log /tmp/monitor_*.csv 2>/dev/null; " +
+                "rm -f /tmp/monitor_*.pid /tmp/service_monitor_*.sh /tmp/get_process_name.sh /tmp/monitor_debug_*.log /tmp/monitor_*.csv 2>/dev/null; " +
                 "echo 'Removed PID files, scripts, debug logs, and CSV files'");
             
             System.out.println(ColorPrinter.green("\n✓ Cleanup complete"));
@@ -1096,12 +1323,15 @@ public class RemoteCommands extends CommonCommands {
             System.out.println("  Maximum: " + String.format("%.2f%%", maxMem) +
                              " (" + (maxRss / 1024) + " MB)");
             
-            // Display side-by-side graphs for CPU and Memory
+            // Display graphs for CPU and Memory
             System.out.println("\n" + ColorPrinter.cyan("Resource Usage Over Time:"));
-            displaySideBySideGraphs(
+            displayChart(
                 dataPoints.stream().mapToDouble(d -> d.cpu).toArray(),
+                "CPU Usage - %", 20, 30
+            );
+            displayChart(
                 dataPoints.stream().mapToDouble(d -> d.vsz / 1024.0).toArray(),
-                "CPU %", "MEM MB", 20, 30
+                "Memory Usage - MB", 20, 30
             );
             
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
@@ -1398,48 +1628,36 @@ public class RemoteCommands extends CommonCommands {
         System.out.println("        " + label + " (Time →)");
     }
 
-    private void displaySideBySideGraphs(double[] values1, double[] values2,
-                                         String label1, String label2, int height, int width) {
-        if (values1.length == 0 || values2.length == 0) return;
+    private void displayChart(double[] values, String label, int height, int width) {
+        if (values.length == 0) return;
         
-        // Normalize first dataset
-        double max1 = java.util.Arrays.stream(values1).max().orElse(1);
-        double min1 = java.util.Arrays.stream(values1).min().orElse(0);
-        double range1 = max1 - min1;
-        if (range1 == 0) range1 = 1;
+        // Normalize dataset
+        double max = java.util.Arrays.stream(values).max().orElse(1);
+        double min = java.util.Arrays.stream(values).min().orElse(0);
+        double range = max - min;
+        if (range == 0) range = 1;
         
-        int[] normalized1 = new int[values1.length];
-        for (int i = 0; i < values1.length; i++) {
-            normalized1[i] = (int) ((values1[i] - min1) / range1 * (height - 1));
+        int[] normalized = new int[values.length];
+        for (int i = 0; i < values.length; i++) {
+            normalized[i] = (int) ((values[i] - min) / range * (height - 1));
         }
         
-        // Normalize second dataset
-        double max2 = java.util.Arrays.stream(values2).max().orElse(1);
-        double min2 = java.util.Arrays.stream(values2).min().orElse(0);
-        double range2 = max2 - min2;
-        if (range2 == 0) range2 = 1;
+        int step = Math.max(1, values.length / width);
         
-        int[] normalized2 = new int[values2.length];
-        for (int i = 0; i < values2.length; i++) {
-            normalized2[i] = (int) ((values2[i] - min2) / range2 * (height - 1));
-        }
-        
-        int step = Math.max(1, Math.max(values1.length, values2.length) / width);
-        
-        // Display first graph (CPU Usage)
+        // Display graph
         System.out.println();
-        System.out.printf("%-8s - CPU Usage%n", label1);
+        System.out.printf("%-8s%n", label);
         System.out.println(ColorPrinter.cyan("─".repeat(width + 20)));
         
         for (int row = height - 1; row >= 0; row--) {
-            double value1AtRow = min1 + (range1 * row / (height - 1));
+            double valueAtRow = min + (range * row / (height - 1));
             
-            System.out.printf("%6.1f │", value1AtRow);
-            for (int col = 0; col < Math.min(values1.length, width); col += step) {
+            System.out.printf("%6.1f │", valueAtRow);
+            for (int col = 0; col < Math.min(values.length, width); col += step) {
                 int idx = col;
-                if (normalized1[idx] == row) {
+                if (normalized[idx] == row) {
                     System.out.print(ColorPrinter.green("●"));
-                } else if (normalized1[idx] > row) {
+                } else if (normalized[idx] > row) {
                     System.out.print(ColorPrinter.green("│"));
                 } else {
                     System.out.print(" ");
@@ -1448,39 +1666,9 @@ public class RemoteCommands extends CommonCommands {
             System.out.println();
         }
         
-        // Draw x-axis for first graph
+        // Draw x-axis
         System.out.print("       └");
-        for (int i = 0; i < Math.min(width, values1.length / step); i++) {
-            System.out.print("─");
-        }
-        System.out.println(">");
-        System.out.printf("        %-" + width + "s%n", "Time →");
-        
-        // Display second graph (Memory Usage)
-        System.out.println();
-        System.out.printf("%-8s - Memory Usage%n", label2);
-        System.out.println(ColorPrinter.cyan("─".repeat(width + 20)));
-        
-        for (int row = height - 1; row >= 0; row--) {
-            double value2AtRow = min2 + (range2 * row / (height - 1));
-            
-            System.out.printf("%6.1f │", value2AtRow);
-            for (int col = 0; col < Math.min(values2.length, width); col += step) {
-                int idx = col;
-                if (normalized2[idx] == row) {
-                    System.out.print(ColorPrinter.yellow("●"));
-                } else if (normalized2[idx] > row) {
-                    System.out.print(ColorPrinter.yellow("│"));
-                } else {
-                    System.out.print(" ");
-                }
-            }
-            System.out.println();
-        }
-        
-        // Draw x-axis for second graph
-        System.out.print("       └");
-        for (int i = 0; i < Math.min(width, values2.length / step); i++) {
+        for (int i = 0; i < Math.min(width, values.length / step); i++) {
             System.out.print("─");
         }
         System.out.println(">");
@@ -1511,6 +1699,26 @@ public class RemoteCommands extends CommonCommands {
             this.vsz = vsz;
             this.threads = threads;
             this.status = status;
+        }
+    }
+    
+    // Helper class to hold memory statistics data
+    private static class MemStatData {
+        long timestamp;      // Time offset in milliseconds
+        long totalBytes;     // Total virtual memory (VSZ)
+        long residentBytes;  // Resident set size (RSS)
+        long sharedBytes;    // Shared memory
+        long textPages;      // Text (code) pages
+        long dataPages;      // Data + stack pages
+        
+        MemStatData(long timestamp, long totalBytes, long residentBytes,
+                   long sharedBytes, long textPages, long dataPages) {
+            this.timestamp = timestamp;
+            this.totalBytes = totalBytes;
+            this.residentBytes = residentBytes;
+            this.sharedBytes = sharedBytes;
+            this.textPages = textPages;
+            this.dataPages = dataPages;
         }
     }
 }
