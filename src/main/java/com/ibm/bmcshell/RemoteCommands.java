@@ -427,7 +427,7 @@ public class RemoteCommands extends CommonCommands {
         if (isRoot) {
             System.out.println(ColorPrinter.green("● " + service));
         } else {
-            System.out.println(prefix + ColorPrinter.blue(service));
+            System.out.println(prefix + ColorPrinter.yellow(service));
         }
         
         Set<String> dependencies = graph.getOrDefault(service, new HashSet<>());
@@ -1426,18 +1426,14 @@ public class RemoteCommands extends CommonCommands {
         
         int step = Math.max(1, Math.max(values1.length, values2.length) / width);
         
-        // Print headers
+        // Display first graph (CPU Usage)
         System.out.println();
-        System.out.printf("%-8s %-" + (width + 10) + "s   %-8s %-" + (width + 10) + "s%n",
-                         label1, "CPU Usage", label2, "Memory Usage");
-        System.out.println(ColorPrinter.cyan("─".repeat(width * 2 + 40)));
+        System.out.printf("%-8s - CPU Usage%n", label1);
+        System.out.println(ColorPrinter.cyan("─".repeat(width + 20)));
         
-        // Draw graphs side by side
         for (int row = height - 1; row >= 0; row--) {
             double value1AtRow = min1 + (range1 * row / (height - 1));
-            double value2AtRow = min2 + (range2 * row / (height - 1));
             
-            // First graph
             System.out.printf("%6.1f │", value1AtRow);
             for (int col = 0; col < Math.min(values1.length, width); col += step) {
                 int idx = col;
@@ -1449,10 +1445,25 @@ public class RemoteCommands extends CommonCommands {
                     System.out.print(" ");
                 }
             }
+            System.out.println();
+        }
+        
+        // Draw x-axis for first graph
+        System.out.print("       └");
+        for (int i = 0; i < Math.min(width, values1.length / step); i++) {
+            System.out.print("─");
+        }
+        System.out.println(">");
+        System.out.printf("        %-" + width + "s%n", "Time →");
+        
+        // Display second graph (Memory Usage)
+        System.out.println();
+        System.out.printf("%-8s - Memory Usage%n", label2);
+        System.out.println(ColorPrinter.cyan("─".repeat(width + 20)));
+        
+        for (int row = height - 1; row >= 0; row--) {
+            double value2AtRow = min2 + (range2 * row / (height - 1));
             
-            System.out.print("   ");
-            
-            // Second graph
             System.out.printf("%6.1f │", value2AtRow);
             for (int col = 0; col < Math.min(values2.length, width); col += step) {
                 int idx = col;
@@ -1467,22 +1478,13 @@ public class RemoteCommands extends CommonCommands {
             System.out.println();
         }
         
-        // Draw x-axes
-        System.out.print("       └");
-        for (int i = 0; i < Math.min(width, values1.length / step); i++) {
-            System.out.print("─");
-        }
-        System.out.print(">  ");
-        
+        // Draw x-axis for second graph
         System.out.print("       └");
         for (int i = 0; i < Math.min(width, values2.length / step); i++) {
             System.out.print("─");
         }
         System.out.println(">");
-        
-        // Labels
-        System.out.printf("        %-" + width + "s        %-" + width + "s%n",
-                         "Time →", "Time →");
+        System.out.printf("        %-" + width + "s%n", "Time →");
         System.out.println();
     }
 

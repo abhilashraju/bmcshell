@@ -258,10 +258,19 @@ public class DumpCommands extends CommonCommands {
     @ShellMethod(key = "dump.system.offload", value = "eg: system_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void system_dump_offload(String id, String filename) throws URISyntaxException, IOException {
-        if (filename == null) {
-            filename = id;
-        }
-        get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename, false);
+        
+     //   get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename, false);
+         Thread script = new Thread(() -> {
+             try {
+                 get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename, false);
+      
+             } catch (URISyntaxException | IOException e) {
+             }      
+            
+        });
+        script.setName("Dump Extractor");
+        script.setDaemon(true);
+        script.start();
     }
 
 }
