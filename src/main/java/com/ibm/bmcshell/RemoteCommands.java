@@ -494,7 +494,7 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat servicename [--interval 2] - Start live memory monitoring")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat(
-            @ShellOption(valueProvider = ServiceProvider.class) String servicename,
+            @ShellOption(value = { "--ser", "-s" },valueProvider = ServiceProvider.class) String servicename,
             @ShellOption(value = { "--interval", "-i" }, defaultValue = "2") int interval) {
         
         if (memMonitorRunning) {
