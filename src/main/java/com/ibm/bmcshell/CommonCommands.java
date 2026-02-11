@@ -1,5 +1,10 @@
 package com.ibm.bmcshell;
 
+import org.springframework.shell.CompletionContext;
+import org.springframework.shell.CompletionProposal;
+import org.springframework.shell.standard.ValueProvider;
+import org.springframework.stereotype.Component;
+
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
@@ -159,6 +164,7 @@ public class CommonCommands implements ApplicationContextAware {
             if (machine == null) {
                 System.out.print("Enter machine name: ");
                 CommonCommands.machine = scanner.nextLine();
+                SSHShellClient.clearAllSessions();
             }
             serialise();
         }
@@ -175,7 +181,11 @@ public class CommonCommands implements ApplicationContextAware {
                     stream.close();
                     var mapper = new ObjectMapper();
                     var tree = mapper.readTree(bytes);
-                    machine = tree.get("machine").asText();
+                    String loadedMachine = tree.get("machine").asText();
+                    if (!loadedMachine.equals(machine)) {
+                        SSHShellClient.clearAllSessions();
+                    }
+                    machine = loadedMachine;
                     userName = tree.get("userName").asText();
                     passwd = tree.get("passwd").asText();
                     Util.targetport = tree.get("httpport").asInt();
@@ -550,9 +560,15 @@ public class CommonCommands implements ApplicationContextAware {
         machine = m;
         getToken();
         serialise();
-        SSHShellClient.clearSession();
+        SSHShellClient.clearAllSessions();
         Util.addToMachineList(machine);
         return machine;
+    }
+    @ShellMethod(key = "ssh-clear-sessions")
+    protected void ssh_clear_sessions() {
+
+        SSHShellClient.clearAllSessions();
+       
     }
 
     void redirector(OutputStream outputStream, Runnable runnable) {
@@ -900,7 +916,7 @@ public class CommonCommands implements ApplicationContextAware {
         userName = u;
         serialise();
         resetToken();
-        SSHShellClient.clearSession();
+        SSHShellClient.clearAllSessions();
     }
 
     @ShellMethod(key = "password")
@@ -912,6 +928,51 @@ public class CommonCommands implements ApplicationContextAware {
         serialise();
         resetToken();
         return passwd;
+    }
+    
+    @Component
+    public static class SSHSessionProvider implements ValueProvider {
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            try {
+                return SSHShellClient.getSessionKeys()
+                        .stream()
+                        .map(CompletionProposal::new)
+                        .collect(java.util.stream.Collectors.toList());
+            } catch (Exception e) {
+                return List.of();
+            }
+        }
+    }
+    
+    @ShellMethod(key = "list-ssh-sessions", value = "List all active SSH sessions with their cache keys")
+    String listSSHSessions() {
+        return SSHShellClient.listActiveSessions();
+    }
+    
+    @ShellMethod(key = "select-ssh-session", value = "Select an active SSH session for use with scmd/cmd commands")
+    String selectSSHSession(@ShellOption(valueProvider = SSHSessionProvider.class, value = { "--session", "-s" }) String sessionKey) {
+        String result = SSHShellClient.setActiveSession(sessionKey);
+        
+        // Parse the session key to update machine, userName if needed
+        String[] parts = sessionKey.split(":");
+        if(parts.length == 3) {
+            String host = parts[0];
+            int sessionPort = Integer.parseInt(parts[1]);
+            String user = parts[2];
+            
+            // Update CommonCommands context
+            machine = host;
+            userName = user;
+            SSHShellClient.port = sessionPort;
+        }
+        
+        return result;
+    }
+    
+    @ShellMethod(key = "active-ssh-session", value = "Show information about the currently active SSH session")
+    String activeSSHSession() {
+        return SSHShellClient.getActiveSessionInfo();
     }
     public static void setupSSHKey(String user, String host, String password) {
         try {

@@ -5,7 +5,9 @@ import com.jcraft.jsch.*;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SSHShellClient {
     static {
@@ -22,21 +24,48 @@ public class SSHShellClient {
 
     }
     public static int port=22;
+    public static int connectionTimeout = 15000; // 30 seconds default timeout
     public static JSch jsch = new JSch();
-    public static Session session;
-    static Session getSession(String host, String user, String password,int port){
+    
+    // Cache for SSH sessions keyed by connection string (host:port:user)
+    private static Map<String, Session> sessionCache = new HashMap<>();
+    
+    // Currently selected session key for use with commands
+    private static String activeSessionKey = null;
+    
+    /**
+     * Generate a unique cache key for a connection
+     */
+    private static String getCacheKey(String host, String user, int port) {
+        return host + ":" + port + ":" + user;
+    }
+    
+    /**
+     * Get or create a cached SSH session
+     */
+    static Session getSession(String host, String user, String password, int port){
+        String cacheKey = getCacheKey(host, user, port);
+        Session session = sessionCache.get(cacheKey);
         
-        if(session == null || !session.isConnected()){
-            try {
+        // Check if session exists and is still connected
+        if(session != null && session.isConnected()){
+            return session;
+        }
+        
+        // Create new session if not cached or disconnected
+        try {
             session = jsch.getSession(user, host, port);
             session.setPassword(password);
             session.setConfig("StrictHostKeyChecking", "no");
-            session.connect();
-            }catch (Exception e){
-                e.printStackTrace();
-                return null;
-            }
+            session.connect(connectionTimeout);
+            
+            // Cache the new session
+            sessionCache.put(cacheKey, session);
+        } catch (Exception e){
+            e.printStackTrace();
+            return null;
         }
+        
         return session;
     }
     public static void runShell(String host,String user,String password){
@@ -50,7 +79,7 @@ public class SSHShellClient {
             Session session = jsch.getSession(user, host, port);
             session.setPassword(password);
             session.setConfig("StrictHostKeyChecking", "no");
-            session.connect();
+            session.connect(connectionTimeout);
 
             var serverHostKey = session.getHostKey();
             System.out.println(serverHostKey);
@@ -181,13 +210,179 @@ public class SSHShellClient {
     public static void setPort(int port2) {
         if(port2 > 0 && port2 != port) {
             port = port2;
-            clearSession();
+            // No need to clear sessions when port changes - cache handles it
         }
     }
-    public static void clearSession() {
-         if(session != null && session.isConnected()){
-                session.disconnect();
+    
+    public static void setConnectionTimeout(int timeoutMs) {
+        if(timeoutMs > 0) {
+            connectionTimeout = timeoutMs;
         }
-        session = null;
+    }
+    
+    public static int getConnectionTimeout() {
+        return connectionTimeout;
+    }
+    
+    /**
+     * Clear a specific cached session
+     */
+    public static void clearSession(String host, String user, int port) {
+        String cacheKey = getCacheKey(host, user, port);
+        Session session = sessionCache.get(cacheKey);
+        if(session != null && session.isConnected()){
+            session.disconnect();
+        }
+        sessionCache.remove(cacheKey);
+    }
+    
+    /**
+     * Clear all cached sessions
+     */
+    public static void clearAllSessions() {
+        for(Session session : sessionCache.values()) {
+            if(session != null && session.isConnected()){
+                session.disconnect();
+            }
+        }
+        sessionCache.clear();
+    }
+    
+    /**
+     * Get all session cache keys
+     * @return List of all session cache keys
+     */
+    public static List<String> getSessionKeys() {
+        return new java.util.ArrayList<>(sessionCache.keySet());
+    }
+    
+    /**
+     * Get a session by its cache key
+     * @param cacheKey The cache key (format: host:port:user)
+     * @return The session if found, null otherwise
+     */
+    public static Session getSessionByKey(String cacheKey) {
+        return sessionCache.get(cacheKey);
+    }
+    
+    /**
+     * List all active SSH sessions with their cache keys and connection status
+     * @return A formatted string containing all session information
+     */
+    public static String listActiveSessions() {
+        if(sessionCache.isEmpty()) {
+            return "No active SSH sessions cached.";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append("Active SSH Sessions:\n");
+        sb.append("===================\n");
+        
+        int index = 1;
+        for(Map.Entry<String, Session> entry : sessionCache.entrySet()) {
+            String key = entry.getKey();
+            Session session = entry.getValue();
+            
+            sb.append(index++).append(". ");
+            sb.append("Key: ").append(key);
+            
+            if(session != null) {
+                sb.append(" | Status: ");
+                if(session.isConnected()) {
+                    sb.append("CONNECTED");
+                    try {
+                        sb.append(" | Server: ").append(session.getHost());
+                        sb.append(":").append(session.getPort());
+                    } catch (Exception e) {
+                        // Ignore if we can't get host/port
+                    }
+                } else {
+                    sb.append("DISCONNECTED");
+                }
+            } else {
+                sb.append(" | Status: NULL");
+            }
+            sb.append("\n");
+        }
+        
+        return sb.toString();
+    }
+    
+    /**
+     * Set the active session for subsequent commands
+     * @param cacheKey The cache key (format: host:port:user)
+     * @return Status message
+     */
+    public static String setActiveSession(String cacheKey) {
+        Session session = sessionCache.get(cacheKey);
+        if(session == null) {
+            return "Session not found: " + cacheKey;
+        }
+        
+        if(!session.isConnected()) {
+            return "Session is disconnected: " + cacheKey;
+        }
+        
+        activeSessionKey = cacheKey;
+        
+        // Parse the cache key to extract host, port, and user
+        String[] parts = cacheKey.split(":");
+        if(parts.length == 3) {
+            String host = parts[0];
+            int sessionPort = Integer.parseInt(parts[1]);
+            String user = parts[2];
+            
+            // Update the global port if different
+            if(sessionPort != port) {
+                port = sessionPort;
+            }
+            
+            return String.format("Active session set to: %s (host=%s, port=%d, user=%s)",
+                                cacheKey, host, sessionPort, user);
+        }
+        
+        return "Active session set to: " + cacheKey;
+    }
+    
+    /**
+     * Get the currently active session key
+     * @return The active session key, or null if none is set
+     */
+    public static String getActiveSessionKey() {
+        return activeSessionKey;
+    }
+    
+    /**
+     * Clear the active session
+     */
+    public static void clearActiveSession() {
+        activeSessionKey = null;
+    }
+    
+    /**
+     * Get information about the active session
+     * @return Status message about the active session
+     */
+    public static String getActiveSessionInfo() {
+        if(activeSessionKey == null) {
+            return "No active session selected. Use 'select-ssh-session' to select one.";
+        }
+        
+        Session session = sessionCache.get(activeSessionKey);
+        if(session == null) {
+            activeSessionKey = null;
+            return "Active session no longer exists in cache.";
+        }
+        
+        if(!session.isConnected()) {
+            return String.format("Active session '%s' is DISCONNECTED", activeSessionKey);
+        }
+        
+        try {
+            return String.format("Active session: %s | Server: %s:%d | Status: CONNECTED",
+                               activeSessionKey, session.getHost(), session.getPort());
+        } catch (Exception e) {
+            return String.format("Active session: %s | Status: CONNECTED", activeSessionKey);
+        }
     }
 }
