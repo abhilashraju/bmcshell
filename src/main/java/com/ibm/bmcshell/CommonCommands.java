@@ -343,7 +343,7 @@ public class CommonCommands implements ApplicationContextAware {
             return String.format("{\"file_location\":\"not able to download\"}", target);
 
         }
-        return Util.tryUntil(2, () -> {
+        return Util.tryUntil(1, () -> {
             try {
                 var response = client.get()
                         .uri(auri)

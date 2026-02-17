@@ -425,7 +425,7 @@ public class RemoteCommands extends CommonCommands {
     private void displayServiceNode(String service, Map<String, Set<String>> graph,
                                     Set<String> displayed, String prefix, boolean isRoot, boolean reverse) {
         if (displayed.contains(service)) {
-            System.out.println(prefix + ColorPrinter.magenta(service + " (already shown)"));
+            System.out.println(ColorPrinter.magenta(service + " (already shown)"));
             return;
         }
         
@@ -434,7 +434,7 @@ public class RemoteCommands extends CommonCommands {
         if (isRoot) {
             System.out.println(ColorPrinter.green("● " + service));
         } else {
-            System.out.println(prefix + ColorPrinter.yellow(service));
+            System.out.println(ColorPrinter.yellow(service));
         }
         
         Set<String> dependencies = graph.getOrDefault(service, new HashSet<>());
@@ -491,15 +491,24 @@ public class RemoteCommands extends CommonCommands {
     void ping(String ip) {
         scmd(String.format("ping -c 1 %s", ip));
     }
-    @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat servicename [--interval 2] - Start live memory monitoring")
+    @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat servicename [--exe exename] [--interval 2] - Start live memory monitoring")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat(
-            @ShellOption(value = { "--ser", "-s" },valueProvider = ServiceProvider.class) String servicename,
+            @ShellOption(value = { "--ser", "-s" }, valueProvider = ServiceProvider.class, defaultValue = ShellOption.NULL) String servicename,
+            @ShellOption(value = { "--exe", "-e" }, defaultValue = ShellOption.NULL) String exename,
             @ShellOption(value = { "--interval", "-i" }, defaultValue = "2") int interval) {
         
         if (memMonitorRunning) {
             System.out.println(ColorPrinter.yellow("Memory monitoring already running for service: " + memMonitoringService));
             System.out.println("Stop current monitoring with ro.mem.stat.stop before starting a new one");
+            return;
+        }
+        
+        // Validate input: either servicename or exename must be provided
+        if (servicename == null && exename == null) {
+            System.out.println(ColorPrinter.red("Error: Either --ser (service name) or --exe (executable name) must be provided"));
+            System.out.println("Usage: ro.mem.stat --ser servicename [--interval 2]");
+            System.out.println("   or: ro.mem.stat --exe exename [--interval 2]");
             return;
         }
         
@@ -509,32 +518,46 @@ public class RemoteCommands extends CommonCommands {
             String userName = CommonCommands.getUserName();
             String passwd = CommonCommands.getPasswd();
             
-            // Step 1: Deploy get_process_name.sh script if not already present
-            String remoteGetProcessNameScript = "/tmp/get_process_name.sh";
-            try {
-                String getProcessNameScriptContent = new String(
-                    getClass().getResourceAsStream("/get_process_name.sh").readAllBytes()
-                );
+            String processname;
+            String displayName;
+            
+            // Determine process name based on input
+            if (exename != null) {
+                // Use exe name directly
+                processname = exename;
+                displayName = exename;
+                System.out.println(ColorPrinter.cyan("Using executable name: " + exename));
+            } else {
+                // Use service name - get process name from service
+                displayName = servicename;
                 
-                ByteArrayOutputStream deployStream = new ByteArrayOutputStream();
-                String deployCmd = String.format(
-                    "cat > %s << 'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %s",
-                    remoteGetProcessNameScript, getProcessNameScriptContent, remoteGetProcessNameScript
-                );
-                runCommandShort(deployStream, Util.fullMachineName(machine), userName, passwd, deployCmd);
-            } catch (Exception e) {
-                System.out.println(ColorPrinter.yellow("Warning: Could not deploy get_process_name.sh: " + e.getMessage()));
-            }
-            
-            // Step 2: Get the actual process name from the service
-            ByteArrayOutputStream processNameOutput = new ByteArrayOutputStream();
-            String getProcessNameCmd = String.format("%s '%s'", remoteGetProcessNameScript, servicename);
-            runCommandShort(processNameOutput, Util.fullMachineName(machine), userName, passwd, getProcessNameCmd);
-            
-            String processname = processNameOutput.toString().trim();
-            if (processname.isEmpty()) {
-                System.out.println(ColorPrinter.red("Error: Could not determine process name for service '" + servicename + "'"));
-                return;
+                // Step 1: Deploy get_process_name.sh script if not already present
+                String remoteGetProcessNameScript = "/tmp/get_process_name.sh";
+                try {
+                    String getProcessNameScriptContent = new String(
+                        getClass().getResourceAsStream("/get_process_name.sh").readAllBytes()
+                    );
+                    
+                    ByteArrayOutputStream deployStream = new ByteArrayOutputStream();
+                    String deployCmd = String.format(
+                        "cat > %s << 'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %s",
+                        remoteGetProcessNameScript, getProcessNameScriptContent, remoteGetProcessNameScript
+                    );
+                    runCommandShort(deployStream, Util.fullMachineName(machine), userName, passwd, deployCmd);
+                } catch (Exception e) {
+                    System.out.println(ColorPrinter.yellow("Warning: Could not deploy get_process_name.sh: " + e.getMessage()));
+                }
+                
+                // Step 2: Get the actual process name from the service
+                ByteArrayOutputStream processNameOutput = new ByteArrayOutputStream();
+                String getProcessNameCmd = String.format("%s '%s'", remoteGetProcessNameScript, servicename);
+                runCommandShort(processNameOutput, Util.fullMachineName(machine), userName, passwd, getProcessNameCmd);
+                
+                processname = processNameOutput.toString().trim();
+                if (processname.isEmpty()) {
+                    System.out.println(ColorPrinter.red("Error: Could not determine process name for service '" + servicename + "'"));
+                    return;
+                }
             }
             
             // Step 3: Find the process ID
@@ -544,14 +567,17 @@ public class RemoteCommands extends CommonCommands {
             
             String pid = pidOutput.toString().trim();
             if (pid.isEmpty()) {
-                // Try alternative method using systemctl
-                ByteArrayOutputStream mainPidOutput = new ByteArrayOutputStream();
-                String mainPidCmd = String.format("systemctl show '%s' -p MainPID --value", servicename);
-                runCommandShort(mainPidOutput, Util.fullMachineName(machine), userName, passwd, mainPidCmd);
-                pid = mainPidOutput.toString().trim();
+                // Try alternative method using systemctl only if servicename was provided
+                if (servicename != null) {
+                    ByteArrayOutputStream mainPidOutput = new ByteArrayOutputStream();
+                    String mainPidCmd = String.format("systemctl show '%s' -p MainPID --value", servicename);
+                    runCommandShort(mainPidOutput, Util.fullMachineName(machine), userName, passwd, mainPidCmd);
+                    pid = mainPidOutput.toString().trim();
+                }
                 
                 if (pid.isEmpty() || pid.equals("0")) {
-                    System.out.println(ColorPrinter.red("Error: Process '" + processname + "' not found or service '" + servicename + "' is not running"));
+                    System.out.println(ColorPrinter.red("Error: Process '" + processname + "' not found" +
+                        (servicename != null ? " or service '" + servicename + "' is not running" : "")));
                     return;
                 }
             }
@@ -559,14 +585,16 @@ public class RemoteCommands extends CommonCommands {
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
             System.out.println(ColorPrinter.cyan("  Live Memory Monitoring"));
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            System.out.println(ColorPrinter.yellow("Service: ") + servicename);
+            if (servicename != null) {
+                System.out.println(ColorPrinter.yellow("Service: ") + servicename);
+            }
             System.out.println(ColorPrinter.yellow("Process: ") + processname);
             System.out.println(ColorPrinter.yellow("PID: ") + pid);
             System.out.println(ColorPrinter.yellow("Interval: ") + interval + " seconds");
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
             
             // Initialize monitoring state
-            memMonitoringService = servicename;
+            memMonitoringService = displayName;
             memMonitorPid = pid;
             memDataPoints = new ArrayList<>();
             memMonitorRunning = true;
@@ -1386,16 +1414,17 @@ public class RemoteCommands extends CommonCommands {
             line = line.trim();
             if (line.isEmpty()) continue;
             
-            // BusyBox top format: PID PPID USER STAT VSZ %VSZ %CPU COMMAND
-            String[] parts = line.split("\\s+");
-            if (parts.length >= 5) {
+            // BusyBox top format: PID PPID USER STAT VSZ %MEM %CPU %CPU COMMAND
+            String[] parts = line.split("\\s+", 9);
+            if (parts.length >= 9) {
                 try {
-                    String processName = parts[parts.length - 1];
-                    // VSZ is typically in column 4 (0-indexed)
+                    // COMMAND is at index 8 (last element after splitting with limit 9)
+                    String processName = parts[8];
+                    // VSZ is at column 4 (0-indexed)
                     long vszKB = Long.parseLong(parts[4]);
                     // Convert KB to MB for display
                     double memMB = vszKB / 1024.0;
-                    processes.add(new ProcessMemInfo(parts[0],processName, memMB));
+                    processes.add(new ProcessMemInfo(parts[0], processName, memMB));
                 } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
                     // Skip invalid lines
                 }
@@ -1449,13 +1478,15 @@ public class RemoteCommands extends CommonCommands {
             line = line.trim();
             if (line.isEmpty()) continue;
             
-            // BusyBox top format: PID PPID USER STAT VSZ %VSZ %CPU COMMAND
-            String[] parts = line.split("\\s+");
-            if (parts.length >= 7) {
+            // BusyBox top format: PID PPID USER STAT VSZ %MEM %CPU %CPU COMMAND
+            String[] parts = line.split("\\s+", 9);
+            if (parts.length >= 9) {
                 try {
-                    String processName = parts[parts.length - 1];
-                    // %CPU is typically in column 6 (0-indexed)
-                    String cpuStr = parts[6].replace("%", "");
+                    // COMMAND is at index 8 (last element after splitting with limit 9)
+                    String processName = parts[8];
+                    // %CPU is at columns 6-7, but we need to parse it correctly
+                    // It appears as two separate fields: "0" and "0%"
+                    String cpuStr = parts[7].replace("%", "");
                     double cpuPercent = Double.parseDouble(cpuStr);
                     processes.add(new ProcessCpuInfo(processName, cpuPercent));
                 } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
