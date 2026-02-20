@@ -313,6 +313,24 @@ public class CommonCommands implements ApplicationContextAware {
             throw new RuntimeException("Error concatenating files", e);
         }
     }
+    String makeUnAuthRequest(String target) throws URISyntaxException {
+        var auri = new URI(base() + target);
+        return Util.tryUntil(1, () -> {
+            try {
+                var response = client.get()
+                        .uri(auri)
+                        .header("Content-Type", "application/json")
+                        .retrieve()
+                        .toEntity(String.class)
+                        .block();
+                return response.getBody();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                throw ex;
+            }
+
+        });
+    }
 
     String makeGetRequest(String target, String o) throws URISyntaxException {
         var auri = new URI(base() + target);
@@ -537,7 +555,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     protected void makeApiList() throws URISyntaxException, JsonProcessingException {
         var mapper = new ObjectMapper();
-        var resp = makeGetRequest(Util.normalise(""), "");
+        var resp = makeUnAuthRequest(Util.normalise(""));
         lastCurlResponse = resp;
         endPoints.push(Util.sorted(Util.buildLinksAndTargets(mapper.readTree(resp))));
         endPoints.peek().add(0, new Util.EndPoints("back", "Get"));
@@ -771,8 +789,10 @@ public class CommonCommands implements ApplicationContextAware {
                 | WebClientResponseException.Forbidden
                 | WebClientResponseException.MethodNotAllowed
                 | WebClientResponseException.InternalServerError ex) {
+            System.out.println(ex);
             return ex.getResponseBodyAsString();
         } catch (Exception exception) {
+            System.out.println(exception);
             return exception.getMessage();
         }
 
@@ -834,6 +854,8 @@ public class CommonCommands implements ApplicationContextAware {
                 }
             }
         }
+        System.out.println("No response");
+    
         if (showMenu) {
             displayCurrent();
         }
