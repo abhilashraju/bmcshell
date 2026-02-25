@@ -224,12 +224,13 @@ public class CommonCommands implements ApplicationContextAware {
         try {
             if (token == null || token.isEmpty()) {
                 token = getAuthToken(client);
-                getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.GREEN));
+                System.out.println(ColorPrinter.bgBlackGreenFg("Token retrieved successfully"));
+                getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.GREEN, AttributedStyle.BLACK));
             }
         } catch (Exception ex) {
-            System.out.println("Could not get token");
-            System.out.println(ex.getMessage());
-            getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, AttributedStyle.RED));
+            System.out.println(ColorPrinter.gray("Could not get token"));
+            System.out.println(ColorPrinter.gray(ex.getMessage()));
+            getPromptProvider().setShellData(new CustomPromptProvider.ShellData(machine, 8));
         }
         return token;
 

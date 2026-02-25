@@ -17,6 +17,11 @@ public class CustomPromptProvider implements PromptProvider
             prompt=p;
             style = AttributedStyle.DEFAULT.background(color);
         }
+        public ShellData(String p, int fgColor, int bgColor)
+        {
+            prompt=p;
+            style = AttributedStyle.DEFAULT.foreground(fgColor).background(bgColor);
+        }
         ShellData(){}
 
     }

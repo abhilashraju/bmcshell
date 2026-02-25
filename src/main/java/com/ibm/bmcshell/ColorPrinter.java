@@ -50,6 +50,9 @@ public class ColorPrinter {
     public static String white(String text) {
         return colorize(text, "37");
     }
+    public static String gray(String text) {
+        return colorize(text, "90");
+    }
     public static String bold(String text) {
         return "\033[1m" + text + "\033[0m";
     }
@@ -82,6 +85,12 @@ public class ColorPrinter {
     }
     public static String bgWhite(String text) {
         return background(text, "47");
+    }
+    public static String bgBlack(String text) {
+        return background(text, "40");
+    }
+    public static String bgBlackGreenFg(String text) {
+        return "\033[40;32m" + text + "\033[0m";
     }
     public static String boldRed(String text) {
         return bold(red(text));
