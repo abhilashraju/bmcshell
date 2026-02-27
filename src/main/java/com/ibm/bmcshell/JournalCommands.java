@@ -17,7 +17,7 @@ public class JournalCommands extends CommonCommands {
         StringBuffer command = new StringBuffer();
         command.append("journalctl -f");
         Stream.of(filter).map(f -> {
-            return RemoteCommands.ServiceProvider.serviceNames.stream().filter(s -> s.contains(f));
+            return ServiceCommands.ServiceProvider.serviceNames.stream().filter(s -> s.contains(f));
         }).flatMap(s -> s).forEach(s -> {
             command.append(" -u ").append(s);
         });
