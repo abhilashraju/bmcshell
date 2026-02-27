@@ -88,6 +88,18 @@ public class RemoteCommands extends CommonCommands {
         scmd(cmd);
     }
 
+    @ShellMethod(key = "ro.date.get", value = "Get current Unix timestamp in UTC (eg: ro.date.get)")
+    @ShellMethodAvailability("availabilityCheck")
+    void dateGet() {
+        scmd("date -u +%s && date -u");
+    }
+
+    @ShellMethod(key = "ro.date.set", value = "Set date using Unix timestamp (eg: ro.date.set 1771405014)")
+    @ShellMethodAvailability("availabilityCheck")
+    void dateSet(String timestamp) {
+        scmd(String.format("date -s @%s && date", timestamp));
+    }
+
     @ShellMethod(key = "ro.cat", value = "eg: ro.cat filepath")
     @ShellMethodAvailability("availabilityCheck")
     void cat(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
@@ -97,6 +109,10 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethod(key = "ro.service.list", value = "eg: ro.service.list")
     @ShellMethodAvailability("availabilityCheck")
     void serviceList() throws IOException {
+        serviceList(true);
+    }
+
+    void serviceList(boolean displayTable) throws IOException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
         try {
@@ -118,9 +134,114 @@ public class RemoteCommands extends CommonCommands {
             var filenames2 = parseFilenamesFromls(outputStream3.toString());
             filenames2.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
                     .forEach(a -> ServiceProvider.serviceNames.add(a));
-            System.out.println("Services fetched");
+            
+            // Display services in table format only if requested
+            if (displayTable) {
+                displayServicesTable(outputStream.toString());
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private void displayServicesTable(String systemctlOutput) {
+        List<ServiceInfo> services = parseServiceInfo(systemctlOutput);
+        
+        if (services.isEmpty()) {
+            System.out.println("No services found.");
+            return;
+        }
+
+        // Calculate column widths
+        int unitWidth = Math.max(20, services.stream().mapToInt(s -> s.unit.length()).max().orElse(20));
+        int loadWidth = 10;
+        int activeWidth = 10;
+        int subWidth = 10;
+        int descWidth = Math.max(40, services.stream().mapToInt(s -> s.description.length()).max().orElse(40));
+        
+        // Limit description width to 60 characters for better readability
+        descWidth = Math.min(descWidth, 60);
+
+        // Print header
+        String headerFormat = "%-" + unitWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s  %-" + descWidth + "s%n";
+        String rowFormat = "%-" + unitWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s  %-" + descWidth + "s%n";
+        
+        System.out.printf(headerFormat, "UNIT", "LOAD", "ACTIVE", "SUB", "DESCRIPTION");
+        System.out.println("=".repeat(unitWidth + loadWidth + activeWidth + subWidth + descWidth + 8));
+
+        // Print services
+        for (ServiceInfo service : services) {
+            String desc = service.description.length() > descWidth
+                ? service.description.substring(0, descWidth - 3) + "..."
+                : service.description;
+            System.out.printf(rowFormat, service.unit, service.load, service.active, service.sub, desc);
+        }
+
+        System.out.println("\nTotal services: " + services.size());
+    }
+
+    private List<ServiceInfo> parseServiceInfo(String systemctlOutput) {
+        List<ServiceInfo> services = new ArrayList<>();
+        String[] lines = systemctlOutput.split("\\R");
+        boolean isHeader = true;
+
+        for (String line : lines) {
+            // Skip until we find the header line
+            if (isHeader) {
+                if (line.trim().startsWith("UNIT")) {
+                    isHeader = false;
+                }
+                continue;
+            }
+
+            // Skip empty lines and footer lines
+            if (line.trim().isEmpty() || line.contains("loaded units listed") || line.contains("To show all")) {
+                continue;
+            }
+
+            // Parse service line
+            ServiceInfo info = parseServiceLine(line);
+            if (info != null) {
+                services.add(info);
+            }
+        }
+
+        return services;
+    }
+
+    private ServiceInfo parseServiceLine(String line) {
+        // Remove bullet point if present
+        line = line.replaceFirst("^\\s*●\\s*", "  ");
+        
+        // Split by whitespace, but preserve description
+        String[] parts = line.trim().split("\\s+", 5);
+        
+        if (parts.length >= 4) {
+            String unit = parts[0];
+            String load = parts[1];
+            String active = parts[2];
+            String sub = parts[3];
+            String description = parts.length > 4 ? parts[4] : "";
+            
+            return new ServiceInfo(unit, load, active, sub, description);
+        }
+        
+        return null;
+    }
+
+    private static class ServiceInfo {
+        String unit;
+        String load;
+        String active;
+        String sub;
+        String description;
+
+        ServiceInfo(String unit, String load, String active, String sub, String description) {
+            this.unit = unit;
+            this.load = load;
+            this.active = active;
+            this.sub = sub;
+            this.description = description;
         }
     }
 
@@ -129,19 +250,185 @@ public class RemoteCommands extends CommonCommands {
     void service(@ShellOption(value = { "--service", "-s" }, defaultValue = "") String s) throws IOException {
 
         if (ServiceProvider.serviceNames.isEmpty()) {
-            serviceList();
+            serviceList(false);
         }
 
-        ServiceProvider.serviceNames.stream().filter(nm -> {
+        List<String> matchingServices = ServiceProvider.serviceNames.stream().filter(nm -> {
             if (s == null || s.isEmpty())
                 return true;
             else
                 return nm.toLowerCase().contains(s.toLowerCase());
-        }).forEach(nm -> {
-            System.out.println(nm);
-            currentService = nm;
-        });
+        }).collect(Collectors.toList());
 
+        if (matchingServices.isEmpty()) {
+            System.out.println("No matching services found.");
+            return;
+        }
+
+        // If only one service matches, set it as current and show details
+        if (matchingServices.size() == 1) {
+            currentService = matchingServices.get(0);
+            displayServiceDetails(currentService);
+        } else {
+            // Multiple matches - display them in a table with basic info
+            displayMatchingServicesTable(matchingServices);
+            if (!matchingServices.isEmpty()) {
+                currentService = matchingServices.get(0);
+            }
+        }
+    }
+
+    private void displayServiceDetails(String serviceName) {
+        try {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("systemctl status %s", serviceName));
+            
+            System.out.println("\n" + "=".repeat(80));
+            System.out.println("Service Details: " + serviceName);
+            System.out.println("=".repeat(80));
+            System.out.println(outputStream.toString());
+            System.out.println("=".repeat(80));
+            
+            // Also get key properties
+            ByteArrayOutputStream showStream = new ByteArrayOutputStream();
+            runCommandShort(showStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("systemctl show %s --no-pager", serviceName));
+            
+            String showOutput = showStream.toString();
+            Map<String, String> properties = parseServiceProperties(showOutput);
+            
+            System.out.println("\nKey Properties:");
+            System.out.println("-".repeat(80));
+            displayProperty(properties, "Description");
+            displayProperty(properties, "LoadState");
+            displayProperty(properties, "ActiveState");
+            displayProperty(properties, "SubState");
+            displayProperty(properties, "MainPID");
+            displayProperty(properties, "ExecStart");
+            displayProperty(properties, "ExecMainStartTimestamp");
+            displayProperty(properties, "MemoryCurrent");
+            displayProperty(properties, "CPUUsageNSec");
+            System.out.println("-".repeat(80));
+            
+        } catch (Exception e) {
+            System.err.println("Error fetching service details: " + e.getMessage());
+        }
+    }
+
+    private Map<String, String> parseServiceProperties(String showOutput) {
+        Map<String, String> properties = new HashMap<>();
+        String[] lines = showOutput.split("\\R");
+        
+        for (String line : lines) {
+            int equalsIndex = line.indexOf('=');
+            if (equalsIndex > 0) {
+                String key = line.substring(0, equalsIndex);
+                String value = line.substring(equalsIndex + 1);
+                properties.put(key, value);
+            }
+        }
+        
+        return properties;
+    }
+
+    private void displayProperty(Map<String, String> properties, String key) {
+        String value = properties.get(key);
+        if (value != null && !value.isEmpty()) {
+            // Format memory values
+            if (key.equals("MemoryCurrent") && !value.equals("[not set]")) {
+                try {
+                    long bytes = Long.parseLong(value);
+                    value = formatBytes(bytes);
+                } catch (NumberFormatException e) {
+                    // Keep original value
+                }
+            }
+            // Format CPU time
+            if (key.equals("CPUUsageNSec") && !value.equals("[not set]")) {
+                try {
+                    long nanoseconds = Long.parseLong(value);
+                    double seconds = nanoseconds / 1_000_000_000.0;
+                    value = String.format("%.2f seconds", seconds);
+                } catch (NumberFormatException e) {
+                    // Keep original value
+                }
+            }
+            System.out.printf("  %-25s: %s%n", key, value);
+        }
+    }
+
+    private void displayMatchingServicesTable(List<String> services) {
+        try {
+            System.out.println("\nFound " + services.size() + " matching service(s):");
+            System.out.println("=".repeat(80));
+            
+            // Get status for each service
+            List<ServiceStatusInfo> statusList = new ArrayList<>();
+            for (String service : services) {
+                ServiceStatusInfo info = getServiceStatus(service);
+                if (info != null) {
+                    statusList.add(info);
+                }
+            }
+            
+            // Display in table format
+            if (!statusList.isEmpty()) {
+                int nameWidth = Math.max(30, statusList.stream().mapToInt(s -> s.name.length()).max().orElse(30));
+                int loadWidth = 10;
+                int activeWidth = 10;
+                int subWidth = 12;
+                
+                String headerFormat = "%-" + nameWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s%n";
+                String rowFormat = "%-" + nameWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s%n";
+                
+                System.out.printf(headerFormat, "SERVICE", "LOAD", "ACTIVE", "SUB");
+                System.out.println("-".repeat(nameWidth + loadWidth + activeWidth + subWidth + 6));
+                
+                for (ServiceStatusInfo info : statusList) {
+                    System.out.printf(rowFormat, info.name, info.load, info.active, info.sub);
+                }
+                
+                System.out.println("=".repeat(80));
+                System.out.println("\nUse 'ro.service -s <exact_name>' to see detailed information for a specific service.");
+            }
+        } catch (Exception e) {
+            System.err.println("Error displaying service table: " + e.getMessage());
+        }
+    }
+
+    private ServiceStatusInfo getServiceStatus(String serviceName) {
+        try {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                    String.format("systemctl show %s --property=LoadState,ActiveState,SubState", serviceName));
+            
+            String output = outputStream.toString();
+            Map<String, String> props = parseServiceProperties(output);
+            
+            return new ServiceStatusInfo(
+                serviceName,
+                props.getOrDefault("LoadState", "unknown"),
+                props.getOrDefault("ActiveState", "unknown"),
+                props.getOrDefault("SubState", "unknown")
+            );
+        } catch (Exception e) {
+            return new ServiceStatusInfo(serviceName, "error", "error", "error");
+        }
+    }
+
+    private static class ServiceStatusInfo {
+        String name;
+        String load;
+        String active;
+        String sub;
+
+        ServiceStatusInfo(String name, String load, String active, String sub) {
+            this.name = name;
+            this.load = load;
+            this.active = active;
+            this.sub = sub;
+        }
     }
 
     @ShellMethod(key = "ro.service.show", value = "eg: ro.service_show servicename")

@@ -31,12 +31,24 @@ public class JournalCommands extends CommonCommands {
 
     }
 
-    @ShellMethod(key = "journal.search", value = "eg: journal.search arg ")
-    void journalctl(@ShellOption(value = { "-u" }, defaultValue = "*") String u,
+    @ShellMethod(key = "journal.search", value = "eg: journal.search arg1 arg2 arg3")
+    void journalSearch(@ShellOption(arity = ShellOption.ARITY_USE_HEURISTICS) String[] searchTerms) throws IOException {
+        journalSearchN(searchTerms, 100);
+    }
+
+    @ShellMethod(key = "journal.searchN", value = "eg: journal.searchN arg1 arg2 arg3 -n 50")
+    void journalSearchN(@ShellOption(arity = ShellOption.ARITY_USE_HEURISTICS) String[] searchTerms,
             @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
         journalctlStop(); // Stop any existing journal thread
-        scmd(String.format("journalctl | grep %s |tail -n %d", u, n));
-
+        
+        if (searchTerms[0].equals("*")) {
+            scmd(String.format("journalctl | tail -n %d", n));
+            return;
+        }
+        
+        // Build grep command with OR pattern (matches any of the search terms)
+        String pattern = String.join("|", searchTerms);
+        scmd(String.format("journalctl | grep -E '%s' | tail -n %d", pattern, n));
     }
 
     @ShellMethod(key = "journal.stop", value = "eg: journal.stop")
