@@ -34,8 +34,8 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = "ro.ls", value = "eg: ro.ls path")
     @ShellMethodAvailability("availabilityCheck")
-    void ls(@ShellOption(valueProvider = RemoteFileCompleter.class) String path) {
-        scmd(String.format("ls -alhS %s", path));
+    void ls(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
+        scmd(String.format("ls -alhS %s", p));
     }
 
     @ShellMethod(key = "ro.mv", value = "eg: ro.mv source dest")

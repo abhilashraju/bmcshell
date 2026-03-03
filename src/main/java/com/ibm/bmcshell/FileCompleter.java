@@ -44,21 +44,53 @@ public class FileCompleter implements ValueProvider {
         try (Stream<Path> paths = Files.list(basePath)) {
             return paths
                 .filter(p -> p.getFileName() != null)
+                .filter(p -> {
+                    // Filter files that match the partial input
+                    String fileName = p.getFileName().toString();
+                    if (userInput.isEmpty()) {
+                        return true;
+                    }
+                    
+                    Path typedPath = Paths.get(userInput);
+                    if (Files.isDirectory(typedPath)) {
+                        // If user typed a complete directory, show all contents
+                        return true;
+                    } else {
+                        // If user typed partial filename, filter by prefix
+                        String partialName = typedPath.getFileName().toString();
+                        return fileName.startsWith(partialName);
+                    }
+                })
                 .map(p -> {
                     String relativePath;
+                    String fileName = p.getFileName().toString();
+                    
                     if (userInput.isEmpty()) {
-                        relativePath = p.getFileName().toString();
-                    } else if (Files.isDirectory(Paths.get(userInput))) {
-                        // If user entered a full directory, start from there
-                        relativePath = userInput+p.getFileName().toString();
+                        // No input, just show filename
+                        relativePath = fileName;
                     } else {
-                        // For partial paths, use the full path relative to CWD
-                        relativePath = userInput+p.toString();
+                        Path typedPath = Paths.get(userInput);
+                        if (Files.isDirectory(typedPath)) {
+                            // User typed a complete directory path
+                            String dirPath = userInput;
+                            if (!dirPath.endsWith("/")) {
+                                dirPath += "/";
+                            }
+                            relativePath = dirPath + fileName;
+                        } else {
+                            // User typed partial filename - replace the partial with full filename
+                            Path parentPath = typedPath.getParent();
+                            if (parentPath != null) {
+                                relativePath = parentPath.toString() + "/" + fileName;
+                            } else {
+                                relativePath = fileName;
+                            }
+                        }
                     }
                     
                     boolean isDirectory = Files.isDirectory(p);
                     // Append a slash for directories to make completion seamless
-                    if (isDirectory) {
+                    if (isDirectory && !relativePath.endsWith("/")) {
                         relativePath += "/";
                     }
                     
