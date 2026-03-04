@@ -1923,6 +1923,430 @@ public class NetworkCommands extends CommonCommands {
             System.err.println("Error getting VLAN info: " + e.getMessage());
         }
     }
+
+    /**
+     * Show ethtool information for an interface
+     * Displays link status, speed, duplex, and other interface details
+     *
+     * Example: ethtool.show --interface eth2
+     *
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.show", value = "Show ethtool information for an interface")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolShow(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show link detection status
+     * Quick check if physical link is detected on interface
+     * 
+     * Example: ethtool.link --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.link", value = "Show link detection status")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolLink(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool %s | grep 'Link detected'", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show interface statistics
+     * Displays packet counters, errors, and drops
+     * 
+     * Example: ethtool.stats --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.stats", value = "Show interface statistics")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolStats(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool -S %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show driver information
+     * Displays driver name, version, firmware version
+     * 
+     * Example: ethtool.driver --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.driver", value = "Show driver information")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolDriver(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool -i %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show ring buffer parameters
+     * Displays RX/TX ring buffer sizes
+     * 
+     * Example: ethtool.ring --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.ring", value = "Show ring buffer parameters")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolRing(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool -g %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show pause parameters
+     * Displays flow control settings
+     * 
+     * Example: ethtool.pause --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.pause", value = "Show pause parameters")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolPause(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool -a %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show coalesce parameters
+     * Displays interrupt coalescing settings
+     * 
+     * Example: ethtool.coalesce --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.coalesce", value = "Show coalesce parameters")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolCoalesce(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool -c %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Show offload features
+     * Displays hardware offload capabilities (TSO, GSO, etc.)
+     * 
+     * Example: ethtool.features --interface eth2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     */
+    @ShellMethod(key = "ethtool.features", value = "Show offload features")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolFeatures(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName) {
+        String command = String.format("ethtool -k %s", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Set interface speed and duplex
+     * Configure link speed and duplex mode
+     * 
+     * Example: ethtool.speed --interface eth2 --speed 1000 --duplex full
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     * @param speed         Link speed in Mbps (10, 100, 1000, etc.)
+     * @param duplex        Duplex mode: full or half
+     */
+    @ShellMethod(key = "ethtool.speed", value = "Set interface speed and duplex")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolSpeed(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--speed", "-s" }) int speed,
+            @ShellOption(value = { "--duplex", "-d" }, defaultValue = "full") String duplex) {
+        String command = String.format("ethtool -s %s speed %d duplex %s", interfaceName, speed, duplex);
+        scmd(command);
+    }
+
+    /**
+     * Enable/disable autonegotiation
+     * Configure auto-negotiation for speed and duplex
+     * 
+     * Example: ethtool.autoneg --interface eth2 --enable
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     * @param enable        Enable autonegotiation (default: true)
+     */
+    @ShellMethod(key = "ethtool.autoneg", value = "Enable/disable autonegotiation")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolAutoneg(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--enable", "-e" }, defaultValue = "true") boolean enable) {
+        String command = String.format("ethtool -s %s autoneg %s", interfaceName, enable ? "on" : "off");
+        scmd(command);
+    }
+
+    /**
+     * Run custom ethtool command
+     * Execute any ethtool command with custom parameters
+     * 
+     * Example: ethtool.custom "--command -P eth2"
+     * 
+     * @param command The ethtool command with parameters
+     */
+    @ShellMethod(key = "ethtool.custom", value = "Run custom ethtool command")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void ethtoolCustom(
+            @ShellOption(value = { "--command", "-c" }) String command) {
+        String fullCommand = String.format("ethtool %s", command);
+        scmd(fullCommand);
+    }
+
+    /**
+     * Capture ARP traffic on an interface
+     * Monitor ARP requests and replies for troubleshooting
+     *
+     * Example: tcpdump.arp --interface eth2 --count 10
+     *
+     * @param interfaceName The network interface name (default: eth2)
+     * @param count         Number of packets to capture (default: 10, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.arp", value = "Capture ARP traffic on an interface")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpArp(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "10") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n arp -c %d", interfaceName, count)
+                : String.format("tcpdump -i %s -n arp", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Capture ICMP (ping) traffic on an interface
+     * Monitor ping requests and replies
+     * 
+     * Example: tcpdump.icmp --interface eth2 --count 10
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     * @param count         Number of packets to capture (default: 10, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.icmp", value = "Capture ICMP (ping) traffic")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpIcmp(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "10") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n icmp -c %d", interfaceName, count)
+                : String.format("tcpdump -i %s -n icmp", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Capture traffic for a specific host
+     * Monitor all traffic to/from a specific IP address
+     * 
+     * Example: tcpdump.host --ip 9.6.28.101 --interface eth2 --count 20
+     * 
+     * @param ipAddress     The IP address to monitor
+     * @param interfaceName The network interface name (default: eth2)
+     * @param count         Number of packets to capture (default: 20, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.host", value = "Capture traffic for a specific host")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpHost(
+            @ShellOption(value = { "--ip", "-h" }) String ipAddress,
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "20") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n host %s -c %d", interfaceName, ipAddress, count)
+                : String.format("tcpdump -i %s -n host %s", interfaceName, ipAddress);
+        scmd(command);
+    }
+
+    /**
+     * Capture traffic on a specific port
+     * Monitor TCP/UDP traffic on a port
+     * 
+     * Example: tcpdump.port --port 443 --interface eth0 --count 10
+     * 
+     * @param port          The port number to monitor
+     * @param interfaceName The network interface name (default: eth0)
+     * @param count         Number of packets to capture (default: 10, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.port", value = "Capture traffic on a specific port")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpPort(
+            @ShellOption(value = { "--port", "-p" }) int port,
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth0") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "10") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n port %d -c %d", interfaceName, port, count)
+                : String.format("tcpdump -i %s -n port %d", interfaceName, port);
+        scmd(command);
+    }
+
+    /**
+     * Capture all traffic on an interface with verbose output
+     * Shows detailed packet information
+     * 
+     * Example: tcpdump.verbose --interface eth2 --count 10 --verbosity 2
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     * @param count         Number of packets to capture (default: 10, 0 =
+     *                      unlimited)
+     * @param verbosity     Verbosity level: 1, 2, or 3 (default: 1)
+     */
+    @ShellMethod(key = "tcpdump.verbose", value = "Capture traffic with verbose output")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpVerbose(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "10") int count,
+            @ShellOption(value = { "--verbosity", "-v" }, defaultValue = "1") int verbosity) {
+        String vFlag = "-" + "v".repeat(Math.min(verbosity, 3));
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n %s -c %d", interfaceName, vFlag, count)
+                : String.format("tcpdump -i %s -n %s", interfaceName, vFlag);
+        scmd(command);
+    }
+
+    /**
+     * Capture traffic and save to file
+     * Save packet capture to a pcap file for later analysis
+     * 
+     * Example: tcpdump.save --interface eth2 --file /tmp/capture.pcap --count 100
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     * @param filename      Output pcap filename (default: /tmp/capture.pcap)
+     * @param count         Number of packets to capture (default: 100, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.save", value = "Capture traffic and save to file")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpSave(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--file", "-f" }, defaultValue = "/tmp/capture.pcap") String filename,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "100") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n -w %s -c %d", interfaceName, filename, count)
+                : String.format("tcpdump -i %s -n -w %s", interfaceName, filename);
+        scmd(command);
+    }
+
+    /**
+     * Read and display a pcap file
+     * Display contents of a previously saved packet capture
+     * 
+     * Example: tcpdump.read --file /tmp/capture.pcap --count 20
+     * 
+     * @param filename The pcap file to read
+     * @param count    Number of packets to display (default: 20, 0 = all)
+     */
+    @ShellMethod(key = "tcpdump.read", value = "Read and display a pcap file")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpRead(
+            @ShellOption(value = { "--file", "-f" }) String filename,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "20") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -n -r %s -c %d", filename, count)
+                : String.format("tcpdump -n -r %s", filename);
+        scmd(command);
+    }
+
+    /**
+     * Capture traffic with specific filter expression
+     * Use tcpdump filter syntax for advanced filtering
+     * 
+     * Example: tcpdump.filter --interface eth2 --filter "tcp and port 443" --count
+     * 10
+     * 
+     * @param interfaceName The network interface name (default: eth2)
+     * @param filter        tcpdump filter expression
+     * @param count         Number of packets to capture (default: 10, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.filter", value = "Capture traffic with custom filter")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpFilter(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--filter", "-f" }) String filter,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "10") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n '%s' -c %d", interfaceName, filter, count)
+                : String.format("tcpdump -i %s -n '%s'", interfaceName, filter);
+        scmd(command);
+    }
+
+    /**
+     * Capture traffic between two hosts
+     * Monitor traffic between two specific IP addresses
+     * 
+     * Example: tcpdump.between --host1 9.6.28.100 --host2 9.6.28.101 --interface
+     * eth2 --count 20
+     * 
+     * @param host1         First IP address
+     * @param host2         Second IP address
+     * @param interfaceName The network interface name (default: eth2)
+     * @param count         Number of packets to capture (default: 20, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.between", value = "Capture traffic between two hosts")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpBetween(
+            @ShellOption(value = { "--host1", "-h1" }) String host1,
+            @ShellOption(value = { "--host2", "-h2" }) String host2,
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "20") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n 'host %s and host %s' -c %d", interfaceName, host1, host2, count)
+                : String.format("tcpdump -i %s -n 'host %s and host %s'", interfaceName, host1, host2);
+        scmd(command);
+    }
+
+    /**
+     * Capture only TCP SYN packets
+     * Monitor TCP connection attempts
+     * 
+     * Example: tcpdump.syn --interface eth0 --count 10
+     * 
+     * @param interfaceName The network interface name (default: eth0)
+     * @param count         Number of packets to capture (default: 10, 0 =
+     *                      unlimited)
+     */
+    @ShellMethod(key = "tcpdump.syn", value = "Capture TCP SYN packets")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpSyn(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth0") String interfaceName,
+            @ShellOption(value = { "--count", "-c" }, defaultValue = "10") int count) {
+        String command = count > 0
+                ? String.format("tcpdump -i %s -n 'tcp[tcpflags] & tcp-syn != 0' -c %d", interfaceName, count)
+                : String.format("tcpdump -i %s -n 'tcp[tcpflags] & tcp-syn != 0'", interfaceName);
+        scmd(command);
+    }
+
+    /**
+     * Run custom tcpdump command
+     * Execute any tcpdump command with custom parameters
+     * 
+     * Example: tcpdump.custom --command "-i eth2 -n -vv udp port 67"
+     * 
+     * @param command The tcpdump command with parameters
+     */
+    @ShellMethod(key = "tcpdump.custom", value = "Run custom tcpdump command")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void tcpdumpCustom(
+            @ShellOption(value = { "--command", "-c" }) String command) {
+        String fullCommand = String.format("tcpdump %s", command);
+        scmd(fullCommand);
+    }
 }
 
 // Made with Bob

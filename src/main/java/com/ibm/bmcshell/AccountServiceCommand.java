@@ -13,6 +13,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.cglib.transform.impl.FieldProvider;
 import org.springframework.shell.CompletionContext;
 import org.springframework.shell.CompletionProposal;
 import org.springframework.shell.standard.ShellComponent;
@@ -28,10 +29,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class AccountServiceCommand extends CommonCommands {
     @Component
     public static class AcfFilePathProvider implements ValueProvider {
-       
+
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
-            var fileNames=getAcfFiles(libPath+"/acffiles",".acf");
+            var fileNames = getAcfFiles(libPath, ".acf");
             return fileNames
                     .stream()
                     .filter(name -> !name.startsWith("-"))
@@ -40,7 +41,7 @@ public class AccountServiceCommand extends CommonCommands {
 
         }
 
-        public static List<String> getAcfFiles(String directoryPath,String currentExtension) {
+        public static List<String> getAcfFiles(String directoryPath, String currentExtension) {
             List<String> acfFiles = new ArrayList<>();
             try {
                 acfFiles = Files.list(Paths.get(directoryPath))
@@ -93,7 +94,8 @@ public class AccountServiceCommand extends CommonCommands {
 
     @ShellMethod(key = "as.install_acf")
     @ShellMethodAvailability("availabilityCheck")
-    public void install_acf(@ShellOption(value = { "--file", "-f" },valueProvider = AcfFilePathProvider.class) String filepath)
+    public void install_acf(
+            @ShellOption(value = { "--file", "-f" }, valueProvider = FileCompleter.class) String filepath)
             throws URISyntaxException, IOException {
 
         String fileContent = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(filepath)));
@@ -189,7 +191,8 @@ public class AccountServiceCommand extends CommonCommands {
     }
 
     @ShellMethod(key = "as.acfupload", value = "eg: acfupload acfpath ")
-    void acfupload(@ShellOption(value = { "--file", "-f" },valueProvider = AcfFilePathProvider.class) String imagepath) throws URISyntaxException {
+    void acfupload(@ShellOption(value = { "--file", "-f" }, valueProvider = FileCompleter.class) String imagepath)
+            throws URISyntaxException {
         try {
             File file = new File(imagepath);
             FileInputStream fileInputStream = new FileInputStream(file);
