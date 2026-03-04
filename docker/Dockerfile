@@ -6,7 +6,7 @@ ENV PATH="$JAVA_HOME/bin:$PATH"
 
 # Install dependencies
 RUN yum update -y && \
-    yum install -y wget tar gzip gcc gcc-c++ make git maven 
+    yum install -y wget tar gzip gcc gcc-c++ make git maven xz
 
 # Install OpenJDK 21 (Amazon Corretto)
 RUN yum install -y java-21-amazon-corretto-devel
@@ -18,14 +18,8 @@ RUN yum install -y java-21-amazon-corretto-devel
 #RUN alternatives --install /usr/bin/gcc gcc /usr/bin/gcc13 100 && \
 #    alternatives --install /usr/bin/g++ g++ /usr/bin/g++13 100
 
-# Install Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
-
 # Verify installations
-RUN java -version && gcc --version && ollama --version
-
-RUN ollama start & sleep 15 && \
-    ollama pull codellama:latest 
+RUN java -version && gcc --version
 
 COPY .ssh /root/.ssh
 
@@ -35,8 +29,6 @@ RUN git clone git@github.com:abhilashraju/bmcshell.git /root/bmcshell #
 
 RUN cd /root/bmcshell && mvn package
 
-#RUN ollama start & sleep 15 && \
- #   ollama pull llama4
 
 RUN yum install -y zstd
 #install PEL tool
@@ -50,5 +42,4 @@ RUN rm -rf /root/.ssh
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 #RUN echo 'java -jar /root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar' > bmc-shell.sh;chmod 777 bmc-shell.sh
-#CMD ollama serve & ./bmc-shell.sh ; bash
 ENTRYPOINT ["/start.sh"]

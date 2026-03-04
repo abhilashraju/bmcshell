@@ -18,7 +18,6 @@ fi
 
 # Run the Java application from the new working directory
 echo "Executing Java application..."
-ollama serve &
 java -jar "$JAR_PATH"
 bash
 
