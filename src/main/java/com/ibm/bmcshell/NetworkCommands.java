@@ -18,9 +18,9 @@ public class NetworkCommands extends CommonCommands {
      * 
      * Example: arp.announce --ip 192.168.1.100 --interface eth2 --count 3
      * 
-     * @param ipAddress The IP address to announce
+     * @param ipAddress     The IP address to announce
      * @param interfaceName Network interface (default: eth2)
-     * @param count Number of packets to send (default: 3)
+     * @param count         Number of packets to send (default: 3)
      */
     @ShellMethod(key = "arp.announce", value = "Send gratuitous ARP to update other devices' ARP cache")
     @ShellMethodAvailability("availabilityCheck")
@@ -38,9 +38,9 @@ public class NetworkCommands extends CommonCommands {
      * 
      * Example: arp.probe --ip 192.168.1.1 --interface eth2 --count 3
      * 
-     * @param ipAddress The IP address to probe
+     * @param ipAddress     The IP address to probe
      * @param interfaceName Network interface (default: eth2)
-     * @param count Number of packets to send (default: 3)
+     * @param count         Number of packets to send (default: 3)
      */
     @ShellMethod(key = "arp.probe", value = "Refresh local ARP cache by probing a device")
     @ShellMethodAvailability("availabilityCheck")
@@ -58,9 +58,9 @@ public class NetworkCommands extends CommonCommands {
      * 
      * Example: arp.update --ip 192.168.1.100 --interface eth2 --count 3
      * 
-     * @param ipAddress The IP address to announce
+     * @param ipAddress     The IP address to announce
      * @param interfaceName Network interface (default: eth2)
-     * @param count Number of packets to send (default: 3)
+     * @param count         Number of packets to send (default: 3)
      */
     @ShellMethod(key = "arp.update", value = "Update ARP cache after IP/MAC change using ARP REPLY")
     @ShellMethodAvailability("availabilityCheck")
@@ -78,9 +78,9 @@ public class NetworkCommands extends CommonCommands {
      * 
      * Example: arp.detect-duplicate --ip 192.168.1.100 --interface eth2 --count 2
      * 
-     * @param ipAddress The IP address to check
+     * @param ipAddress     The IP address to check
      * @param interfaceName Network interface (default: eth2)
-     * @param count Number of packets to send (default: 2)
+     * @param count         Number of packets to send (default: 2)
      */
     @ShellMethod(key = "arp.detect-duplicate", value = "Detect duplicate IP and refresh")
     @ShellMethodAvailability("availabilityCheck")
@@ -99,7 +99,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: bmc-reconfig --interface eth2 --count 5
      * 
      * @param interfaceName Network interface (default: eth2)
-     * @param count Number of packets to send (default: 5)
+     * @param count         Number of packets to send (default: 5)
      */
     @ShellMethod(key = "bmc-reconfig", value = "Announce BMC network reconfiguration")
     @ShellMethodAvailability("availabilityCheck")
@@ -119,7 +119,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: refresh-mac --interface eth2 --count 3
      * 
      * @param interfaceName Network interface (default: eth2)
-     * @param count Number of packets to send (default: 3)
+     * @param count         Number of packets to send (default: 3)
      */
     @ShellMethod(key = "refresh-mac", value = "Refresh MAC address on the network")
     @ShellMethodAvailability("availabilityCheck")
@@ -162,7 +162,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: arp.clear --ip 192.168.1.100 --device eth0
      *
      * @param ipAddress The IP address to remove from ARP cache
-     * @param device Network interface name
+     * @param device    Network interface name
      */
     @ShellMethod(key = "arp.clear", value = "Clear ARP cache entry for a specific IP")
     @ShellMethodAvailability("availabilityCheck")
@@ -218,7 +218,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: ping --host 192.168.1.1 --count 4
      * Example: ping 192.168.1.1
      *
-     * @param host The host to ping
+     * @param host  The host to ping
      * @param count Number of ping packets (default: 4)
      */
     @ShellMethod(key = "ping", value = "Ping a host")
@@ -264,7 +264,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: ip.addr-add --ip 192.168.1.100/24 --device eth0
      *
      * @param ipWithMask IP address with CIDR notation (e.g., 192.168.1.100/24)
-     * @param device Network interface name
+     * @param device     Network interface name
      */
     @ShellMethod(key = "ip.addr-add", value = "Add IP address to interface")
     @ShellMethodAvailability("availabilityCheck")
@@ -281,7 +281,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: ip.addr-del --ip 192.168.1.100/24 --device eth0
      *
      * @param ipWithMask IP address with CIDR notation
-     * @param device Network interface name
+     * @param device     Network interface name
      */
     @ShellMethod(key = "ip.addr-del", value = "Delete IP address from interface")
     @ShellMethodAvailability("availabilityCheck")
@@ -353,7 +353,7 @@ public class NetworkCommands extends CommonCommands {
      *
      * Example: ip.link-set-mac --device eth0 --mac 00:11:22:33:44:55
      *
-     * @param device Network interface name
+     * @param device     Network interface name
      * @param macAddress New MAC address
      */
     @ShellMethod(key = "ip.link-set-mac", value = "Set MAC address for interface")
@@ -371,7 +371,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: ip.link-set-mtu --device eth0 --mtu 1500
      *
      * @param device Network interface name
-     * @param mtu MTU value
+     * @param mtu    MTU value
      */
     @ShellMethod(key = "ip.link-set-mtu", value = "Set MTU for interface")
     @ShellMethodAvailability("availabilityCheck")
@@ -399,7 +399,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: ip.route-add --destination 192.168.2.0/24 --via 192.168.1.1
      *
      * @param destination Destination network in CIDR notation
-     * @param via Gateway IP address
+     * @param via         Gateway IP address
      */
     @ShellMethod(key = "ip.route-add", value = "Add a route")
     @ShellMethodAvailability("availabilityCheck")
@@ -413,11 +413,12 @@ public class NetworkCommands extends CommonCommands {
     /**
      * Add a route with specific device
      *
-     * Example: ip.route-add-dev --destination 192.168.2.0/24 --via 192.168.1.1 --device eth0
+     * Example: ip.route-add-dev --destination 192.168.2.0/24 --via 192.168.1.1
+     * --device eth0
      *
      * @param destination Destination network in CIDR notation
-     * @param via Gateway IP address
-     * @param device Network interface name
+     * @param via         Gateway IP address
+     * @param device      Network interface name
      */
     @ShellMethod(key = "ip.route-add-dev", value = "Add a route with specific device")
     @ShellMethodAvailability("availabilityCheck")
@@ -477,11 +478,12 @@ public class NetworkCommands extends CommonCommands {
      * Note: Without arp or ip neigh commands, static ARP entries cannot be added
      * This will attempt arping to populate the cache naturally
      *
-     * Example: ip.neigh-add --ip 192.168.1.100 --mac 00:11:22:33:44:55 --device eth0
+     * Example: ip.neigh-add --ip 192.168.1.100 --mac 00:11:22:33:44:55 --device
+     * eth0
      *
-     * @param ipAddress IP address
+     * @param ipAddress  IP address
      * @param macAddress MAC address
-     * @param device Network interface name
+     * @param device     Network interface name
      */
     @ShellMethod(key = "ip.neigh-add", value = "Add static ARP entry")
     @ShellMethodAvailability("availabilityCheck")
@@ -492,13 +494,13 @@ public class NetworkCommands extends CommonCommands {
         // BusyBox minimal: Cannot add static ARP without arp/ip commands
         // Use arping if available to populate cache, otherwise ping
         String command = String.format(
-            "if command -v arping >/dev/null 2>&1; then " +
-            "arping -c 1 -I %s %s; " +
-            "else " +
-            "ping -c 1 -W 1 -I %s %s; " +
-            "fi; " +
-            "echo 'Note: Static ARP entry requires arp or ip neigh command. Entry will be dynamic.'",
-            device, ipAddress, device, ipAddress);
+                "if command -v arping >/dev/null 2>&1; then " +
+                        "arping -c 1 -I %s %s; " +
+                        "else " +
+                        "ping -c 1 -W 1 -I %s %s; " +
+                        "fi; " +
+                        "echo 'Note: Static ARP entry requires arp or ip neigh command. Entry will be dynamic.'",
+                device, ipAddress, device, ipAddress);
         scmd(command);
     }
 
@@ -510,7 +512,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: ip.neigh-del --ip 192.168.1.100 --device eth0
      *
      * @param ipAddress IP address
-     * @param device Network interface name
+     * @param device    Network interface name
      */
     @ShellMethod(key = "ip.neigh-del", value = "Delete ARP entry")
     @ShellMethodAvailability("availabilityCheck")
@@ -520,10 +522,10 @@ public class NetworkCommands extends CommonCommands {
         // BusyBox ip doesn't support 'neigh' subcommand
         // Workaround: Cycle interface to clear ARP cache, then ping to refresh
         String command = String.format(
-            "ip link set %s down && sleep 0.1 && ip link set %s up && sleep 0.5 && " +
-            "ping -c 1 -W 1 -I %s %s >/dev/null 2>&1; " +
-            "echo 'Interface %s cycled and ARP entry for %s refreshed'",
-            device, device, device, ipAddress, device, ipAddress);
+                "ip link set %s down && sleep 0.1 && ip link set %s up && sleep 0.5 && " +
+                        "ping -c 1 -W 1 -I %s %s >/dev/null 2>&1; " +
+                        "echo 'Interface %s cycled and ARP entry for %s refreshed'",
+                device, device, device, ipAddress, device, ipAddress);
         scmd(command);
     }
 
@@ -544,14 +546,14 @@ public class NetworkCommands extends CommonCommands {
         String command;
         if (device.isEmpty()) {
             command = "awk 'NR>1 {print $1, $6}' /proc/net/arp | " +
-                     "while read ip dev; do ping -c 1 -W 1 -I \"$dev\" \"$ip\" >/dev/null 2>&1 & done; " +
-                     "wait; echo 'ARP cache refreshed for all devices'";
+                    "while read ip dev; do ping -c 1 -W 1 -I \"$dev\" \"$ip\" >/dev/null 2>&1 & done; " +
+                    "wait; echo 'ARP cache refreshed for all devices'";
         } else {
             command = String.format(
-                "awk 'NR>1 && $6==\"%s\" {print $1}' /proc/net/arp | " +
-                "while read ip; do ping -c 1 -W 1 -I \"%s\" \"$ip\" >/dev/null 2>&1 & done; " +
-                "wait; echo 'ARP cache refreshed for %s'",
-                device, device, device);
+                    "awk 'NR>1 && $6==\"%s\" {print $1}' /proc/net/arp | " +
+                            "while read ip; do ping -c 1 -W 1 -I \"%s\" \"$ip\" >/dev/null 2>&1 & done; " +
+                            "wait; echo 'ARP cache refreshed for %s'",
+                    device, device, device);
         }
         scmd(command);
     }
@@ -562,8 +564,9 @@ public class NetworkCommands extends CommonCommands {
      *
      * Example: arp.set-timeout --device eth2 --timeout 1000
      *
-     * @param device Network interface name
-     * @param timeoutMs Base reachable time in milliseconds (default: 1000ms = 1 second)
+     * @param device    Network interface name
+     * @param timeoutMs Base reachable time in milliseconds (default: 1000ms = 1
+     *                  second)
      */
     @ShellMethod(key = "arp.set-timeout", value = "Set ARP cache timeout for interface")
     @ShellMethodAvailability("availabilityCheck")
@@ -580,7 +583,7 @@ public class NetworkCommands extends CommonCommands {
      *
      * Example: arp.set-gc-stale --device eth2 --seconds 1
      *
-     * @param device Network interface name
+     * @param device  Network interface name
      * @param seconds Garbage collection stale time in seconds (default: 1)
      */
     @ShellMethod(key = "arp.set-gc-stale", value = "Set ARP garbage collection stale time")
@@ -606,7 +609,7 @@ public class NetworkCommands extends CommonCommands {
             @ShellOption(value = { "--device", "-d" }) String device) {
         String command = String.format(
                 "sysctl -w net.ipv4.neigh.%s.base_reachable_time_ms=1000 && " +
-                "sysctl -w net.ipv4.neigh.%s.gc_stale_time=1",
+                        "sysctl -w net.ipv4.neigh.%s.gc_stale_time=1",
                 device, device);
         scmd(command);
     }
@@ -651,7 +654,7 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     protected void arpMinimalCacheGlobal() {
         String command = "sysctl -w net.ipv4.neigh.default.base_reachable_time_ms=1000 && " +
-                        "sysctl -w net.ipv4.neigh.default.gc_stale_time=1";
+                "sysctl -w net.ipv4.neigh.default.gc_stale_time=1";
         scmd(command);
     }
 
@@ -668,8 +671,8 @@ public class NetworkCommands extends CommonCommands {
             @ShellOption(value = { "--device", "-d" }) String device) {
         String command = String.format(
                 "echo 'ARP Settings for %s:' && " +
-                "sysctl net.ipv4.neigh.%s.base_reachable_time_ms && " +
-                "sysctl net.ipv4.neigh.%s.gc_stale_time",
+                        "sysctl net.ipv4.neigh.%s.base_reachable_time_ms && " +
+                        "sysctl net.ipv4.neigh.%s.gc_stale_time",
                 device, device, device);
         scmd(command);
     }
@@ -683,8 +686,8 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     protected void arpShowDefaultSettings() {
         String command = "echo 'Global Default ARP Settings:' && " +
-                        "sysctl net.ipv4.neigh.default.base_reachable_time_ms && " +
-                        "sysctl net.ipv4.neigh.default.gc_stale_time";
+                "sysctl net.ipv4.neigh.default.base_reachable_time_ms && " +
+                "sysctl net.ipv4.neigh.default.gc_stale_time";
         scmd(command);
     }
 
@@ -695,7 +698,7 @@ public class NetworkCommands extends CommonCommands {
      * Example: arp.refresh --ip 9.6.28.101 --device eth2
      *
      * @param ipAddress IP address to refresh
-     * @param device Network interface name
+     * @param device    Network interface name
      */
     @ShellMethod(key = "arp.refresh", value = "Clear and refresh ARP entry")
     @ShellMethodAvailability("availabilityCheck")
@@ -785,7 +788,8 @@ public class NetworkCommands extends CommonCommands {
         scmd(ipCommand);
     }
 
-    // ==================== NC (NETCAT) COMMANDS - BusyBox Compatible ====================
+    // ==================== NC (NETCAT) COMMANDS - BusyBox Compatible
+    // ====================
 
     /**
      * Test if a TCP port is open on a remote host (BusyBox nc)
@@ -916,8 +920,8 @@ public class NetworkCommands extends CommonCommands {
         // BusyBox nc loop: for each port, nc -z -w <timeout> <host> <port>
         String command = String.format(
                 "for port in $(seq %d %d); do " +
-                "nc -z -w %d %s $port 2>/dev/null && echo \"Port $port: OPEN\"; " +
-                "done",
+                        "nc -z -w %d %s $port 2>/dev/null && echo \"Port $port: OPEN\"; " +
+                        "done",
                 startPort, endPort, timeout, host);
         scmd(command);
     }
@@ -940,7 +944,8 @@ public class NetworkCommands extends CommonCommands {
             @ShellOption(value = { "--port", "-p" }, defaultValue = "80") int port,
             @ShellOption(value = { "--path" }, defaultValue = "/") String path,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "5") int timeout) {
-        // BusyBox nc: printf "GET <path> HTTP/1.0\r\nHost: <host>\r\n\r\n" | nc -w <timeout> <host> <port>
+        // BusyBox nc: printf "GET <path> HTTP/1.0\r\nHost: <host>\r\n\r\n" | nc -w
+        // <timeout> <host> <port>
         String command = String.format(
                 "printf 'GET %s HTTP/1.0\\r\\nHost: %s\\r\\n\\r\\n' | nc -w %d %s %d",
                 path, host, timeout, host, port);
@@ -1029,7 +1034,8 @@ public class NetworkCommands extends CommonCommands {
 
     /**
      * Show detailed LLDP neighbor information (via lldpcli)
-     * Includes all TLVs: chassis, port, system name, capabilities, management address
+     * Includes all TLVs: chassis, port, system name, capabilities, management
+     * address
      *
      * Example: lldp.neighbors-details
      */
@@ -1119,8 +1125,8 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     protected void lldpStatus() {
         scmd("systemctl status lldpd 2>/dev/null || " +
-             "sv status lldpd 2>/dev/null || " +
-             "ps aux | grep -v grep | grep lldp");
+                "sv status lldpd 2>/dev/null || " +
+                "ps aux | grep -v grep | grep lldp");
     }
 
     /**
@@ -1246,7 +1252,7 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     protected void lldpNeighborSummary() {
         scmd("lldpctl -f json 2>/dev/null | grep -E '\"name\"|\"descr\"|\"id\"' || " +
-             "lldpctl 2>/dev/null | grep -E 'SysName|PortID|ChassisID|MgmtIP'");
+                "lldpctl 2>/dev/null | grep -E 'SysName|PortID|ChassisID|MgmtIP'");
     }
 
     /**
@@ -1272,6 +1278,650 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     protected void lldpCustom(String lldpCommand) {
         scmd(lldpCommand);
+    }
+
+    // ============================================================================
+    // Redfish Network Commands (based on ethernet.hpp)
+    // ============================================================================
+
+    /**
+     * List all Ethernet interfaces available on the BMC
+     * Retrieves interface names from Redfish EthernetInterface collection
+     * 
+     * Example: net.interfaces
+     */
+    @ShellMethod(key = "net.interfaces", value = "List all Ethernet interfaces")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netInterfaces() {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces", "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error listing interfaces: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get detailed information about a specific Ethernet interface
+     * Shows MAC address, IP addresses, DHCP settings, MTU, etc.
+     * 
+     * Example: net.interface.get --interface eth0
+     * 
+     * @param interfaceName The network interface name (e.g., eth0, eth1)
+     */
+    @ShellMethod(key = "net.interface.get", value = "Get Ethernet interface details")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netInterfaceGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting interface details: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set hostname for the BMC
+     * Updates the system hostname via Redfish
+     * 
+     * Example: net.hostname.set --hostname mybmc --interface eth0
+     * 
+     * @param hostname      The new hostname (max 255 characters)
+     * @param interfaceName The network interface name (default: eth0)
+     */
+    @ShellMethod(key = "net.hostname.set", value = "Set BMC hostname")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netHostnameSet(
+            @ShellOption(value = { "--hostname", "-h" }) String hostname,
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth0") String interfaceName) {
+        try {
+            String data = String.format("{\"HostName\":\"%s\"}", hostname);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error setting hostname: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get current hostname
+     * Retrieves the BMC hostname from Redfish
+     * 
+     * Example: net.hostname.get --interface eth0
+     * 
+     * @param interfaceName The network interface name (default: eth0)
+     */
+    @ShellMethod(key = "net.hostname.get", value = "Get BMC hostname")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netHostnameGet(
+            @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth0") String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting hostname: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set MTU size for an interface
+     * Updates the Maximum Transmission Unit size
+     * 
+     * Example: net.mtu.set --interface eth0 --mtu 1500
+     * 
+     * @param interfaceName The network interface name
+     * @param mtuSize       The MTU size in bytes (typically 1500 or 9000)
+     */
+    @ShellMethod(key = "net.mtu.set", value = "Set interface MTU size")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netMtuSet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--mtu", "-m" }) int mtuSize) {
+        try {
+            String data = String.format("{\"MTUSize\":%d}", mtuSize);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error setting MTU: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get MTU size for an interface
+     * Retrieves the current MTU size
+     * 
+     * Example: net.mtu.get --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.mtu.get", value = "Get interface MTU size")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netMtuGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting MTU: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set FQDN (Fully Qualified Domain Name)
+     * Updates both hostname and domain name
+     * 
+     * Example: net.fqdn.set --interface eth0 --fqdn mybmc.example.com
+     * 
+     * @param interfaceName The network interface name
+     * @param fqdn          The fully qualified domain name (max 255 characters)
+     */
+    @ShellMethod(key = "net.fqdn.set", value = "Set FQDN (hostname.domain)")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netFqdnSet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--fqdn", "-f" }) String fqdn) {
+        try {
+            String data = String.format("{\"FQDN\":\"%s\"}", fqdn);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error setting FQDN: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get FQDN for an interface
+     * Retrieves the fully qualified domain name
+     * 
+     * Example: net.fqdn.get --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.fqdn.get", value = "Get interface FQDN")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netFqdnGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting FQDN: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set MAC address for an interface
+     * Updates the hardware MAC address
+     * 
+     * Example: net.mac.set --interface eth0 --mac 00:11:22:33:44:55
+     * 
+     * @param interfaceName The network interface name
+     * @param macAddress    The MAC address in format XX:XX:XX:XX:XX:XX
+     */
+    @ShellMethod(key = "net.mac.set", value = "Set interface MAC address")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netMacSet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--mac", "-m" }) String macAddress) {
+        try {
+            String data = String.format("{\"MACAddress\":\"%s\"}", macAddress);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error setting MAC address: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get MAC address for an interface
+     * Retrieves the hardware MAC address
+     * 
+     * Example: net.mac.get --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.mac.get", value = "Get interface MAC address")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netMacGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting MAC address: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enable DHCP for IPv4, IPv6, or both
+     * Configures DHCP settings via Redfish
+     * 
+     * Example: net.dhcp.enable --interface eth0 --version v4
+     * Example: net.dhcp.enable --interface eth0 --version both
+     * 
+     * @param interfaceName The network interface name
+     * @param version       DHCP version: v4, v6, or both (default: v4)
+     */
+    @ShellMethod(key = "net.dhcp.enable", value = "Enable DHCP")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netDhcpEnable(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--version", "-v" }, defaultValue = "v4") String version) {
+        try {
+            String data;
+            if (version.equalsIgnoreCase("both")) {
+                data = "{\"DHCPv4\":{\"DHCPEnabled\":true},\"DHCPv6\":{\"OperatingMode\":\"Enabled\"}}";
+            } else if (version.equalsIgnoreCase("v6")) {
+                data = "{\"DHCPv6\":{\"OperatingMode\":\"Enabled\"}}";
+            } else {
+                data = "{\"DHCPv4\":{\"DHCPEnabled\":true}}";
+            }
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error enabling DHCP: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Disable DHCP for IPv4, IPv6, or both
+     * Disables DHCP settings via Redfish
+     * 
+     * Example: net.dhcp.disable --interface eth0 --version v4
+     * 
+     * @param interfaceName The network interface name
+     * @param version       DHCP version: v4, v6, or both (default: v4)
+     */
+    @ShellMethod(key = "net.dhcp.disable", value = "Disable DHCP")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netDhcpDisable(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--version", "-v" }, defaultValue = "v4") String version) {
+        try {
+            String data;
+            if (version.equalsIgnoreCase("both")) {
+                data = "{\"DHCPv4\":{\"DHCPEnabled\":false},\"DHCPv6\":{\"OperatingMode\":\"Disabled\"}}";
+            } else if (version.equalsIgnoreCase("v6")) {
+                data = "{\"DHCPv6\":{\"OperatingMode\":\"Disabled\"}}";
+            } else {
+                data = "{\"DHCPv4\":{\"DHCPEnabled\":false}}";
+            }
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error disabling DHCP: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get DHCP status for an interface
+     * Shows DHCPv4 and DHCPv6 configuration
+     * 
+     * Example: net.dhcp.status --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.dhcp.status", value = "Get DHCP status")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netDhcpStatus(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting DHCP status: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Configure DHCPv4 options (DNS, NTP, Domain Name)
+     * Enables or disables DHCP-provided configuration
+     * 
+     * Example: net.dhcp.config --interface eth0 --dns true --ntp true --domain
+     * false
+     * 
+     * @param interfaceName The network interface name
+     * @param useDns        Use DHCP-provided DNS servers (default: true)
+     * @param useNtp        Use DHCP-provided NTP servers (default: true)
+     * @param useDomain     Use DHCP-provided domain name (default: true)
+     */
+    @ShellMethod(key = "net.dhcp.config", value = "Configure DHCPv4 options")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netDhcpConfig(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--dns" }, defaultValue = "true") boolean useDns,
+            @ShellOption(value = { "--ntp" }, defaultValue = "true") boolean useNtp,
+            @ShellOption(value = { "--domain" }, defaultValue = "true") boolean useDomain) {
+        try {
+            String data = String.format("{\"DHCPv4\":{\"UseDNSServers\":%b,\"UseNTPServers\":%b,\"UseDomainName\":%b}}",
+                    useDns, useNtp, useDomain);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error configuring DHCP options: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Enable IPv6 SLAAC (Stateless Address Auto Configuration)
+     * Enables IPv6 Router Advertisement acceptance
+     * 
+     * Example: net.ipv6.slaac.enable --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv6.slaac.enable", value = "Enable IPv6 SLAAC")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6SlaacEnable(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String data = "{\"StatelessAddressAutoConfig\":{\"IPv6AutoConfigEnabled\":true}}";
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error enabling IPv6 SLAAC: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Disable IPv6 SLAAC
+     * Disables IPv6 Router Advertisement acceptance
+     * 
+     * Example: net.ipv6.slaac.disable --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv6.slaac.disable", value = "Disable IPv6 SLAAC")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6SlaacDisable(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String data = "{\"StatelessAddressAutoConfig\":{\"IPv6AutoConfigEnabled\":false}}";
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error disabling IPv6 SLAAC: " + e.getMessage());
+        }
+    }
+
+    /**
+     * List all IPv4 addresses on an interface
+     * Shows address, subnet mask, gateway, and origin
+     * 
+     * Example: net.ipv4.list --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv4.list", value = "List IPv4 addresses")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv4List(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error listing IPv4 addresses: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Add a static IPv4 address
+     * Creates a new static IPv4 configuration
+     * 
+     * Example: net.ipv4.add --interface eth0 --address 192.168.1.100 --netmask
+     * 255.255.255.0 --gateway 192.168.1.1
+     * 
+     * @param interfaceName The network interface name
+     * @param address       The IPv4 address
+     * @param netmask       The subnet mask
+     * @param gateway       The default gateway (optional)
+     */
+    @ShellMethod(key = "net.ipv4.add", value = "Add static IPv4 address")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv4Add(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--address", "-a" }) String address,
+            @ShellOption(value = { "--netmask", "-n" }) String netmask,
+            @ShellOption(value = { "--gateway", "-g" }, defaultValue = "") String gateway) {
+        try {
+            String data;
+            if (gateway.isEmpty()) {
+                data = String.format("{\"IPv4StaticAddresses\":[{\"Address\":\"%s\",\"SubnetMask\":\"%s\"}]}",
+                        address, netmask);
+            } else {
+                data = String.format(
+                        "{\"IPv4StaticAddresses\":[{\"Address\":\"%s\",\"SubnetMask\":\"%s\",\"Gateway\":\"%s\"}]}",
+                        address, netmask, gateway);
+            }
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error adding IPv4 address: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete an IPv4 address by setting it to null
+     * Removes a static IPv4 configuration
+     * 
+     * Example: net.ipv4.delete --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv4.delete", value = "Delete IPv4 address")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv4Delete(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String data = "{\"IPv4StaticAddresses\":[null]}";
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error deleting IPv4 address: " + e.getMessage());
+        }
+    }
+
+    /**
+     * List all IPv6 addresses on an interface
+     * Shows address, prefix length, and origin
+     * 
+     * Example: net.ipv6.list --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv6.list", value = "List IPv6 addresses")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6List(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error listing IPv6 addresses: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Add a static IPv6 address
+     * Creates a new static IPv6 configuration
+     * 
+     * Example: net.ipv6.add --interface eth0 --address fe80::1 --prefix 64
+     * 
+     * @param interfaceName The network interface name
+     * @param address       The IPv6 address
+     * @param prefixLength  The prefix length (default: 64)
+     */
+    @ShellMethod(key = "net.ipv6.add", value = "Add static IPv6 address")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6Add(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--address", "-a" }) String address,
+            @ShellOption(value = { "--prefix", "-p" }, defaultValue = "64") int prefixLength) {
+        try {
+            String data = String.format("{\"IPv6StaticAddresses\":[{\"Address\":\"%s\",\"PrefixLength\":%d}]}",
+                    address, prefixLength);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error adding IPv6 address: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete an IPv6 address by setting it to null
+     * Removes a static IPv6 configuration
+     * 
+     * Example: net.ipv6.delete --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv6.delete", value = "Delete IPv6 address")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6Delete(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String data = "{\"IPv6StaticAddresses\":[null]}";
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error deleting IPv6 address: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set IPv6 default gateway
+     * Configures the default gateway for IPv6
+     * 
+     * Example: net.ipv6.gateway.set --interface eth0 --gateway fe80::1
+     * 
+     * @param interfaceName The network interface name
+     * @param gateway       The IPv6 gateway address
+     */
+    @ShellMethod(key = "net.ipv6.gateway.set", value = "Set IPv6 default gateway")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6GatewaySet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--gateway", "-g" }) String gateway) {
+        try {
+            String data = String.format("{\"IPv6DefaultGateway\":\"%s\"}", gateway);
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error setting IPv6 gateway: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get IPv6 default gateway
+     * Retrieves the default gateway for IPv6
+     * 
+     * Example: net.ipv6.gateway.get --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.ipv6.gateway.get", value = "Get IPv6 default gateway")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netIpv6GatewayGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting IPv6 gateway: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Set static name servers (DNS)
+     * Configures static DNS servers for the interface
+     * 
+     * Example: net.nameservers.set --interface eth0 --servers "8.8.8.8,8.8.4.4"
+     * 
+     * @param interfaceName The network interface name
+     * @param servers       Comma-separated list of DNS server IPs
+     */
+    @ShellMethod(key = "net.nameservers.set", value = "Set static DNS servers")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netNameserversSet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName,
+            @ShellOption(value = { "--servers", "-s" }) String servers) {
+        try {
+            String[] serverArray = servers.split(",");
+            StringBuilder jsonArray = new StringBuilder("[");
+            for (int i = 0; i < serverArray.length; i++) {
+                jsonArray.append("\"").append(serverArray[i].trim()).append("\"");
+                if (i < serverArray.length - 1) {
+                    jsonArray.append(",");
+                }
+            }
+            jsonArray.append("]");
+            String data = String.format("{\"StaticNameServers\":%s}", jsonArray.toString());
+            String response = makePatchRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, data);
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error setting name servers: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get name servers (DNS)
+     * Retrieves configured DNS servers
+     * 
+     * Example: net.nameservers.get --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.nameservers.get", value = "Get DNS servers")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netNameserversGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting name servers: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get interface link status
+     * Shows if the interface link is up or down
+     * 
+     * Example: net.link.status --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.link.status", value = "Get interface link status")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netLinkStatus(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting link status: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get VLAN information
+     * Shows VLAN ID and enabled status
+     * 
+     * Example: net.vlan.get --interface eth0
+     * 
+     * @param interfaceName The network interface name
+     */
+    @ShellMethod(key = "net.vlan.get", value = "Get VLAN information")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netVlanGet(
+            @ShellOption(value = { "--interface", "-i" }) String interfaceName) {
+        try {
+            String response = makeGetRequest("/redfish/v1/Managers/bmc/EthernetInterfaces/" + interfaceName, "");
+            System.out.println(response);
+        } catch (Exception e) {
+            System.err.println("Error getting VLAN info: " + e.getMessage());
+        }
     }
 }
 
