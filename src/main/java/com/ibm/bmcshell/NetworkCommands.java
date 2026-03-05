@@ -788,12 +788,12 @@ public class NetworkCommands extends CommonCommands {
         scmd(ipCommand);
     }
 
-    // ==================== NC (NETCAT) COMMANDS - BusyBox Compatible
+    // ==================== NC (NETCAT) COMMANDS - BusyBox v1.37.0 Compatible
     // ====================
 
     /**
      * Test if a TCP port is open on a remote host (BusyBox nc)
-     * BusyBox nc uses -z for zero-I/O scan mode
+     * BusyBox v1.37.0 nc has minimal syntax: nc [IPADDR PORT]
      *
      * Example: nc.port-check --host 192.168.1.1 --port 22
      *
@@ -804,12 +804,13 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "nc.port-check", value = "Test if a TCP port is open on a remote host")
     @ShellMethodAvailability("availabilityCheck")
     protected void ncPortCheck(
-            @ShellOption(value = { "--host", "-h" }) String host,
+            @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--port", "-p" }) int port,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "3") int timeout) {
-        // BusyBox nc: nc -z -w <timeout> <host> <port>
-        String command = String.format("nc -z -w %d %s %d && echo 'Port %d is OPEN' || echo 'Port %d is CLOSED'",
-                timeout, host, port, port, port);
+        // BusyBox nc v1.37.0: nc <host> <port> (basic port check)
+        String command = String.format(
+                "nc %s %d </dev/null >/dev/null 2>&1 && echo 'Port %d is OPEN' || echo 'Port %d is CLOSED'",
+                host, port, port, port);
         scmd(command);
     }
 
@@ -826,17 +827,18 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "nc.connect", value = "Connect to a remote TCP host (interactive)")
     @ShellMethodAvailability("availabilityCheck")
     protected void ncConnect(
-            @ShellOption(value = { "--host", "-h" }) String host,
+            @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--port", "-p" }) int port,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "5") int timeout) {
-        // BusyBox nc: nc -w <timeout> <host> <port>
-        String command = String.format("nc -w %d %s %d", timeout, host, port);
+        // BusyBox nc v1.37.0: nc <host> <port> (timeout not supported)
+        String command = String.format("nc %s %d", host, port);
         scmd(command);
     }
 
     /**
      * Listen on a TCP port (BusyBox nc server mode)
-     * Waits for a single incoming connection
+     * Note: BusyBox v1.37.0 nc does not support listen mode
+     * This command will show an error message
      *
      * Example: nc.listen --port 1234
      *
@@ -848,8 +850,8 @@ public class NetworkCommands extends CommonCommands {
     protected void ncListen(
             @ShellOption(value = { "--port", "-p" }) int port,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "30") int timeout) {
-        // BusyBox nc: nc -l -p <port> -w <timeout>
-        String command = String.format("nc -l -p %d -w %d", port, timeout);
+        // BusyBox nc v1.37.0 does not support listen mode
+        String command = "echo 'ERROR: BusyBox nc v1.37.0 does not support listen mode (-l flag). Use netcat-openbsd or socat instead.'";
         scmd(command);
     }
 
@@ -867,18 +869,19 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "nc.send", value = "Send a message to a remote TCP host")
     @ShellMethodAvailability("availabilityCheck")
     protected void ncSend(
-            @ShellOption(value = { "--host", "-h" }) String host,
+            @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--port", "-p" }) int port,
             @ShellOption(value = { "--message", "-m" }) String message,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "5") int timeout) {
-        // BusyBox nc: echo "<message>" | nc -w <timeout> <host> <port>
-        String command = String.format("echo '%s' | nc -w %d %s %d", message, timeout, host, port);
+        // BusyBox nc v1.37.0: echo "<message>" | nc <host> <port>
+        String command = String.format("echo '%s' | nc %s %d", message, host, port);
         scmd(command);
     }
 
     /**
      * Send UDP data to a remote host (BusyBox nc)
-     * Useful for syslog, SNMP traps, or UDP service testing
+     * Note: BusyBox v1.37.0 nc does not support UDP mode
+     * This command will show an error message
      *
      * Example: nc.send-udp --host 192.168.1.1 --port 514 --message "test syslog"
      *
@@ -890,12 +893,12 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "nc.send-udp", value = "Send UDP data to a remote host")
     @ShellMethodAvailability("availabilityCheck")
     protected void ncSendUdp(
-            @ShellOption(value = { "--host", "-h" }) String host,
+            @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--port", "-p" }) int port,
             @ShellOption(value = { "--message", "-m" }) String message,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "3") int timeout) {
-        // BusyBox nc: echo "<message>" | nc -u -w <timeout> <host> <port>
-        String command = String.format("echo '%s' | nc -u -w %d %s %d", message, timeout, host, port);
+        // BusyBox nc v1.37.0 does not support UDP mode
+        String command = "echo 'ERROR: BusyBox nc v1.37.0 does not support UDP mode (-u flag). Use netcat-openbsd or socat instead.'";
         scmd(command);
     }
 
@@ -913,16 +916,16 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "nc.port-scan", value = "Scan a range of TCP ports on a remote host")
     @ShellMethodAvailability("availabilityCheck")
     protected void ncPortScan(
-            @ShellOption(value = { "--host", "-h" }) String host,
+            @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--start-port", "-s" }) int startPort,
             @ShellOption(value = { "--end-port", "-e" }) int endPort,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "1") int timeout) {
-        // BusyBox nc loop: for each port, nc -z -w <timeout> <host> <port>
+        // BusyBox nc v1.37.0: for each port, nc <host> <port>
         String command = String.format(
                 "for port in $(seq %d %d); do " +
-                        "nc -z -w %d %s $port 2>/dev/null && echo \"Port $port: OPEN\"; " +
+                        "nc %s $port </dev/null >/dev/null 2>&1 && echo \"Port $port: OPEN\"; " +
                         "done",
-                startPort, endPort, timeout, host);
+                startPort, endPort, host);
         scmd(command);
     }
 
@@ -940,15 +943,15 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "nc.http-test", value = "Test HTTP service using nc")
     @ShellMethodAvailability("availabilityCheck")
     protected void ncHttpTest(
-            @ShellOption(value = { "--host", "-h" }) String host,
+            @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--port", "-p" }, defaultValue = "80") int port,
             @ShellOption(value = { "--path" }, defaultValue = "/") String path,
             @ShellOption(value = { "--timeout", "-t" }, defaultValue = "5") int timeout) {
-        // BusyBox nc: printf "GET <path> HTTP/1.0\r\nHost: <host>\r\n\r\n" | nc -w
-        // <timeout> <host> <port>
+        // BusyBox nc v1.37.0: printf "GET <path> HTTP/1.0\r\nHost: <host>\r\n\r\n" | nc
+        // <host> <port>
         String command = String.format(
-                "printf 'GET %s HTTP/1.0\\r\\nHost: %s\\r\\n\\r\\n' | nc -w %d %s %d",
-                path, host, timeout, host, port);
+                "printf 'GET %s HTTP/1.0\\r\\nHost: %s\\r\\n\\r\\n' | nc %s %d",
+                path, host, host, port);
         scmd(command);
     }
 
@@ -1333,7 +1336,7 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "net.hostname.set", value = "Set BMC hostname")
     @ShellMethodAvailability("availabilityCheck")
     protected void netHostnameSet(
-            @ShellOption(value = { "--hostname", "-h" }) String hostname,
+            @ShellOption(value = { "--hostname" }) String hostname,
             @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth0") String interfaceName) {
         try {
             String data = String.format("{\"HostName\":\"%s\"}", hostname);
@@ -2162,7 +2165,7 @@ public class NetworkCommands extends CommonCommands {
     @ShellMethod(key = "tcpdump.host", value = "Capture traffic for a specific host")
     @ShellMethodAvailability("availabilityCheck")
     protected void tcpdumpHost(
-            @ShellOption(value = { "--ip", "-h" }) String ipAddress,
+            @ShellOption(value = { "--ip" }) String ipAddress,
             @ShellOption(value = { "--interface", "-i" }, defaultValue = "eth2") String interfaceName,
             @ShellOption(value = { "--count", "-c" }, defaultValue = "20") int count) {
         String command = count > 0
@@ -2346,6 +2349,171 @@ public class NetworkCommands extends CommonCommands {
             @ShellOption(value = { "--command", "-c" }) String command) {
         String fullCommand = String.format("tcpdump %s", command);
         scmd(fullCommand);
+    }
+
+    /**
+     * Display help for network commands
+     * Shows available network management commands with examples
+     */
+    @ShellMethod(key = "network.help", value = "Display help for network commands")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void networkHelp() {
+        System.out.println(ColorPrinter.cyan("\n=== NETWORK COMMANDS HELP ===\n"));
+
+        System.out.println(ColorPrinter.yellow("ARP COMMANDS:"));
+        System.out.println("  arp.show                              - Show ARP cache");
+        System.out.println("  arp.show.proc                         - Show ARP cache from /proc");
+        System.out.println("  arp.clear --interface eth0 --ip IP    - Clear ARP entry");
+        System.out.println("  arp.announce --interface eth0 --ip IP --count 3");
+        System.out.println("  arp.probe --interface eth0 --ip IP --count 3");
+        System.out.println("  arp.refresh --interface eth0 --ip IP");
+        System.out.println("  arp.set.timeout --interface eth0 --seconds 60");
+        System.out.println("  arp.show.settings --interface eth0");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("IP ADDRESS COMMANDS:"));
+        System.out.println("  ip.addr.show                          - Show all IP addresses");
+        System.out.println("  ip.addr.show.dev --device eth0        - Show IPs for device");
+        System.out.println("  ip.addr.add --device eth0 --address 192.168.1.100/24");
+        System.out.println("  ip.addr.del --device eth0 --address 192.168.1.100/24");
+        System.out.println("  ip.addr.flush --device eth0           - Remove all IPs from device");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("IP LINK COMMANDS:"));
+        System.out.println("  ip.link.show                          - Show network interfaces");
+        System.out.println("  ip.link.up --device eth0              - Bring interface up");
+        System.out.println("  ip.link.down --device eth0            - Bring interface down");
+        System.out.println("  ip.link.set.mac --device eth0 --mac 00:11:22:33:44:55");
+        System.out.println("  ip.link.set.mtu --device eth0 --mtu 1500");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("IP ROUTING COMMANDS:"));
+        System.out.println("  ip.route.show                         - Show routing table");
+        System.out.println("  ip.route.add --destination 10.0.0.0/8 --gateway 192.168.1.1");
+        System.out.println("  ip.route.add.dev --destination 10.0.0.0/8 --device eth0 --gateway 192.168.1.1");
+        System.out.println("  ip.route.del --destination 10.0.0.0/8");
+        System.out.println("  ip.route.default --gateway 192.168.1.1");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("IP NEIGHBOR COMMANDS:"));
+        System.out.println("  ip.neigh.show                         - Show neighbor table");
+        System.out.println("  ip.neigh.add --ip 192.168.1.1 --mac 00:11:22:33:44:55 --device eth0");
+        System.out.println("  ip.neigh.del --ip 192.168.1.1 --device eth0");
+        System.out.println("  ip.neigh.flush --device eth0         - Clear neighbor cache");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("NETWORK STATISTICS:"));
+        System.out.println("  ip.stats                              - Show IP statistics");
+        System.out.println("  ip.stats.dev --device eth0            - Show device statistics");
+        System.out.println("  ifconfig.stats --device eth0          - Show ifconfig statistics");
+        System.out.println("  netstat                               - Show network connections");
+        System.out.println("  netstat.all                           - Show all connections");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("LLDP COMMANDS:"));
+        System.out.println("  lldp.neighbors                        - Show LLDP neighbors");
+        System.out.println("  lldp.neighbors.dev --device eth0      - Show neighbors for device");
+        System.out.println("  lldp.neighbors.json                   - Show neighbors in JSON");
+        System.out.println("  lldp.neighbors.details                - Show detailed neighbor info");
+        System.out.println("  lldp.statistics                       - Show LLDP statistics");
+        System.out.println("  lldp.status                           - Show LLDP daemon status");
+        System.out.println("  lldp.enable --interface eth0          - Enable LLDP on interface");
+        System.out.println("  lldp.disable --interface eth0         - Disable LLDP on interface");
+        System.out.println("  lldp.capture --interface eth0 --duration 30");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("BMC NETWORK MANAGEMENT:"));
+        System.out.println("  net.interfaces                        - List network interfaces");
+        System.out.println("  net.interface.get --interface eth0    - Get interface details");
+        System.out.println("  net.hostname.set --interface eth0 --hostname bmc01");
+        System.out.println("  net.hostname.get --interface eth0");
+        System.out.println("  net.mtu.set --interface eth0 --mtu 1500");
+        System.out.println("  net.mac.set --interface eth0 --mac 00:11:22:33:44:55");
+        System.out.println("  net.dhcp.enable --interface eth0 --protocol IPv4");
+        System.out.println("  net.dhcp.disable --interface eth0 --protocol IPv4");
+        System.out.println("  net.dhcp.status --interface eth0");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("IPv4 MANAGEMENT:"));
+        System.out.println("  net.ipv4.list --interface eth0        - List IPv4 addresses");
+        System.out.println("  net.ipv4.add --interface eth0 --address 192.168.1.100 --prefix 24 --gateway 192.168.1.1");
+        System.out.println("  net.ipv4.delete --id /xyz/openbmc_project/network/eth0/ipv4/1");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("IPv6 MANAGEMENT:"));
+        System.out.println("  net.ipv6.list --interface eth0        - List IPv6 addresses");
+        System.out.println("  net.ipv6.add --interface eth0 --address 2001:db8::1 --prefix 64");
+        System.out.println("  net.ipv6.delete --id /xyz/openbmc_project/network/eth0/ipv6/1");
+        System.out.println("  net.ipv6.slaac.enable --interface eth0");
+        System.out.println("  net.ipv6.gateway.set --interface eth0 --gateway 2001:db8::1");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("ETHTOOL COMMANDS:"));
+        System.out.println("  ethtool.show --device eth0            - Show device settings");
+        System.out.println("  ethtool.link --device eth0            - Show link status");
+        System.out.println("  ethtool.stats --device eth0           - Show device statistics");
+        System.out.println("  ethtool.driver --device eth0          - Show driver info");
+        System.out.println("  ethtool.features --device eth0        - Show device features");
+        System.out.println("  ethtool.speed --device eth0 --speed 1000 --duplex full");
+        System.out.println("  ethtool.autoneg --device eth0 --enable true");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("TCPDUMP COMMANDS:"));
+        System.out.println("  tcpdump.arp --interface eth0 --count 10");
+        System.out.println("  tcpdump.icmp --interface eth0 --count 10");
+        System.out.println("  tcpdump.host --interface eth0 --host 192.168.1.1 --count 10");
+        System.out.println("  tcpdump.port --port 80 --interface eth0 --count 10");
+        System.out.println("  tcpdump.save --interface eth0 --file /tmp/capture.pcap --count 100");
+        System.out.println("  tcpdump.read --file /tmp/capture.pcap --count 10");
+        System.out.println("  tcpdump.filter --interface eth0 --filter 'tcp port 443' --count 10");
+        System.out.println("  tcpdump.syn --interface eth0 --count 10");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("NETCAT COMMANDS:"));
+        System.out.println("  nc.port.check --host 192.168.1.1 --port 22 --timeout 5");
+        System.out.println("  nc.connect --host 192.168.1.1 --port 22 --timeout 5");
+        System.out.println("  nc.listen --port 8080 --timeout 30");
+        System.out.println("  nc.send --host 192.168.1.1 --port 8080 --message 'Hello' --timeout 5");
+        System.out.println("  nc.port.scan --host 192.168.1.1 --start 20 --end 25 --timeout 2");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("BASIC NETWORK TOOLS:"));
+        System.out.println("  ifconfig --device eth0                - Show interface config");
+        System.out.println("  route                                 - Show routing table");
+        System.out.println("  ping --host 192.168.1.1 --count 4     - Ping host");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.yellow("BMC SPECIFIC:"));
+        System.out.println("  bmc.reconfig --interface eth0 --timeout 30");
+        System.out.println("  refresh.mac --interface eth0 --timeout 30");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.green("EXAMPLES:"));
+        System.out.println("  # Configure static IP");
+        System.out.println("  net.ipv4.add --interface eth0 --address 192.168.1.100 --prefix 24 --gateway 192.168.1.1");
+        System.out.println("");
+        System.out.println("  # Enable DHCP");
+        System.out.println("  net.dhcp.enable --interface eth0 --protocol IPv4");
+        System.out.println("");
+        System.out.println("  # Check LLDP neighbors");
+        System.out.println("  lldp.neighbors.details");
+        System.out.println("");
+        System.out.println("  # Capture network traffic");
+        System.out.println("  tcpdump.save --interface eth0 --file /tmp/debug.pcap --count 1000");
+        System.out.println("");
+        System.out.println("  # Check port connectivity");
+        System.out.println("  nc.port.check --host 192.168.1.1 --port 443 --timeout 5");
+        System.out.println("");
+        System.out.println("  # Set interface speed");
+        System.out.println("  ethtool.speed --device eth0 --speed 1000 --duplex full");
+        System.out.println("");
+
+        System.out.println(ColorPrinter.cyan("For custom commands, use:"));
+        System.out.println("  ip.custom --command 'addr show'");
+        System.out.println("  ethtool.custom --command '-i eth0'");
+        System.out.println("  tcpdump.custom --command '-i eth0 -n port 80'");
+        System.out.println("  lldp.custom --command 'show neighbors'");
+        System.out.println("");
     }
 }
 

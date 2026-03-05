@@ -1333,5 +1333,100 @@ public class RemoteCommands extends CommonCommands {
             this.textPages = textPages;
             this.dataPages = dataPages;
         }
+
+        /**
+         * Display help for remote commands
+         * Shows available remote operations, monitoring, and statistics commands
+         */
+        @ShellMethod(key = "remote.help", value = "Display help for remote commands")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void remoteHelp() {
+            System.out.println(ColorPrinter.cyan("\n=== REMOTE COMMANDS HELP ===\n"));
+
+            System.out.println(ColorPrinter.yellow("BASIC FILE OPERATIONS:"));
+            System.out.println("  ro.ls <path>                          - List directory contents");
+            System.out.println("  ro.mv <source> <dest>                 - Move/rename file");
+            System.out.println("  ro.cat <filepath>                     - Display file contents");
+            System.out.println("  ro.makefile <path> <content>          - Create file with content");
+            System.out.println("  ro.digest <filepath>                  - Calculate file checksum");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.yellow("SEARCH OPERATIONS:"));
+            System.out.println("  ro.find <filename> [<path>]           - Find files by name");
+            System.out.println("  ro.grep <pattern> [<path>]            - Search for pattern in files");
+            System.out.println("  ro.running <pattern>                  - Find running processes");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.yellow("SYSTEM OPERATIONS:"));
+            System.out.println("  ro.cmd <command>                      - Execute remote command");
+            System.out.println("  ro.date.get                           - Get current Unix timestamp");
+            System.out.println("  ro.date.set <timestamp>               - Set system date");
+            System.out.println("  ro.ping <ip>                          - Ping remote host");
+            System.out.println("  reboot                                - Reboot the system");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.yellow("MEMORY MONITORING:"));
+            System.out.println("  ro.mem.stat <service> [--exe <name>] [--interval <seconds>]");
+            System.out.println("                                        - Start live memory monitoring");
+            System.out.println("  ro.mem.stat.stop                      - Stop monitoring and show results");
+            System.out.println("  ro.mem.stat.status                    - Check monitoring status");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.yellow("SERVICE MONITORING:"));
+            System.out.println("  ro.monitor.start <service> [--interval <seconds>]");
+            System.out.println("                                        - Start service monitoring");
+            System.out.println("  ro.monitor.stop                       - Stop monitoring and display results");
+            System.out.println("  ro.monitor.status                     - Check monitoring status");
+            System.out.println("  ro.monitor.cleanup                    - Stop all monitoring processes");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.yellow("STATISTICS & GRAPHS:"));
+            System.out.println("  ro.statistics <max_items>             - Display system statistics graphs");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.green("EXAMPLES:"));
+            System.out.println("  # List files in /tmp");
+            System.out.println("  ro.ls /tmp");
+            System.out.println("");
+            System.out.println("  # Find all log files");
+            System.out.println("  ro.find \"*.log\" /var/log");
+            System.out.println("");
+            System.out.println("  # Search for error patterns");
+            System.out.println("  ro.grep \"error\" /var/log");
+            System.out.println("");
+            System.out.println("  # Monitor memory usage of bmcweb");
+            System.out.println("  ro.mem.stat bmcweb --interval 2");
+            System.out.println("  # ... wait for data collection ...");
+            System.out.println("  ro.mem.stat.stop");
+            System.out.println("");
+            System.out.println("  # Monitor service restarts");
+            System.out.println("  ro.monitor.start phosphor-networkd --interval 5");
+            System.out.println("  # ... wait for monitoring ...");
+            System.out.println("  ro.monitor.stop");
+            System.out.println("");
+            System.out.println("  # View system statistics");
+            System.out.println("  ro.statistics 20");
+            System.out.println("");
+            System.out.println("  # Execute custom command");
+            System.out.println("  ro.cmd \"systemctl status bmcweb\"");
+            System.out.println("");
+            System.out.println("  # Check file integrity");
+            System.out.println("  ro.digest /usr/bin/bmcweb");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.cyan("MONITORING WORKFLOW:"));
+            System.out.println("  1. Start monitoring: ro.mem.stat <service> or ro.monitor.start <service>");
+            System.out.println("  2. Check status: ro.mem.stat.status or ro.monitor.status");
+            System.out.println("  3. Stop and view results: ro.mem.stat.stop or ro.monitor.stop");
+            System.out.println("  4. Cleanup if needed: ro.monitor.cleanup");
+            System.out.println("");
+
+            System.out.println(ColorPrinter.cyan("NOTES:"));
+            System.out.println("  - Memory monitoring tracks RSS, shared, and total memory usage");
+            System.out.println("  - Service monitoring detects restarts and state changes");
+            System.out.println("  - Statistics display top memory consumers and system metrics");
+            System.out.println("  - All monitoring runs in background until stopped");
+            System.out.println("");
+        }
     }
 }

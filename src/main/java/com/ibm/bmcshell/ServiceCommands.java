@@ -44,7 +44,7 @@ public class ServiceCommands extends CommonCommands {
     }
 
     String currentService;
-    
+
     // Cache for service dependencies to improve performance
     private static Map<String, Map<String, Set<String>>> serviceDependencyCache = new HashMap<>();
     private static Map<String, Long> cacheTimestamps = new HashMap<>();
@@ -82,7 +82,7 @@ public class ServiceCommands extends CommonCommands {
             var filenames2 = parseFilenamesFromls(outputStream3.toString());
             filenames2.stream().filter(a -> !ServiceProvider.serviceNames.contains(a))
                     .forEach(a -> ServiceProvider.serviceNames.add(a));
-            
+
             // Display services in table format only if requested
             if (displayTable) {
                 displayServicesTable(outputStream.toString());
@@ -94,7 +94,7 @@ public class ServiceCommands extends CommonCommands {
 
     private void displayServicesTable(String systemctlOutput) {
         List<ServiceInfo> services = parseServiceInfo(systemctlOutput);
-        
+
         if (services.isEmpty()) {
             System.out.println("No services found.");
             return;
@@ -106,22 +106,24 @@ public class ServiceCommands extends CommonCommands {
         int activeWidth = 10;
         int subWidth = 10;
         int descWidth = Math.max(40, services.stream().mapToInt(s -> s.description.length()).max().orElse(40));
-        
+
         // Limit description width to 60 characters for better readability
         descWidth = Math.min(descWidth, 60);
 
         // Print header
-        String headerFormat = "%-" + unitWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s  %-" + descWidth + "s%n";
-        String rowFormat = "%-" + unitWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s  %-" + descWidth + "s%n";
-        
+        String headerFormat = "%-" + unitWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth
+                + "s  %-" + descWidth + "s%n";
+        String rowFormat = "%-" + unitWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s  %-"
+                + descWidth + "s%n";
+
         System.out.printf(headerFormat, "UNIT", "LOAD", "ACTIVE", "SUB", "DESCRIPTION");
         System.out.println("=".repeat(unitWidth + loadWidth + activeWidth + subWidth + descWidth + 8));
 
         // Print services
         for (ServiceInfo service : services) {
             String desc = service.description.length() > descWidth
-                ? service.description.substring(0, descWidth - 3) + "..."
-                : service.description;
+                    ? service.description.substring(0, descWidth - 3) + "..."
+                    : service.description;
             System.out.printf(rowFormat, service.unit, service.load, service.active, service.sub, desc);
         }
 
@@ -160,20 +162,20 @@ public class ServiceCommands extends CommonCommands {
     private ServiceInfo parseServiceLine(String line) {
         // Remove bullet point if present
         line = line.replaceFirst("^\\s*●\\s*", "  ");
-        
+
         // Split by whitespace, but preserve description
         String[] parts = line.trim().split("\\s+", 5);
-        
+
         if (parts.length >= 4) {
             String unit = parts[0];
             String load = parts[1];
             String active = parts[2];
             String sub = parts[3];
             String description = parts.length > 4 ? parts[4] : "";
-            
+
             return new ServiceInfo(unit, load, active, sub, description);
         }
-        
+
         return null;
     }
 
@@ -231,21 +233,21 @@ public class ServiceCommands extends CommonCommands {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
                     String.format("systemctl status %s", serviceName));
-            
+
             System.out.println("\n" + "=".repeat(80));
             System.out.println("Service Details: " + serviceName);
             System.out.println("=".repeat(80));
             System.out.println(outputStream.toString());
             System.out.println("=".repeat(80));
-            
+
             // Also get key properties
             ByteArrayOutputStream showStream = new ByteArrayOutputStream();
             runCommandShort(showStream, Util.fullMachineName(machine), userName, passwd,
                     String.format("systemctl show %s --no-pager", serviceName));
-            
+
             String showOutput = showStream.toString();
             Map<String, String> properties = parseServiceProperties(showOutput);
-            
+
             System.out.println("\nKey Properties:");
             System.out.println("-".repeat(80));
             displayProperty(properties, "Description");
@@ -258,7 +260,7 @@ public class ServiceCommands extends CommonCommands {
             displayProperty(properties, "MemoryCurrent");
             displayProperty(properties, "CPUUsageNSec");
             System.out.println("-".repeat(80));
-            
+
         } catch (Exception e) {
             System.err.println("Error fetching service details: " + e.getMessage());
         }
@@ -267,7 +269,7 @@ public class ServiceCommands extends CommonCommands {
     private Map<String, String> parseServiceProperties(String showOutput) {
         Map<String, String> properties = new HashMap<>();
         String[] lines = showOutput.split("\\R");
-        
+
         for (String line : lines) {
             int equalsIndex = line.indexOf('=');
             if (equalsIndex > 0) {
@@ -276,7 +278,7 @@ public class ServiceCommands extends CommonCommands {
                 properties.put(key, value);
             }
         }
-        
+
         return properties;
     }
 
@@ -310,7 +312,7 @@ public class ServiceCommands extends CommonCommands {
         try {
             System.out.println("\nFound " + services.size() + " matching service(s):");
             System.out.println("=".repeat(80));
-            
+
             // Get status for each service
             List<ServiceStatusInfo> statusList = new ArrayList<>();
             for (String service : services) {
@@ -319,26 +321,29 @@ public class ServiceCommands extends CommonCommands {
                     statusList.add(info);
                 }
             }
-            
+
             // Display in table format
             if (!statusList.isEmpty()) {
                 int nameWidth = Math.max(30, statusList.stream().mapToInt(s -> s.name.length()).max().orElse(30));
                 int loadWidth = 10;
                 int activeWidth = 10;
                 int subWidth = 12;
-                
-                String headerFormat = "%-" + nameWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s%n";
-                String rowFormat = "%-" + nameWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth + "s%n";
-                
+
+                String headerFormat = "%-" + nameWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-"
+                        + subWidth + "s%n";
+                String rowFormat = "%-" + nameWidth + "s  %-" + loadWidth + "s  %-" + activeWidth + "s  %-" + subWidth
+                        + "s%n";
+
                 System.out.printf(headerFormat, "SERVICE", "LOAD", "ACTIVE", "SUB");
                 System.out.println("-".repeat(nameWidth + loadWidth + activeWidth + subWidth + 6));
-                
+
                 for (ServiceStatusInfo info : statusList) {
                     System.out.printf(rowFormat, info.name, info.load, info.active, info.sub);
                 }
-                
+
                 System.out.println("=".repeat(80));
-                System.out.println("\nUse 'ro.service -s <exact_name>' to see detailed information for a specific service.");
+                System.out.println(
+                        "\nUse 'ro.service -s <exact_name>' to see detailed information for a specific service.");
             }
         } catch (Exception e) {
             System.err.println("Error displaying service table: " + e.getMessage());
@@ -350,16 +355,15 @@ public class ServiceCommands extends CommonCommands {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
                     String.format("systemctl show %s --property=LoadState,ActiveState,SubState", serviceName));
-            
+
             String output = outputStream.toString();
             Map<String, String> props = parseServiceProperties(output);
-            
+
             return new ServiceStatusInfo(
-                serviceName,
-                props.getOrDefault("LoadState", "unknown"),
-                props.getOrDefault("ActiveState", "unknown"),
-                props.getOrDefault("SubState", "unknown")
-            );
+                    serviceName,
+                    props.getOrDefault("LoadState", "unknown"),
+                    props.getOrDefault("ActiveState", "unknown"),
+                    props.getOrDefault("SubState", "unknown"));
         } catch (Exception e) {
             return new ServiceStatusInfo(serviceName, "error", "error", "error");
         }
@@ -495,17 +499,17 @@ public class ServiceCommands extends CommonCommands {
             return;
         }
         currentService = s;
-        
+
         try {
             String cacheKey = getCacheKey(s, depth, reverse);
             Map<String, Set<String>> serviceGraph = null;
-            
+
             // Check cache if not disabled
             if (!noCache && isCacheValid(cacheKey)) {
                 serviceGraph = serviceDependencyCache.get(cacheKey);
                 System.out.println(ColorPrinter.cyan("Using cached data..."));
             }
-            
+
             // Build graph if not in cache or cache disabled
             if (serviceGraph == null) {
                 serviceGraph = buildServiceGraph(s, depth, reverse);
@@ -514,14 +518,14 @@ public class ServiceCommands extends CommonCommands {
                 cacheTimestamps.put(cacheKey, System.currentTimeMillis());
                 System.out.println(ColorPrinter.green("Data cached for future queries"));
             }
-            
+
             displayServiceGraph(s, serviceGraph, reverse);
         } catch (Exception e) {
             System.err.println("Error building service graph: " + e.getMessage());
             e.printStackTrace();
         }
     }
-    
+
     @ShellMethod(key = "service.graph.clear", value = "Clear service graph cache")
     @ShellMethodAvailability("availabilityCheck")
     void service_graph_clear() {
@@ -530,7 +534,7 @@ public class ServiceCommands extends CommonCommands {
         cacheTimestamps.clear();
         System.out.println(ColorPrinter.green("Cache cleared. Removed " + size + " cached entries."));
     }
-    
+
     @ShellMethod(key = "service.graph.cache", value = "Show cache statistics")
     @ShellMethodAvailability("availabilityCheck")
     void service_graph_cache() {
@@ -539,7 +543,7 @@ public class ServiceCommands extends CommonCommands {
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println("Total cached entries: " + serviceDependencyCache.size());
         System.out.println("Cache expiry time: " + (CACHE_EXPIRY_MS / 1000 / 60) + " minutes");
-        
+
         if (!serviceDependencyCache.isEmpty()) {
             System.out.println("\n" + ColorPrinter.yellow("Cached Entries:"));
             long currentTime = System.currentTimeMillis();
@@ -548,21 +552,20 @@ public class ServiceCommands extends CommonCommands {
                 long timestamp = entry.getValue();
                 long ageSeconds = (currentTime - timestamp) / 1000;
                 long remainingSeconds = (CACHE_EXPIRY_MS - (currentTime - timestamp)) / 1000;
-                
-                String status = remainingSeconds > 0 ?
-                    ColorPrinter.green("Valid (" + remainingSeconds + "s remaining)") :
-                    ColorPrinter.red("Expired");
-                    
+
+                String status = remainingSeconds > 0 ? ColorPrinter.green("Valid (" + remainingSeconds + "s remaining)")
+                        : ColorPrinter.red("Expired");
+
                 System.out.println("  " + key + " - Age: " + ageSeconds + "s - " + status);
             }
         }
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
     }
-    
+
     private String getCacheKey(String service, int depth, boolean reverse) {
         return service + "|" + depth + "|" + (reverse ? "R" : "F");
     }
-    
+
     private boolean isCacheValid(String cacheKey) {
         if (!serviceDependencyCache.containsKey(cacheKey)) {
             return false;
@@ -575,7 +578,8 @@ public class ServiceCommands extends CommonCommands {
         return age < CACHE_EXPIRY_MS;
     }
 
-    private Map<String, Set<String>> buildServiceGraph(String rootService, int maxDepth, boolean reverse) throws IOException {
+    private Map<String, Set<String>> buildServiceGraph(String rootService, int maxDepth, boolean reverse)
+            throws IOException {
         Map<String, Set<String>> graph = new LinkedHashMap<>();
         Set<String> visited = new HashSet<>();
         buildServiceGraphRecursive(rootService, graph, visited, 0, maxDepth, reverse);
@@ -583,15 +587,15 @@ public class ServiceCommands extends CommonCommands {
     }
 
     private void buildServiceGraphRecursive(String service, Map<String, Set<String>> graph,
-                                           Set<String> visited, int currentDepth, int maxDepth, boolean reverse) throws IOException {
+            Set<String> visited, int currentDepth, int maxDepth, boolean reverse) throws IOException {
         if (currentDepth > maxDepth || visited.contains(service)) {
             return;
         }
-        
+
         visited.add(service);
         Set<String> dependencies = getServiceDependencies(service, reverse);
         graph.put(service, dependencies);
-        
+
         if (currentDepth < maxDepth) {
             for (String dep : dependencies) {
                 buildServiceGraphRecursive(dep, graph, visited, currentDepth + 1, maxDepth, reverse);
@@ -602,15 +606,14 @@ public class ServiceCommands extends CommonCommands {
     private Set<String> getServiceDependencies(String service, boolean reverse) throws IOException {
         Set<String> dependencies = new HashSet<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        
+
         try {
-            String command = reverse ?
-                String.format("systemctl list-dependencies --reverse --plain %s", service) :
-                String.format("systemctl list-dependencies --plain %s", service);
-                
+            String command = reverse ? String.format("systemctl list-dependencies --reverse --plain %s", service)
+                    : String.format("systemctl list-dependencies --plain %s", service);
+
             runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, command);
             String output = outputStream.toString();
-            
+
             // Parse the output to extract service names
             String[] lines = output.split("\\R");
             for (String line : lines) {
@@ -618,7 +621,7 @@ public class ServiceCommands extends CommonCommands {
                 if (line.trim().isEmpty() || line.trim().equals(service)) {
                     continue;
                 }
-                
+
                 // Remove tree characters and extract service name
                 String cleaned = line.replaceAll("[│├└─●\\s]+", "").trim();
                 if (!cleaned.isEmpty() && cleaned.endsWith(".service")) {
@@ -631,7 +634,7 @@ public class ServiceCommands extends CommonCommands {
         } catch (Exception e) {
             System.err.println("Error fetching dependencies for " + service + ": " + e.getMessage());
         }
-        
+
         return dependencies;
     }
 
@@ -641,13 +644,13 @@ public class ServiceCommands extends CommonCommands {
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.yellow("Root Service: ") + rootService);
         System.out.println(ColorPrinter.yellow("Direction: ") +
-                          (reverse ? "Services that depend on this service" : "Services this service depends on"));
+                (reverse ? "Services that depend on this service" : "Services this service depends on"));
         System.out.println(ColorPrinter.cyan("───────────────────────────────────────────────────────") + "\n");
-        
+
         // Display graph in tree format
         Set<String> displayed = new HashSet<>();
         displayServiceNode(rootService, graph, displayed, "", true, reverse);
-        
+
         // Display summary
         System.out.println("\n" + ColorPrinter.cyan("───────────────────────────────────────────────────────"));
         System.out.println(ColorPrinter.green("Summary:"));
@@ -658,20 +661,20 @@ public class ServiceCommands extends CommonCommands {
     }
 
     private void displayServiceNode(String service, Map<String, Set<String>> graph,
-                                    Set<String> displayed, String prefix, boolean isRoot, boolean reverse) {
+            Set<String> displayed, String prefix, boolean isRoot, boolean reverse) {
         if (displayed.contains(service)) {
             System.out.println(ColorPrinter.magenta(service + " (already shown)"));
             return;
         }
-        
+
         displayed.add(service);
-        
+
         if (isRoot) {
             System.out.println(ColorPrinter.green("● " + service));
         } else {
             System.out.println(ColorPrinter.yellow(service));
         }
-        
+
         Set<String> dependencies = graph.getOrDefault(service, new HashSet<>());
         if (!dependencies.isEmpty()) {
             List<String> depList = new ArrayList<>(dependencies);
@@ -679,7 +682,7 @@ public class ServiceCommands extends CommonCommands {
                 boolean isLast = (i == depList.size() - 1);
                 String connector = isLast ? "└── " : "├── ";
                 String childPrefix = prefix + (isLast ? "    " : "│   ");
-                
+
                 System.out.print(prefix + connector);
                 displayServiceNode(depList.get(i), graph, displayed, childPrefix, false, reverse);
             }
@@ -690,50 +693,50 @@ public class ServiceCommands extends CommonCommands {
     List<String> extractServiceNamesFromSysctl(String output) {
         List<String> serviceNames = new ArrayList<>();
         String[] lines = output.split("\\R");
-        
+
         for (String line : lines) {
             line = line.trim();
             // Skip header and footer lines
             if (line.isEmpty() || line.startsWith("UNIT") || line.contains("loaded units listed")) {
                 continue;
             }
-            
+
             // Remove bullet point if present
             line = line.replaceFirst("^●\\s*", "");
-            
+
             // Extract service name (first word)
             String[] parts = line.split("\\s+");
             if (parts.length > 0 && parts[0].endsWith(".service")) {
                 serviceNames.add(parts[0]);
             }
         }
-        
+
         return serviceNames;
     }
 
     List<String> parseFilenamesFromls(String output) {
         List<String> filenames = new ArrayList<>();
         String[] lines = output.split("\\R");
-        
+
         for (String line : lines) {
             // Skip total line and empty lines
             if (line.trim().isEmpty() || line.startsWith("total")) {
                 continue;
             }
-            
+
             // Parse ls -l output format
             String[] parts = line.trim().split("\\s+");
             if (parts.length >= 9) {
                 // The filename is the last part (or parts if it contains spaces)
                 String filename = parts[parts.length - 1];
-                
+
                 // Only include .service files
                 if (filename.endsWith(".service")) {
                     filenames.add(filename);
                 }
             }
         }
-        
+
         return filenames;
     }
 
@@ -747,6 +750,60 @@ public class ServiceCommands extends CommonCommands {
         } else {
             return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
         }
+    }
+
+    @ShellMethod(key = "service.help", value = "Show service commands help. eg: service.help")
+    @ShellMethodAvailability("availabilityCheck")
+    void serviceHelp() {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  Service Management Commands"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        System.out.println("\n" + ColorPrinter.yellow("Basic Commands:"));
+        System.out.println("  service.list              - List all systemd services");
+        System.out.println("  service <filter>          - Search and display services matching filter");
+        System.out.println("  service -s <name>         - Set current service and show details");
+
+        System.out.println("\n" + ColorPrinter.yellow("Service Control:"));
+        System.out.println("  service.start <name>      - Start a service");
+        System.out.println("  service.stop <name>       - Stop a service");
+        System.out.println("  service.restart <name>    - Restart a service");
+        System.out.println("  service.enable <name>     - Enable service to start on boot");
+
+        System.out.println("\n" + ColorPrinter.yellow("Service Information:"));
+        System.out.println("  service.status <name>     - Show service status");
+        System.out.println("  service.show <name>       - Show all service properties");
+        System.out.println("  service.show <name> -r <regex> - Show properties matching regex");
+        System.out.println("  service.cat <name>        - Show service unit file");
+        System.out.println("  service.log <name>        - Show service logs");
+
+        System.out.println("\n" + ColorPrinter.yellow("Dependency Analysis:"));
+        System.out.println("  service.dependencies <name>     - List service dependencies");
+        System.out.println("  service.graph <name>            - Show dependency graph (depth 2)");
+        System.out.println("  service.graph <name> -d <num>   - Show graph with custom depth");
+        System.out.println("  service.graph <name> -r         - Show reverse dependencies");
+        System.out.println("  service.graph <name> --nocache  - Bypass cache");
+
+        System.out.println("\n" + ColorPrinter.yellow("Cache Management:"));
+        System.out.println("  service.graph.cache       - Show cache statistics");
+        System.out.println("  service.graph.clear       - Clear dependency graph cache");
+
+        System.out.println("\n" + ColorPrinter.yellow("Examples:"));
+        System.out.println("  service.list");
+        System.out.println("  service bmcweb");
+        System.out.println("  service -s xyz.openbmc_project.Network");
+        System.out.println("  service.start bmcweb");
+        System.out.println("  service.status bmcweb");
+        System.out.println("  service.log bmcweb");
+        System.out.println("  service.graph bmcweb -d 3");
+        System.out.println("  service.graph bmcweb -r");
+        System.out.println("  service.show bmcweb -r Description");
+
+        System.out.println("\n" + ColorPrinter.yellow("Notes:"));
+        System.out.println("  - Most commands use the current service if no name is provided");
+        System.out.println("  - Use tab completion for service names");
+        System.out.println("  - Graph cache expires after 5 minutes");
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════") + "\n");
     }
 }
 
