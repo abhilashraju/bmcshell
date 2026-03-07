@@ -222,12 +222,12 @@ public class CommonCommands implements ApplicationContextAware {
     public String getToken() {
 
         try {
-            if (token == null || token.isEmpty()) {
-                token = getAuthToken(client);
-                System.out.println(ColorPrinter.bgBlackGreenFg("Token retrieved successfully"));
-                getPromptProvider().setShellData(
-                        new CustomPromptProvider.ShellData(machine, AttributedStyle.GREEN, AttributedStyle.BLACK));
-            }
+            // if (token == null || token.isEmpty()) {
+            token = getAuthToken(client);
+            System.out.println(ColorPrinter.bgBlackGreenFg("Token retrieved successfully"));
+            getPromptProvider().setShellData(
+                    new CustomPromptProvider.ShellData(machine, AttributedStyle.GREEN, AttributedStyle.BLACK));
+            // }
         } catch (Exception ex) {
             System.out.println(ColorPrinter.gray("Could not get token"));
             System.out.println(ColorPrinter.gray(ex.getMessage()));

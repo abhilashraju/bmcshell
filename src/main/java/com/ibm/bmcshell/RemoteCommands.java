@@ -2,6 +2,7 @@ package com.ibm.bmcshell;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,7 +11,13 @@ import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
 
+import com.ibm.bmcshell.ColorPrinter;
 import com.ibm.bmcshell.Utils.Util;
+import com.ibm.bmcshell.ssh.SSHShellClient;
+import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.Session;
+import static com.ibm.bmcshell.ssh.SSHShellClient.port;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 
 @ShellComponent
@@ -67,6 +74,114 @@ public class RemoteCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     void cat(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
         scmd(String.format("cat %s", p));
+    }
+
+    @ShellMethod(key = "ro.vi", value = "eg: ro.vi filepath - Edit remote file locally with vi")
+    @ShellMethodAvailability("availabilityCheck")
+    void vi(@ShellOption(valueProvider = RemoteFileCompleter.class) String filepath) {
+        java.io.File tempFile = null;
+        try {
+            String name = userName.equals("root") ? userName : "service";
+            String fullMachine = Util.fullMachineName(machine);
+
+            System.out.println(ColorPrinter.addColor("Fetching file from remote: " + filepath, "cyan"));
+
+            // Step 1: Fetch file content from remote machine
+            ByteArrayOutputStream contentStream = new ByteArrayOutputStream();
+            String catCommand = name.equals("root")
+                    ? String.format("cat %s", filepath)
+                    : String.format("sudo -i cat %s", filepath);
+
+            runCommandShort(contentStream, fullMachine, name, passwd, catCommand);
+            String fileContent = contentStream.toString("UTF-8");
+
+            if (fileContent.isEmpty()) {
+                System.out
+                        .println(ColorPrinter.addColor("File is empty or doesn't exist. Creating new file.", "yellow"));
+            }
+
+            // Step 2: Create temporary local file
+            tempFile = java.io.File.createTempFile("bmcshell_edit_", ".tmp");
+            tempFile.deleteOnExit();
+
+            // Write content to temp file
+            java.nio.file.Files.write(tempFile.toPath(), fileContent.getBytes("UTF-8"));
+
+            System.out.println(ColorPrinter.addColor("Opening vi editor locally...", "cyan"));
+            System.out.println(ColorPrinter.addColor("Save with :wq to upload changes, :q! to discard", "yellow"));
+            System.out.println(ColorPrinter.addColor("----------------------------------------", "cyan"));
+
+            // Step 3: Open vi editor locally
+            ProcessBuilder pb = new ProcessBuilder("vi", tempFile.getAbsolutePath());
+            pb.inheritIO(); // Connect to current terminal
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+
+            if (exitCode != 0) {
+                System.out.println(ColorPrinter.red("Vi editor exited with error code: " + exitCode));
+                return;
+            }
+
+            // Step 4: Read modified content
+            String modifiedContent = new String(java.nio.file.Files.readAllBytes(tempFile.toPath()), "UTF-8");
+
+            // Step 5: Check if content changed
+            if (modifiedContent.equals(fileContent)) {
+                System.out.println(ColorPrinter.addColor("No changes detected. File not uploaded.", "yellow"));
+                return;
+            }
+
+            System.out.println(ColorPrinter.addColor("Uploading modified file to remote...", "cyan"));
+
+            // Step 6: Upload modified content back to remote using SCP
+            String remoteTempFile = "/tmp/bmcshell_upload_" + System.currentTimeMillis();
+
+            // Use JSch SCP to upload the file
+            Session session = SSHShellClient.getSession(fullMachine, name, passwd, port);
+            if (session == null) {
+                System.out.println(ColorPrinter.red("Failed to establish SSH session for upload"));
+                return;
+            }
+
+            // Upload file using SCP
+            com.jcraft.jsch.ChannelSftp sftpChannel = (com.jcraft.jsch.ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+
+            try {
+                // Upload to temp location first
+                sftpChannel.put(tempFile.getAbsolutePath(), remoteTempFile);
+                sftpChannel.disconnect();
+
+                // Now move the file to final location with proper permissions
+                String moveCommand = name.equals("root")
+                        ? String.format("mv %s %s", remoteTempFile, filepath)
+                        : String.format("sudo -i mv %s %s", remoteTempFile, filepath);
+
+                ByteArrayOutputStream moveResult = new ByteArrayOutputStream();
+                runCommandShort(moveResult, fullMachine, name, passwd, moveCommand);
+
+                String moveOutput = moveResult.toString("UTF-8");
+                if (!moveOutput.isEmpty()) {
+                    System.out.println(ColorPrinter.yellow("Move output: " + moveOutput));
+                }
+
+                System.out.println(ColorPrinter.addColor("----------------------------------------", "cyan"));
+                System.out.println(ColorPrinter.addColor("File successfully uploaded to: " + filepath, "green"));
+
+            } catch (Exception uploadEx) {
+                sftpChannel.disconnect();
+                throw uploadEx;
+            }
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error editing file: " + e.getMessage()));
+            e.printStackTrace();
+        } finally {
+            // Cleanup temp file
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
     }
 
     @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
