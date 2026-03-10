@@ -78,19 +78,19 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = "ro.vi", value = "eg: ro.vi filepath - Edit remote file locally with vi")
     @ShellMethodAvailability("availabilityCheck")
-    void vi(@ShellOption(valueProvider = RemoteFileCompleter.class) String filepath) {
+    void vi(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
         java.io.File tempFile = null;
         try {
             String name = userName.equals("root") ? userName : "service";
             String fullMachine = Util.fullMachineName(machine);
 
-            System.out.println(ColorPrinter.addColor("Fetching file from remote: " + filepath, "cyan"));
+            System.out.println(ColorPrinter.addColor("Fetching file from remote: " + p, "cyan"));
 
             // Step 1: Fetch file content from remote machine
             ByteArrayOutputStream contentStream = new ByteArrayOutputStream();
             String catCommand = name.equals("root")
-                    ? String.format("cat %s", filepath)
-                    : String.format("sudo -i cat %s", filepath);
+                    ? String.format("cat %s", p)
+                    : String.format("sudo -i cat %s", p);
 
             runCommandShort(contentStream, fullMachine, name, passwd, catCommand);
             String fileContent = contentStream.toString("UTF-8");
@@ -154,8 +154,8 @@ public class RemoteCommands extends CommonCommands {
 
                 // Now move the file to final location with proper permissions
                 String moveCommand = name.equals("root")
-                        ? String.format("mv %s %s", remoteTempFile, filepath)
-                        : String.format("sudo -i mv %s %s", remoteTempFile, filepath);
+                        ? String.format("mv %s %s", remoteTempFile, p)
+                        : String.format("sudo -i mv %s %s", remoteTempFile, p);
 
                 ByteArrayOutputStream moveResult = new ByteArrayOutputStream();
                 runCommandShort(moveResult, fullMachine, name, passwd, moveCommand);
@@ -166,7 +166,7 @@ public class RemoteCommands extends CommonCommands {
                 }
 
                 System.out.println(ColorPrinter.addColor("----------------------------------------", "cyan"));
-                System.out.println(ColorPrinter.addColor("File successfully uploaded to: " + filepath, "green"));
+                System.out.println(ColorPrinter.addColor("File successfully uploaded to: " + p, "green"));
 
             } catch (Exception uploadEx) {
                 sftpChannel.disconnect();

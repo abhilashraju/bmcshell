@@ -67,7 +67,7 @@ public class InstallCommands extends CommonCommands {
         }
         String output = outputStream.toString();
         var lines = output.split("\n");
-        Stream.of(lines).filter(a->a.endsWith(".ipk")).forEach(a -> {
+        Stream.of(lines).filter(a -> a.endsWith(".ipk")).forEach(a -> {
             System.out.println(a);
             a.trim();
             String[] paths = a.split("/");
@@ -81,13 +81,13 @@ public class InstallCommands extends CommonCommands {
             scmd(command);
             scmd(String.format("rm %s", a));
         });
-        
-    }
 
+    }
 
     @ShellMethod(key = "install.scp", value = "eg: install.scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
     @ShellMethodAvailability("availabilityCheck")
-    void scp(@ShellOption(value = { "--path", "-p"}, defaultValue = "/",valueProvider = FileCompleter.class) String path, String dest) {
+    void scp(@ShellOption(value = { "--path",
+            "-p" }, defaultValue = "/", valueProvider = FileCompleter.class) String path, String dest) {
         System.out.println(passwd);
         StringBuilder cmdBuilder = new StringBuilder();
 
@@ -110,64 +110,101 @@ public class InstallCommands extends CommonCommands {
                 subpaths[subpaths.length - 1], dest));
     }
 
-    @ShellMethod(key = "install.check-bootside", value = "Check the current boot side")
+    @ShellMethod(key = "check-bootside", value = "Check the current boot side")
     @ShellMethodAvailability("availabilityCheck")
     void checkBootside() {
         System.out.println("Checking current boot side...");
         scmd("fw_printenv bootside");
     }
-    @ShellMethod(key = "install.set-bootside", value = "Check the current boot side")
+
+    @ShellMethod(key = "set-bootside", value = "Check the current boot side")
     @ShellMethodAvailability("availabilityCheck")
     void setBootside(String bootside) {
         System.out.println("Setting current boot side...");
         scmd(String.format("fw_setenv bootside %s", bootside));
     }
-    @ShellMethod(key = "install.update-firmware", value = "Update firmware with specified label. eg: install.update-firmware --label b")
+
+    @ShellMethod(key = "update-firmware", value = "Update firmware automatically. eg: install.update-firmware")
     @ShellMethodAvailability("availabilityCheck")
-    void updateFirmware(@ShellOption(value = { "--label", "-l" }) String label) throws IOException {
-        
+    void updateFirmware() throws IOException {
+
         String imagePath = "/tmp/images";
-        
-        // List available versions in /tmp/images
+
+        // Check current boot side
+        System.out.println("Checking current boot side...");
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, "fw_printenv bootside");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to check boot side", e);
+        }
+
+        String bootSideOutput = outputStream.toString().trim();
+        System.out.println("Boot side output: " + bootSideOutput);
+
+        // Parse boot side (expected format: "bootside=a" or "bootside=b")
+        String currentBootSide = "a"; // default
+        if (bootSideOutput.contains("=")) {
+            currentBootSide = bootSideOutput.split("=")[1].trim().toLowerCase();
+        }
+
+        // Determine target boot side (opposite of current)
+        String label = currentBootSide.equals("a") ? "b" : "a";
+        System.out.println("Current boot side: " + currentBootSide);
+        System.out.println("Target boot side for update: " + label);
+
+        // List available versions in /tmp/images and get the first one
         System.out.println("Listing available versions in " + imagePath + "...");
-        scmd("ls " + imagePath);
-        
-        // Prompt user to select version
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter version from above: ");
-        String version = scanner.nextLine().trim();
-        
+        ByteArrayOutputStream lsOutputStream = new ByteArrayOutputStream();
+        try {
+            runCommandShort(lsOutputStream, Util.fullMachineName(machine), userName, passwd, "ls " + imagePath);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to list images", e);
+        }
+
+        String lsOutput = lsOutputStream.toString().trim();
+        System.out.println("Available images:\n" + lsOutput);
+
+        // Get the first image from the list
+        String[] images = lsOutput.split("\n");
+        if (images.length == 0 || images[0].trim().isEmpty()) {
+            throw new IOException("No images found in " + imagePath);
+        }
+
+        String version = images[0].trim();
+        System.out.println("Selected image: " + version);
+
         System.out.println("Loading firmware update script from resources...");
-        
+
         // Read the script from resources
         InputStream scriptStream = getClass().getClassLoader().getResourceAsStream("update_firmware.sh");
         if (scriptStream == null) {
             throw new IOException("Could not find update_firmware.sh in resources");
         }
-        
+
         String scriptContent = new String(scriptStream.readAllBytes(), StandardCharsets.UTF_8);
         scriptStream.close();
-        
+
         // Write script to local temporary file
         String localScriptPath = "/tmp/update_firmware.sh";
         File scriptFile = new File(localScriptPath);
         FileOutputStream fout = new FileOutputStream(scriptFile);
         fout.write(scriptContent.getBytes(StandardCharsets.UTF_8));
         fout.close();
-        
+
         System.out.println("Script loaded from resources");
         System.out.println("Copying script to remote machine...");
-        
+
         // Copy script to remote machine
         String remoteScriptPath = "/tmp/update_firmware.sh";
         scp(localScriptPath, remoteScriptPath);
-        
+
         System.out.println("Making script executable...");
         scmd("chmod +x " + remoteScriptPath);
-        
+
         System.out.println("Executing firmware update script...");
         scmd(String.format("%s %s %s %s", remoteScriptPath, label, imagePath, version));
-        
+
         System.out.println("Firmware update completed!");
         setBootside(label);
     }

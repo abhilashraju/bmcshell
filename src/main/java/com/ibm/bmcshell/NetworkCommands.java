@@ -2338,9 +2338,9 @@ public class NetworkCommands extends CommonCommands {
     /**
      * Run custom tcpdump command
      * Execute any tcpdump command with custom parameters
-     * 
+     *
      * Example: tcpdump.custom --command "-i eth2 -n -vv udp port 67"
-     * 
+     *
      * @param command The tcpdump command with parameters
      */
     @ShellMethod(key = "tcpdump.custom", value = "Run custom tcpdump command")
@@ -2349,6 +2349,110 @@ public class NetworkCommands extends CommonCommands {
             @ShellOption(value = { "--command", "-c" }) String command) {
         String fullCommand = String.format("tcpdump %s", command);
         scmd(fullCommand);
+    }
+
+    /**
+     * Run network diagnostic script to test eth2 connectivity fixes
+     * Tests promiscuous mode and interface restart to diagnose network issues
+     *
+     * This script tests three potential fixes for eth2 network connectivity:
+     * 1. Promiscuous mode only
+     * 2. Interface restart only
+     * 3. Both combined
+     *
+     * The script will test connectivity to the specified peer BMC IP and determine
+     * the minimal solution needed.
+     *
+     * Example: net.diagnostic.simple-fix --peer-ip 192.168.1.100
+     *
+     * @param peerIp The IP address of the peer BMC to test connectivity with
+     */
+    @ShellMethod(key = "net.diagnostic.simple-fix", value = "Run network diagnostic script to test eth2 connectivity fixes")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void netDiagnosticSimpleFix(
+            @ShellOption(value = { "--peer-ip", "-p" }) String peerIp) {
+        java.io.File tempFile = null;
+        try {
+            String scriptPath = "/tmp/simple-fix.sh";
+            String name = userName.equals("root") ? userName : "service";
+            String fullMachine = com.ibm.bmcshell.Utils.Util.fullMachineName(machine);
+
+            System.out.println(ColorPrinter.cyan("Deploying network diagnostic script..."));
+
+            // Read script content from resources
+            String scriptContent = getResourceContent("simple-fix.sh");
+
+            // Create temporary local file
+            tempFile = java.io.File.createTempFile("bmcshell_script_", ".sh");
+            tempFile.deleteOnExit();
+
+            // Write content to temp file
+            java.nio.file.Files.write(tempFile.toPath(), scriptContent.getBytes("UTF-8"));
+
+            // Upload file using SFTP
+            com.jcraft.jsch.Session session = com.ibm.bmcshell.ssh.SSHShellClient.getSession(
+                    fullMachine, name, passwd, com.ibm.bmcshell.ssh.SSHShellClient.port);
+
+            if (session == null) {
+                System.out.println(ColorPrinter.red("Failed to establish SSH session for upload"));
+                return;
+            }
+
+            com.jcraft.jsch.ChannelSftp sftpChannel = (com.jcraft.jsch.ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+
+            try {
+                // Upload script to BMC
+                sftpChannel.put(tempFile.getAbsolutePath(), scriptPath);
+                sftpChannel.disconnect();
+
+                System.out.println(ColorPrinter.yellow("\nRunning network diagnostic script..."));
+                System.out.println(ColorPrinter.yellow("Testing connectivity to peer BMC: " + peerIp));
+                System.out
+                        .println(ColorPrinter.yellow("This script will test different fixes for eth2 connectivity.\n"));
+
+                // Execute with sh directly, passing the peer IP as argument
+                scmd(String.format("sh %s %s", scriptPath, peerIp));
+
+                // Cleanup
+                scmd(String.format("rm -f %s", scriptPath));
+
+            } catch (Exception uploadEx) {
+                sftpChannel.disconnect();
+                throw uploadEx;
+            }
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error running diagnostic script: " + e.getMessage()));
+            e.printStackTrace();
+        } finally {
+            // Cleanup temp file
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
+        }
+    }
+
+    /**
+     * Helper method to read resource file content
+     */
+    private String getResourceContent(String resourceName) throws IOException {
+        java.io.InputStream is = getClass().getClassLoader().getResourceAsStream(resourceName);
+        if (is == null) {
+            throw new IOException("Resource not found: " + resourceName);
+        }
+
+        java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8));
+
+        StringBuilder content = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            content.append(line).append("\n");
+        }
+        reader.close();
+
+        return content.toString();
     }
 
     /**
@@ -2434,6 +2538,12 @@ public class NetworkCommands extends CommonCommands {
         System.out.println("  net.dhcp.status --interface eth0");
         System.out.println("");
 
+        System.out.println(ColorPrinter.yellow("NETWORK DIAGNOSTICS:"));
+        System.out.println("  net.diagnostic.simple-fix             - Run eth2 connectivity diagnostic script");
+        System.out.println(
+                "                                          Tests promiscuous mode and interface restart fixes");
+        System.out.println("");
+
         System.out.println(ColorPrinter.yellow("IPv4 MANAGEMENT:"));
         System.out.println("  net.ipv4.list --interface eth0        - List IPv4 addresses");
         System.out.println("  net.ipv4.add --interface eth0 --address 192.168.1.100 --prefix 24 --gateway 192.168.1.1");
@@ -2503,6 +2613,9 @@ public class NetworkCommands extends CommonCommands {
         System.out.println("");
         System.out.println("  # Check port connectivity");
         System.out.println("  nc.port.check --host 192.168.1.1 --port 443 --timeout 5");
+        System.out.println("");
+        System.out.println("  # Run network diagnostic for eth2 connectivity");
+        System.out.println("  net.diagnostic.simple-fix --peer-ip 192.168.1.100");
         System.out.println("");
         System.out.println("  # Set interface speed");
         System.out.println("  ethtool.speed --device eth0 --speed 1000 --duplex full");

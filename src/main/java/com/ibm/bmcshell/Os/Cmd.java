@@ -12,40 +12,52 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class Cmd {
 
-    public static class PipeHandler
-    {
-        List<Process> precesses=new ArrayList<>();
+    public static class PipeHandler {
+        List<Process> precesses = new ArrayList<>();
+
         public PipeHandler addProcess(Process process) throws IOException {
-            if(precesses.isEmpty()){
+            if (precesses.isEmpty()) {
                 precesses.add(process);
                 return this;
             }
-            var prev=precesses.get(precesses.size()-1);
+            var prev = precesses.get(precesses.size() - 1);
 
             process.getOutputStream().write(prev.getInputStream().readAllBytes());
-            return  this;
+            return this;
         }
-        public int waitFor() throws InterruptedException, IOException {
-            InputStream inputStream = precesses.get(precesses.size()-1).getInputStream();
 
-            // Create a buffered reader to read the output
+        public int waitFor() throws InterruptedException, IOException {
+            Process lastProcess = precesses.get(precesses.size() - 1);
+            InputStream inputStream = lastProcess.getInputStream();
+            InputStream errorStream = lastProcess.getErrorStream();
+
+            // Create buffered readers for both streams
             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(errorStream));
+
+            // Read standard output
             String line;
             while ((line = reader.readLine()) != null) {
                 System.out.println(line);
             }
-            return precesses.get(precesses.size()-1).waitFor();
+
+            // Read error output
+            while ((line = errorReader.readLine()) != null) {
+                System.err.println("Error: " + line);
+            }
+
+            return lastProcess.waitFor();
         }
     }
-    public static void execute(String command,String passwd)
-    {
+
+    public static void execute(String command, String passwd) {
         try {
-            var chains=command.split("\\|");
-//            if(chains.length>1){
-                 handleProcessChain(chains,passwd);
-                 return;
-//            }
-//            handleSingelProcess(command, passwd);
+            var chains = command.split("\\|");
+            // if(chains.length>1){
+            handleProcessChain(chains, passwd);
+            return;
+            // }
+            // handleSingelProcess(command, passwd);
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -63,15 +75,14 @@ public class Cmd {
         Scanner scanner = new Scanner(System.in);
         // Write data to the process's input stream (e.g., simulate user input)
 
-
-        while (true){
+        while (true) {
             String line;
             while ((line = reader.readLine()) != null) {
                 System.out.println(line);
             }
 
             String data = scanner.nextLine();
-            if(data.isEmpty()){
+            if (data.isEmpty()) {
                 break;
             }
             outputStream.write(data.getBytes(StandardCharsets.UTF_8));
@@ -86,33 +97,33 @@ public class Cmd {
 
     @NotNull
     private static Process getProcess(String command, String passwd) throws IOException {
-        var args= command.split(" ");
-        // Specify the command and its arguments
-        ProcessBuilder processBuilder = new ProcessBuilder(args);
+        // Use shell to execute command to properly handle quotes and special characters
+        ProcessBuilder processBuilder = new ProcessBuilder("bash", "-c", command);
         processBuilder.environment().put("SSHPASS", passwd);
-        processBuilder.redirectErrorStream(true);
+        // Don't merge error stream - keep them separate for better error visibility
+        // processBuilder.redirectErrorStream(true);
         // Start the process
         Process process = processBuilder.start();
         return process;
     }
 
-     static ProcessBuilder makeNextBuilder(String command, String passwd, ProcessBuilder prev)
-    {
-        var args= command.split(" ");
-        // Specify the command and its arguments
-        ProcessBuilder processBuilder = new ProcessBuilder(args);
+    static ProcessBuilder makeNextBuilder(String command, String passwd, ProcessBuilder prev) {
+        // Use shell to execute command to properly handle quotes and special characters
+        ProcessBuilder processBuilder = new ProcessBuilder("bash", "-c", command);
         processBuilder.environment().put("SSHPASS", passwd);
-        processBuilder.redirectErrorStream(true);
-        if(prev !=null){
+        // Don't merge error stream - keep them separate for better error visibility
+        // processBuilder.redirectErrorStream(true);
+        if (prev != null) {
             prev.redirectOutput(ProcessBuilder.Redirect.PIPE);
             processBuilder.redirectInput(ProcessBuilder.Redirect.PIPE);
         }
         return processBuilder;
     }
-    private static void handleProcessChain(String[] chains,String passwd) throws InterruptedException, IOException {
-        PipeHandler pipe=new PipeHandler();
-        AtomicReference<ProcessBuilder> current=new AtomicReference<>();
-        Arrays.stream(chains).forEach(a->{
+
+    private static void handleProcessChain(String[] chains, String passwd) throws InterruptedException, IOException {
+        PipeHandler pipe = new PipeHandler();
+        AtomicReference<ProcessBuilder> current = new AtomicReference<>();
+        Arrays.stream(chains).forEach(a -> {
             try {
                 current.set(makeNextBuilder(a, passwd, current.get()));
                 pipe.addProcess(current.get().start());
