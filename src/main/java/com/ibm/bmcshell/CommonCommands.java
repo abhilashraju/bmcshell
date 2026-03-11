@@ -97,7 +97,7 @@ public class CommonCommands implements ApplicationContextAware {
     static String userName = "service";
     static String passwd = "empty";
 
-    static String libPath = "./";
+    static String shellHomePath = "./";
     PrintStream savedStream = System.out;
     @Autowired
     Script script;
@@ -206,13 +206,16 @@ public class CommonCommands implements ApplicationContextAware {
                     if (tree.has("secretkey")) {
                         Util.secretKey = tree.get("secretkey").asText();
                     }
+                    if (tree.has("shellhome")) {
+                        shellHomePath = tree.get("shellhome").asText();
+                    }
 
                 } catch (Exception ex) { // if the file is corrupted
                     file.delete();
                 }
             }
             checkUserNameAndPasswd();
-            FileOutputStream stream = new FileOutputStream(new File(libPath + "clear"));
+            FileOutputStream stream = new FileOutputStream(new File(shellHomePath + "clear"));
             stream.write("clear\n".getBytes(StandardCharsets.UTF_8));
             stream.close();
         }
@@ -633,6 +636,7 @@ public class CommonCommands implements ApplicationContextAware {
         map.put("yamlroot", Util.yamlRoot);
         map.put("interfacesRoot", Util.interfacesRoot);
         map.put("secretkey", Util.secretKey);
+        map.put("shellhome", shellHomePath);
 
         out.write(mapper
                 .writeValueAsString(map)
@@ -1209,6 +1213,15 @@ public class CommonCommands implements ApplicationContextAware {
 
     }
 
+    @ShellMethod(key = "shellhome", value = "Set the shellhome directory path. eg: shellhome /path/to/scripts/")
+    public void shellhome(String path) throws IOException {
+        // Ensure path ends with /
+        shellHomePath = path.endsWith("/") ? path : path + "/";
+        serialise();
+        System.out.println(ColorPrinter.green("Shell home path set to: " + shellHomePath));
+        System.out.println(ColorPrinter.yellow("Run 'scripts.reload' to load scripts from the new location"));
+    }
+
     @ShellMethod(key = "system")
     void system(String command) {
         Cmd.execute(command, passwd);
@@ -1300,7 +1313,7 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethodAvailability("availabilityCheck")
     void runScript(@ShellOption(valueProvider = ScriptNameProvider.class, value = { "--file", "-f" }) String scrFile)
             throws Exception {
-        script.script(new File(libPath + scrFile));
+        script.script(new File(shellHomePath + scrFile));
     }
 
     void tell(String message) throws IOException, InterruptedException {
@@ -1341,7 +1354,7 @@ public class CommonCommands implements ApplicationContextAware {
         var history = Arrays.stream(new String(reader.readAllBytes()).split("\n")).collect(Collectors.toList());
         history.remove(history.size() - 1);
         var toSkip = Math.max(0, history.size() - count);
-        FileOutputStream fileOutputStream = new FileOutputStream(new File(libPath + scriptname));
+        FileOutputStream fileOutputStream = new FileOutputStream(new File(shellHomePath + scriptname));
         history.stream().skip(toSkip).forEach(element -> {
             System.out.println(element);
             var index = element.indexOf(':');
@@ -1353,18 +1366,13 @@ public class CommonCommands implements ApplicationContextAware {
                 throw new RuntimeException(e);
             }
         });
-        return "Saved to file " + libPath + scriptname;
+        return "Saved to file " + shellHomePath + scriptname;
 
     }
 
     @ShellMethod(key = "list")
     protected void list() throws IOException, InterruptedException {
-        system("ls " + libPath);
-    }
-
-    @ShellMethod(key = "libpath")
-    protected void libpath(String path) throws IOException, InterruptedException {
-        libPath = path.endsWith("/") ? path : path + "/";
+        system("ls " + shellHomePath);
     }
 
     public Availability availabilityCheck() {

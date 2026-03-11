@@ -67,7 +67,28 @@ Common commands
     save <name to save> <count of previous commands to save>
     r -f <name saved before>
     repeat <name save before> <no of times to execute>
-``` 
+```
+
+- **NEW: Dynamic Script Commands** 🎉
+```ssh
+    # Execute any script with x command
+    x ping0                # execute ping0 script
+    x provision            # execute provision script
+    x startprov            # execute startprov script
+    
+    # Pre-registered shortcuts (no 'x' needed)
+    checkdump              # runs checkdump
+    ifaces                 # runs ifaces
+    disses                 # runs disses
+    
+    # Script management
+    scripts.list           # list all available scripts
+    scripts.show <name>    # view script content
+    scripts.reload         # reload scripts from directory
+    x <scriptname>         # execute any script by name
+    shellhome <path>       # set custom script directory (saved to history)
+```
+See [QUICK_START_DYNAMIC_COMMANDS.md](QUICK_START_DYNAMIC_COMMANDS.md) for details.
 
 ### Build instructions
 

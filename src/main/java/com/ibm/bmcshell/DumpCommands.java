@@ -54,10 +54,11 @@ public class DumpCommands extends CommonCommands {
     public void list_bmcdump() throws URISyntaxException, IOException {
         get("/redfish/v1/Managers/bmc/LogServices/Dump/Entries", "", true);
     }
+
     @ShellMethod(key = "dump.bmc.delete")
     @ShellMethodAvailability("availabilityCheck")
     public void delete_bmcdump(String id) throws URISyntaxException, IOException {
-        delete(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/",id ));
+        delete(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/", id));
     }
 
     public static class DownLoadInfo {
@@ -90,7 +91,8 @@ public class DumpCommands extends CommonCommands {
 
     @ShellMethod(key = "dump.bmc.offload", value = "eg: bmc_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
-    public void bmc_dump_offload(String id, String filename) throws URISyntaxException, IOException, InterruptedException {
+    public void bmc_dump_offload(String id, String filename)
+            throws URISyntaxException, IOException, InterruptedException {
         if (filename == null) {
             filename = id;
         }
@@ -124,7 +126,7 @@ public class DumpCommands extends CommonCommands {
         String absPath = new File(filename).getAbsolutePath();
         Thread script = new Thread(() -> {
             try {
-                System.out.println("Extracting dump to " + absPath+ "_out");
+                System.out.println("Extracting dump to " + absPath + "_out");
                 extract_dump(absPath);
             } catch (IOException | URISyntaxException | InterruptedException e) {
                 e.printStackTrace();
@@ -146,8 +148,9 @@ public class DumpCommands extends CommonCommands {
         try (FileOutputStream out = new FileOutputStream(tempScript)) {
             in.transferTo(out);
         }
-        
-        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath,"-I","xz","-L","0");
+
+        ProcessBuilder pb = new ProcessBuilder("bash", tempScript.getAbsolutePath(), "-e", absPath, "-I", "xz", "-L",
+                "0");
         // pb.inheritIO();
         Process process = pb.start();
         process.waitFor();
@@ -155,8 +158,8 @@ public class DumpCommands extends CommonCommands {
         File outDir = new File(absPath + "_out");
         if (outDir.exists() && outDir.isDirectory()) {
             Files.walk(outDir.toPath())
-                .filter(Files::isRegularFile)
-                .forEach(path -> System.out.println(path.toAbsolutePath()));
+                    .filter(Files::isRegularFile)
+                    .forEach(path -> System.out.println(path.toAbsolutePath()));
         } else {
             System.out.println("Directory " + outDir.getAbsolutePath() + " does not exist.");
         }
@@ -216,7 +219,7 @@ public class DumpCommands extends CommonCommands {
 
             return;
         }
-        script.script(new File(libPath + "clear"));
+        script.script(new File(CommonCommands.shellHomePath + "clear"));
         System.out.println();
         data.downLoadStatus.forEach((a, b) -> {
             if (b.status != DownLoadInfo.Status.done) {
@@ -258,15 +261,17 @@ public class DumpCommands extends CommonCommands {
     @ShellMethod(key = "dump.system.offload", value = "eg: system_dump_offload 4 out_filename")
     @ShellMethodAvailability("availabilityCheck")
     public void system_dump_offload(String id, String filename) throws URISyntaxException, IOException {
-        
-     //   get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename, false);
-         Thread script = new Thread(() -> {
-             try {
-                 get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename, false);
-      
-             } catch (URISyntaxException | IOException e) {
-             }      
-            
+
+        // get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment",
+        // id), filename, false);
+        Thread script = new Thread(() -> {
+            try {
+                get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s/attachment", id), filename,
+                        false);
+
+            } catch (URISyntaxException | IOException e) {
+            }
+
         });
         script.setName("Dump Extractor");
         script.setDaemon(true);

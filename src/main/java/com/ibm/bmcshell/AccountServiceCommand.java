@@ -32,7 +32,7 @@ public class AccountServiceCommand extends CommonCommands {
 
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
-            var fileNames = getAcfFiles(libPath, ".acf");
+            var fileNames = getAcfFiles(CommonCommands.shellHomePath, ".acf");
             return fileNames
                     .stream()
                     .filter(name -> !name.startsWith("-"))
