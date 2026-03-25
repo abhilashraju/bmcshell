@@ -39,38 +39,39 @@ public class RemoteCommands extends CommonCommands {
 
     }
 
-    @ShellMethod(key = "ro.ls", value = "eg: ro.ls path")
+    @ShellMethod(key = { "ro.ls", "ls" }, value = "eg: ro.ls path")
     @ShellMethodAvailability("availabilityCheck")
     void ls(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
         scmd(String.format("ls -alhS %s", p));
     }
 
-    @ShellMethod(key = "ro.mv", value = "eg: ro.mv source dest")
+    @ShellMethod(key = { "ro.mv", "mv" }, value = "eg: ro.mv source dest")
     @ShellMethodAvailability("availabilityCheck")
     void mv(@ShellOption(valueProvider = RemoteFileCompleter.class) String source,
             @ShellOption(valueProvider = RemoteFileCompleter.class) String dest) {
         scmd(String.format("mv %s %s", source, dest));
     }
 
-    @ShellMethod(key = "ro.cmd", value = "eg: ro.cmd command")
+    @ShellMethod(key = { "ro.cmd", "cmd" }, value = "eg: ro.cmd command")
     @ShellMethodAvailability("availabilityCheck")
     void cmd(String cmd) {
         scmd(cmd);
     }
 
-    @ShellMethod(key = "ro.date.get", value = "Get current Unix timestamp in UTC (eg: ro.date.get)")
+    @ShellMethod(key = { "ro.date.get", "date.get" }, value = "Get current Unix timestamp in UTC (eg: ro.date.get)")
     @ShellMethodAvailability("availabilityCheck")
     void dateGet() {
         scmd("date -u +%s && date -u");
     }
 
-    @ShellMethod(key = "ro.date.set", value = "Set date using Unix timestamp (eg: ro.date.set 1771405014)")
+    @ShellMethod(key = { "ro.date.set",
+            "date.set" }, value = "Set date using Unix timestamp (eg: ro.date.set 1771405014)")
     @ShellMethodAvailability("availabilityCheck")
     void dateSet(String timestamp) {
         scmd(String.format("date -s @%s && date", timestamp));
     }
 
-    @ShellMethod(key = "ro.cat", value = "eg: ro.cat filepath")
+    @ShellMethod(key = { "ro.cat", "cat" }, value = "eg: ro.cat filepath")
     @ShellMethodAvailability("availabilityCheck")
     void cat(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
         scmd(String.format("cat %s", p));
@@ -184,7 +185,7 @@ public class RemoteCommands extends CommonCommands {
         }
     }
 
-    @ShellMethod(key = "ro.find", value = "eg: ro.find filename [<path>]")
+    @ShellMethod(key = { "ro.find", "find" }, value = "eg: ro.find filename [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void findFile(String filename,
             @ShellOption(value = { "--path",
@@ -192,7 +193,7 @@ public class RemoteCommands extends CommonCommands {
         scmd(String.format("find %s -iname *%s*", path, filename));
     }
 
-    @ShellMethod(key = "ro.grep", value = "eg: ro.grep pattern [<path>]")
+    @ShellMethod(key = { "ro.grep", "grep" }, value = "eg: ro.grep pattern [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void grep(String pattern,
             @ShellOption(value = { "--path",
@@ -200,7 +201,7 @@ public class RemoteCommands extends CommonCommands {
         scmd(String.format("grep -nr %s %s", pattern, path));
     }
 
-    @ShellMethod(key = "ro.running", value = "eg: ro.running pattern [<path>]")
+    @ShellMethod(key = { "ro.running", "running" }, value = "eg: ro.running pattern [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void running(String pattern,
             @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
@@ -233,12 +234,13 @@ public class RemoteCommands extends CommonCommands {
         scmd("reboot");
     }
 
-    @ShellMethod(key = "ro.mem.stat", value = "eg: ro.mem.stat servicename [--exe exename] [--interval 2] - Start live memory monitoring")
+    @ShellMethod(key = "mem.start", value = "eg: mem.start servicename [--exe exename] [--interval 2] - Start live memory monitoring")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat(
             @ShellOption(value = { "--ser",
                     "-s" }, valueProvider = ServiceCommands.ServiceProvider.class, defaultValue = ShellOption.NULL) String servicename,
-            @ShellOption(value = { "--exe", "-e" }, defaultValue = ShellOption.NULL) String exename,
+            @ShellOption(value = { "--exe",
+                    "-e" }, valueProvider = RemoteBinaryCompleter.class, defaultValue = ShellOption.NULL) String exename,
             @ShellOption(value = { "--interval", "-i" }, defaultValue = "2") int interval) {
 
         if (memMonitorRunning) {
@@ -252,8 +254,8 @@ public class RemoteCommands extends CommonCommands {
         if (servicename == null && exename == null) {
             System.out.println(
                     ColorPrinter.red("Error: Either --ser (service name) or --exe (executable name) must be provided"));
-            System.out.println("Usage: ro.mem.stat --ser servicename [--interval 2]");
-            System.out.println("   or: ro.mem.stat --exe exename [--interval 2]");
+            System.out.println("Usage: mem.start --ser servicename [--interval 2]");
+            System.out.println("   or: mem.start --exe exename [--interval 2]");
             return;
         }
 
@@ -353,7 +355,7 @@ public class RemoteCommands extends CommonCommands {
                 int count = 0;
 
                 System.out.println(ColorPrinter.green("\n✓ Monitoring started in background"));
-                System.out.println(ColorPrinter.yellow("Use 'ro.mem.stat.stop' to stop monitoring and view results\n"));
+                System.out.println(ColorPrinter.yellow("Use 'mem.stop' to stop monitoring and view results\n"));
 
                 while (memMonitorRunning) {
                     try {
@@ -433,7 +435,7 @@ public class RemoteCommands extends CommonCommands {
         }
     }
 
-    @ShellMethod(key = "ro.mem.stat.stop", value = "Stop memory monitoring and display results")
+    @ShellMethod(key = "mem.stop", value = "Stop memory monitoring and display results")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat_stop() {
         if (!memMonitorRunning) {
@@ -482,6 +484,13 @@ public class RemoteCommands extends CommonCommands {
         double avgShared = dataPoints.stream().mapToLong(d -> d.sharedBytes).average().orElse(0);
         long maxShared = dataPoints.stream().mapToLong(d -> d.sharedBytes).max().orElse(0);
 
+        // Calculate memory changes (first to last data point)
+        MemStatData firstPoint = dataPoints.get(0);
+        MemStatData lastPoint = dataPoints.get(dataPoints.size() - 1);
+        long totalChange = lastPoint.totalBytes - firstPoint.totalBytes;
+        long residentChange = lastPoint.residentBytes - firstPoint.residentBytes;
+        long sharedChange = lastPoint.sharedBytes - firstPoint.sharedBytes;
+
         System.out.println(ColorPrinter.yellow("Service: ") + memMonitoringService);
         System.out.println(ColorPrinter.yellow("PID: ") + memMonitorPid);
         System.out.println(ColorPrinter.yellow("Data Points Collected: ") + dataPoints.size());
@@ -493,17 +502,23 @@ public class RemoteCommands extends CommonCommands {
         System.out.println("  Average: " + formatBytes((long) avgTotal));
         System.out.println("  Maximum: " + formatBytes(maxTotal));
         System.out.println("  Minimum: " + formatBytes(minTotal));
+        System.out.println("  Change:  " + formatBytesWithSign(totalChange) + " (" + String.format("%,d", totalChange)
+                + " bytes)");
         System.out.println();
 
         System.out.println(ColorPrinter.green("Resident Set Size (RSS):"));
         System.out.println("  Average: " + formatBytes((long) avgResident));
         System.out.println("  Maximum: " + formatBytes(maxResident));
         System.out.println("  Minimum: " + formatBytes(minResident));
+        System.out.println("  Change:  " + formatBytesWithSign(residentChange) + " ("
+                + String.format("%,d", residentChange) + " bytes)");
         System.out.println();
 
         System.out.println(ColorPrinter.green("Shared Memory:"));
         System.out.println("  Average: " + formatBytes((long) avgShared));
         System.out.println("  Maximum: " + formatBytes(maxShared));
+        System.out.println("  Change:  " + formatBytesWithSign(sharedChange) + " (" + String.format("%,d", sharedChange)
+                + " bytes)");
 
         // Display graphs for Total and Resident memory
         System.out.println("\n" + ColorPrinter.cyan("Memory Usage Over Time:"));
@@ -523,7 +538,7 @@ public class RemoteCommands extends CommonCommands {
         memMonitorThread = null;
     }
 
-    @ShellMethod(key = "ro.mem.stat.status", value = "Check memory monitoring status")
+    @ShellMethod(key = "mem.status", value = "Check memory monitoring status")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat_status() {
         if (!memMonitorRunning) {
@@ -1275,6 +1290,17 @@ public class RemoteCommands extends CommonCommands {
         return String.format("%.2f %sB", bytes / Math.pow(1024, exp), pre);
     }
 
+    private String formatBytesWithSign(long bytes) {
+        String sign = bytes >= 0 ? "+" : "";
+        long absBytes = Math.abs(bytes);
+        if (absBytes < 1024)
+            return sign + bytes + " B";
+        int exp = (int) (Math.log(absBytes) / Math.log(1024));
+        String pre = "KMGTPE".charAt(exp - 1) + "";
+        double value = bytes / Math.pow(1024, exp);
+        return String.format("%s%.2f %sB", sign, value, pre);
+    }
+
     // Helper classes for statistics
     private static class ProcessMemInfo {
         String id;
@@ -1372,6 +1398,26 @@ public class RemoteCommands extends CommonCommands {
 
         int step = Math.max(1, values.length / width);
 
+        // Detect significant jumps (threshold: 10% of range or more)
+        double jumpThreshold = range * 0.10;
+        List<Integer> jumpIndices = new ArrayList<>();
+        List<String> jumpLabels = new ArrayList<>();
+        List<Integer> jumpSeqNumbers = new ArrayList<>();
+
+        for (int i = 1; i < values.length; i++) {
+            double diff = values[i] - values[i - 1];
+            if (Math.abs(diff) >= jumpThreshold) {
+                int colPos = i / step;
+                if (colPos < width) {
+                    jumpIndices.add(colPos);
+                    jumpSeqNumbers.add(jumpIndices.size());
+                    // Convert to bytes for display (values are in MB)
+                    long diffBytes = (long) (diff * 1024 * 1024);
+                    jumpLabels.add(String.format("%s%,d bytes", diff >= 0 ? "+" : "", diffBytes));
+                }
+            }
+        }
+
         // Display graph
         System.out.println();
         System.out.printf("%-8s%n", label);
@@ -1400,7 +1446,35 @@ public class RemoteCommands extends CommonCommands {
             System.out.print("─");
         }
         System.out.println(">");
+
+        // Draw jump markers with sequence numbers
+        if (!jumpIndices.isEmpty()) {
+            System.out.print("        ");
+            int lastPos = 0;
+            for (int i = 0; i < jumpIndices.size(); i++) {
+                int pos = jumpIndices.get(i);
+                // Print spaces to position the marker
+                for (int j = lastPos; j < pos; j++) {
+                    System.out.print(" ");
+                }
+                System.out.print(ColorPrinter.yellow(String.valueOf(jumpSeqNumbers.get(i))));
+                lastPos = pos + 1;
+            }
+            System.out.println();
+        }
+
         System.out.printf("        %-" + width + "s%n", "Time →");
+
+        // Print jump details vertically
+        if (!jumpIndices.isEmpty()) {
+            System.out.println();
+            System.out.println(ColorPrinter.yellow("Memory Jumps Detected:"));
+            for (int i = 0; i < jumpIndices.size(); i++) {
+                System.out.println(ColorPrinter.yellow(String.format("  [%d] %s",
+                        jumpSeqNumbers.get(i), jumpLabels.get(i))));
+            }
+        }
+
         System.out.println();
     }
 

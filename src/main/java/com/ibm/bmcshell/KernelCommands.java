@@ -187,5 +187,3 @@ public class KernelCommands extends CommonCommands {
         System.out.println("  kernel.stop\n");
     }
 }
-
-// Made with Bob

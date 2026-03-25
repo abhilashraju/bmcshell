@@ -522,5 +522,3 @@ public class OpenSslCommands extends CommonCommands {
         scmd(command);
     }
 }
-
-// Made with Bob

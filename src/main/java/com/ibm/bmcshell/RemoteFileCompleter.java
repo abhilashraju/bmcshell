@@ -24,22 +24,22 @@ public class RemoteFileCompleter implements ValueProvider {
     @Override
     public List<CompletionProposal> complete(CompletionContext completionContext) {
         String userInput = completionContext.currentWordUpToCursor();
-        
+
         // Get connection details from CommonCommands
         String machine = CommonCommands.machine;
         String userName = CommonCommands.getUserName();
         String passwd = CommonCommands.getPasswd();
-        
+
         // If no connection is configured, return empty list
         if (machine == null || userName == null || passwd == null) {
             return List.of();
         }
-        
+
         try {
             String remotePath;
             String prefix = "";
             String filterPrefix = "";
-            
+
             // Determine the remote path to list and filter prefix
             if (userInput.isEmpty()) {
                 // Start from current directory on remote
@@ -70,61 +70,61 @@ public class RemoteFileCompleter implements ValueProvider {
                     filterPrefix = userInput;
                 }
             }
-            
+
             // Execute ls command on remote machine
             List<String> remoteFiles = listRemoteDirectory(machine, userName, passwd, remotePath);
-            
+
             final String finalFilterPrefix = filterPrefix;
             final String finalPrefix = prefix;
-            
+
             return remoteFiles.stream()
-                .filter(file -> {
-                    // Filter based on what user has typed after the last slash
-                    if (finalFilterPrefix.isEmpty()) {
-                        return true;
-                    }
-                    return file.startsWith(finalFilterPrefix);
-                })
-                .map(file -> {
-                    String completionValue = finalPrefix + file;
-                    boolean isDirectory = file.endsWith("/");
-                    
-                    // Create completion proposal with proper settings
-                    // For directories: dontQuote(true) prevents space after completion
-                    // For files: complete(true) adds space after completion
-                    return new CompletionProposal(completionValue)
-                        .dontQuote(isDirectory)
-                        .complete(!isDirectory);
-                })
-                .collect(Collectors.toList());
-                
+                    .filter(file -> {
+                        // Filter based on what user has typed after the last slash
+                        if (finalFilterPrefix.isEmpty()) {
+                            return true;
+                        }
+                        return file.startsWith(finalFilterPrefix);
+                    })
+                    .map(file -> {
+                        String completionValue = finalPrefix + file;
+                        boolean isDirectory = file.endsWith("/");
+
+                        // Create completion proposal with proper settings
+                        // For directories: dontQuote(true) prevents space after completion
+                        // For files: complete(true) adds space after completion
+                        return new CompletionProposal(completionValue)
+                                .dontQuote(isDirectory)
+                                .complete(!isDirectory);
+                    })
+                    .collect(Collectors.toList());
+
         } catch (Exception e) {
             // Return empty list on error
             return List.of();
         }
     }
-    
+
     /**
      * Lists files and directories in a remote directory
      * 
-     * @param machine Remote machine name
-     * @param userName SSH username
-     * @param passwd SSH password
+     * @param machine    Remote machine name
+     * @param userName   SSH username
+     * @param passwd     SSH password
      * @param remotePath Path to list on remote machine
      * @return List of file/directory names (directories have trailing /)
      */
     private List<String> listRemoteDirectory(String machine, String userName, String passwd, String remotePath) {
         List<String> files = new ArrayList<>();
-        
+
         try {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            
+
             // Use ls with -1 (one file per line) and -p (append / to directories)
             // Also use -A to show hidden files but not . and ..
             String command = String.format("ls -1Ap %s 2>/dev/null", escapePath(remotePath));
-            
+
             runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, command);
-            
+
             String output = outputStream.toString().trim();
             if (!output.isEmpty()) {
                 String[] lines = output.split("\\R");
@@ -138,10 +138,10 @@ public class RemoteFileCompleter implements ValueProvider {
         } catch (Exception e) {
             // Silently fail and return empty list
         }
-        
+
         return files;
     }
-    
+
     /**
      * Escapes special characters in path for shell command
      * 
@@ -153,5 +153,3 @@ public class RemoteFileCompleter implements ValueProvider {
         return "'" + path.replace("'", "'\\''") + "'";
     }
 }
-
-// Made with Bob

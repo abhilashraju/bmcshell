@@ -226,5 +226,3 @@ while true; do
     
     sleep "$INTERVAL"
 done
-
-# Made with Bob

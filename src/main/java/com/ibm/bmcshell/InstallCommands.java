@@ -124,34 +124,69 @@ public class InstallCommands extends CommonCommands {
         scmd(String.format("fw_setenv bootside %s", bootside));
     }
 
-    @ShellMethod(key = "update-firmware", value = "Update firmware automatically. eg: install.update-firmware")
+    @ShellMethod(key = "update-firmware", value = "Update firmware automatically. eg: install.update-firmware [bootside]. Optional bootside parameter: 'a' or 'b' to specify target boot side for flashing")
     @ShellMethodAvailability("availabilityCheck")
-    void updateFirmware() throws IOException {
+    void updateFirmware(@ShellOption(defaultValue = ShellOption.NULL) String bootside) throws IOException {
 
         String imagePath = "/tmp/images";
+        String label;
 
-        // Check current boot side
-        System.out.println("Checking current boot side...");
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try {
-            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, "fw_printenv bootside");
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to check boot side", e);
+        // If bootside is provided as argument, use it directly
+        if (bootside != null && !bootside.isEmpty()) {
+            bootside = bootside.trim().toLowerCase();
+
+            // Validate the provided bootside
+            if (!bootside.equals("a") && !bootside.equals("b")) {
+                System.err.println("❌ Error: Invalid boot side '" + bootside + "'. Must be 'a' or 'b'.");
+                System.err.println("Usage: update-firmware [a|b]");
+                return;
+            }
+
+            label = bootside;
+            System.out.println("Using provided boot side for flashing: " + label);
+        } else {
+            // Auto-detect current boot side
+            System.out.println("Checking current boot side...");
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            String currentBootSide = null;
+
+            try {
+                runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
+                        "fw_printenv bootside 2>&1");
+                String bootSideOutput = outputStream.toString().trim();
+                System.out.println("Boot side output: " + bootSideOutput);
+
+                // Check if there was an error (lock file error or other issues)
+                if (bootSideOutput.contains("Error") || bootSideOutput.contains("error") ||
+                        !bootSideOutput.contains("=")) {
+                    System.err.println("\nStandard Error:");
+                    System.err.println(bootSideOutput);
+                    currentBootSide = null;
+                } else {
+                    // Parse boot side (expected format: "bootside=a" or "bootside=b")
+                    if (bootSideOutput.contains("=")) {
+                        currentBootSide = bootSideOutput.split("=")[1].trim().toLowerCase();
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to check boot side: " + e.getMessage());
+                currentBootSide = null;
+            }
+
+            // If auto-detection failed, return with error
+            if (currentBootSide == null) {
+                System.err.println("\n❌ Error: Unable to automatically determine current boot side.");
+                System.err.println("Please run the command with an explicit boot side parameter:");
+                System.err.println("  update-firmware a  (to flash boot side 'a')");
+                System.err.println("  update-firmware b  (to flash boot side 'b')");
+                return;
+            }
+
+            // Determine target boot side (opposite of current)
+            label = currentBootSide.equals("a") ? "b" : "a";
+            System.out.println("Current boot side: " + currentBootSide);
+            System.out.println("Target boot side for update: " + label);
         }
-
-        String bootSideOutput = outputStream.toString().trim();
-        System.out.println("Boot side output: " + bootSideOutput);
-
-        // Parse boot side (expected format: "bootside=a" or "bootside=b")
-        String currentBootSide = "a"; // default
-        if (bootSideOutput.contains("=")) {
-            currentBootSide = bootSideOutput.split("=")[1].trim().toLowerCase();
-        }
-
-        // Determine target boot side (opposite of current)
-        String label = currentBootSide.equals("a") ? "b" : "a";
-        System.out.println("Current boot side: " + currentBootSide);
-        System.out.println("Target boot side for update: " + label);
 
         // List available versions in /tmp/images and get the first one
         System.out.println("Listing available versions in " + imagePath + "...");

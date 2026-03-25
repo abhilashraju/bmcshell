@@ -63,5 +63,3 @@ if [ "${0##*/}" = "get_process_name.sh" ]; then
     fi
     get_process_name_from_service "$1" "$2"
 fi
-
-# Made with Bob

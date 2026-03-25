@@ -358,5 +358,3 @@ public class DynamicScriptCommands extends CommonCommands {
                 .collect(Collectors.toList());
     }
 }
-
-// Made with Bob

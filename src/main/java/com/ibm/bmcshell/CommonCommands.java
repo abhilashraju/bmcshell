@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.jline.utils.AttributedStyle;
@@ -64,6 +65,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.Os.Cmd;
+import com.ibm.bmcshell.Utils.ConnectivityMonitor;
 import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.Utils.ZipUtils;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
@@ -94,6 +96,10 @@ public class CommonCommands implements ApplicationContextAware {
     public static String machine = "rain135bmc";
     @Autowired
     private ApplicationContext applicationContext;
+
+    @Autowired
+    private ConnectivityMonitor connectivityMonitor;
+
     static String userName = "service";
     static String passwd = "empty";
 
@@ -332,8 +338,9 @@ public class CommonCommands implements ApplicationContextAware {
                         .block();
                 return response.getBody();
             } catch (Exception ex) {
-                ex.printStackTrace();
-                throw ex;
+                System.out.println("Error: " + ex.getMessage());
+                return null;
+
             }
 
         });
@@ -569,6 +576,14 @@ public class CommonCommands implements ApplicationContextAware {
     }
 
     private boolean checkMachineSelection(int index) throws IOException, URISyntaxException {
+        // Check if this is a machine selection based on action type
+        if (endPoints.peek().size() > index && endPoints.peek().get(index).action.equals("Machine")) {
+            machine(endPoints.peek().get(index).url);
+            endPoints.clear();
+            apis();
+            return true;
+        }
+        // Fallback to old heuristic for backward compatibility
         if (endPoints.peek().size() > 1 && endPoints.peek().get(1).url.startsWith("rain")) {
             machine(endPoints.peek().get(index).url);
             endPoints.clear();
@@ -594,7 +609,7 @@ public class CommonCommands implements ApplicationContextAware {
         }
     }
 
-    @ShellMethod(key = "machine")
+    @ShellMethod(key = { "machine", "m" })
     protected String machine(@ShellOption(valueProvider = MachineProvider.class) String m) throws IOException {
 
         token = null;
@@ -603,6 +618,10 @@ public class CommonCommands implements ApplicationContextAware {
         serialise();
         SSHShellClient.clearAllSessions();
         Util.addToMachineList(machine);
+
+        // Start connectivity monitoring
+        connectivityMonitor.startMonitoring(machine, userName, Util.targetport, getPromptProvider());
+
         return machine;
     }
 
@@ -943,9 +962,22 @@ public class CommonCommands implements ApplicationContextAware {
         System.out.println("Token: " + token);
     }
 
-    @ShellMethod(key = "machines", value = "List all machine names that are available or previously logged in ")
-    void machines() throws IOException {
-        endPoints.push(Util.listOfMachines());
+    @ShellMethod(key = { "machines",
+            "ms" }, value = "List all machine names that are available or previously logged in ")
+    void machines(@ShellOption(defaultValue = "*") String filter) throws IOException {
+        List<Util.EndPoints> allMachines = Util.listOfMachines();
+
+        // Convert wildcard pattern to regex if needed
+        String regexPattern = filter.equals("*") ? ".*" : filter;
+        Pattern pattern = Pattern.compile(regexPattern);
+
+        // Filter machines based on regex pattern
+        List<Util.EndPoints> filteredMachines = allMachines.stream()
+                .filter(ep -> pattern.matcher(ep.url).find())
+                .map(ep -> new Util.EndPoints(ep.url, "Machine")) // Mark as Machine action for proper handling
+                .collect(Collectors.toList());
+
+        endPoints.push(filteredMachines);
         displayCurrent();
 
     }

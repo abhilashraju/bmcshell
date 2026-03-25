@@ -45,5 +45,3 @@ public class ShellHomeScriptProvider implements ValueProvider {
         }
     }
 }
-
-// Made with Bob

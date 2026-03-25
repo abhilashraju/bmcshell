@@ -806,5 +806,3 @@ public class ServiceCommands extends CommonCommands {
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════") + "\n");
     }
 }
-
-// Made with Bob

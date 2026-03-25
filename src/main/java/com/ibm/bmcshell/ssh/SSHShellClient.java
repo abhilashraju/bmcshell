@@ -40,14 +40,42 @@ public class SSHShellClient {
     }
 
     /**
+     * Validate if a cached session is still alive by sending a keep-alive message.
+     * This helps detect if the remote machine has rebooted or the connection is
+     * stale.
+     *
+     * @param session  The session to validate
+     * @param cacheKey The cache key for the session
+     * @return The session if valid, null if stale or invalid
+     */
+    private static Session getValidSession(Session session, String cacheKey) {
+        if (session == null || !session.isConnected()) {
+            return null;
+        }
+
+        try {
+            // Send keep-alive to verify the connection is actually alive
+            // This will throw an exception if the remote machine has rebooted
+            session.sendKeepAliveMsg();
+            return session;
+        } catch (Exception e) {
+            // Connection is dead (e.g., remote machine rebooted), remove from cache
+            System.out.println("Cached session is stale, will reconnect: " + cacheKey);
+            sessionCache.remove(cacheKey);
+            return null;
+        }
+    }
+
+    /**
      * Get or create a cached SSH session
      */
     public static Session getSession(String host, String user, String password, int port) {
         String cacheKey = getCacheKey(host, user, port);
         Session session = sessionCache.get(cacheKey);
 
-        // Check if session exists and is still connected
-        if (session != null && session.isConnected()) {
+        // Validate cached session is still alive
+        session = getValidSession(session, cacheKey);
+        if (session != null) {
             return session;
         }
 
@@ -61,7 +89,7 @@ public class SSHShellClient {
             // Cache the new session
             sessionCache.put(cacheKey, session);
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("Error creating session: " + e.getMessage());
             return null;
         }
 
@@ -168,7 +196,19 @@ public class SSHShellClient {
             channel.setInputStream(null);
             channel.disconnect();
         } catch (Exception e) {
-
+            System.out.println(ColorPrinter.red("Error executing command: " + e.getMessage()));
+            // Clear the cached session if it's a connection issue
+            String cacheKey = getCacheKey(host, user, port);
+            Session cachedSession = sessionCache.get(cacheKey);
+            if (cachedSession != null) {
+                try {
+                    cachedSession.disconnect();
+                } catch (Exception ex) {
+                    // Ignore disconnect errors
+                }
+                sessionCache.remove(cacheKey);
+                System.out.println("Session cache cleared due to connection error. Please retry the command.");
+            }
         }
     }
 
@@ -179,6 +219,10 @@ public class SSHShellClient {
             // jsch.setConfig("kex", "hmac-sha2-256");
 
             Session session = getSession(host, user, password, port);
+            if (session == null) {
+                System.out.println("session is null");
+                return;
+            }
 
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
 
@@ -200,7 +244,19 @@ public class SSHShellClient {
             channel.setInputStream(null);
             channel.disconnect();
         } catch (Exception e) {
-
+            System.out.println(ColorPrinter.red("Error executing command: " + e.getMessage()));
+            // Clear the cached session if it's a connection issue
+            String cacheKey = getCacheKey(host, user, port);
+            Session cachedSession = sessionCache.get(cacheKey);
+            if (cachedSession != null) {
+                try {
+                    cachedSession.disconnect();
+                } catch (Exception ex) {
+                    // Ignore disconnect errors
+                }
+                sessionCache.remove(cacheKey);
+                System.out.println("Session cache cleared due to connection error. Please retry the command.");
+            }
         }
     }
 

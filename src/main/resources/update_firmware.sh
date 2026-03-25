@@ -13,4 +13,3 @@ number="$(readlink -f /dev/disk/by-partlabel/rofs-"${label}" | grep -o '[0-9]\+$
 sgdisk --change-name="${number}":rofs-"${label}" "/dev/${diskdev}" 1>/dev/null
 partprobe
 
-# Made with Bob

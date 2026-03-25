@@ -383,5 +383,3 @@ public class OpenSslCommandsEnhanced extends CommonCommands {
         }
     }
 }
-
-// Made with Bob
