@@ -752,5 +752,3 @@ public class DeviceTreeCommands extends CommonCommands {
         return nodePaths;
     }
 }
-
-// Made with Bob

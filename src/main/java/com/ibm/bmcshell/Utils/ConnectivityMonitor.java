@@ -150,12 +150,12 @@ public class ConnectivityMonitor {
                                 AttributedStyle.GREEN,
                                 AttributedStyle.BLACK));
             } else {
-                // Disconnected state - red
+                // Disconnected state - gray
                 System.out.println(ColorPrinter.red("\n[" + timestamp + "] ✗ Disconnected from " + currentMachine));
                 promptProvider.setShellData(
                         new CustomPromptProvider.ShellData(
                                 currentUserName + "@" + currentMachine + " [DISCONNECTED]",
-                                AttributedStyle.RED,
+                                AttributedStyle.WHITE,
                                 AttributedStyle.BLACK));
             }
         } catch (Exception e) {

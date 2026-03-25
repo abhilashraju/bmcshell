@@ -2,17 +2,154 @@ package com.ibm.bmcshell;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
 
+import org.springframework.shell.CompletionContext;
+import org.springframework.shell.CompletionProposal;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import org.springframework.shell.standard.ShellOption;
+import org.springframework.shell.standard.ValueProvider;
+import org.springframework.stereotype.Component;
 
 import com.ibm.bmcshell.Utils.Util;
 import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 
 @ShellComponent
 public class TPM2Commands extends CommonCommands {
+
+    @Component
+    public static class CapabilityProvider implements ValueProvider {
+        private static final List<String> CAPABILITIES = List.of(
+                "properties-fixed",
+                "properties-variable",
+                "algorithms",
+                "commands",
+                "pcrs",
+                "handles-transient",
+                "handles-persistent",
+                "handles-permanent",
+                "handles-pcr",
+                "handles-nv-index",
+                "handles-loaded-session",
+                "handles-saved-session");
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            String input = context.currentWordUpToCursor().toLowerCase();
+            return CAPABILITIES.stream()
+                    .filter(cap -> cap.startsWith(input))
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class HierarchyProvider implements ValueProvider {
+        private static final List<String> HIERARCHIES = List.of(
+                "o", // Owner hierarchy
+                "p", // Platform hierarchy
+                "e", // Endorsement hierarchy
+                "n" // Null hierarchy
+        );
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            String input = context.currentWordUpToCursor().toLowerCase();
+            return HIERARCHIES.stream()
+                    .filter(h -> h.startsWith(input))
+                    .map(h -> new CompletionProposal(h))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class HashAlgorithmProvider implements ValueProvider {
+        private static final List<String> ALGORITHMS = List.of(
+                "sha1",
+                "sha256",
+                "sha384",
+                "sha512",
+                "sm3_256");
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            String input = context.currentWordUpToCursor().toLowerCase();
+            return ALGORITHMS.stream()
+                    .filter(alg -> alg.startsWith(input))
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class SignatureSchemeProvider implements ValueProvider {
+        private static final List<String> SCHEMES = List.of(
+                "rsassa",
+                "rsapss",
+                "ecdsa",
+                "ecdaa",
+                "ecschnorr",
+                "hmac");
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            String input = context.currentWordUpToCursor().toLowerCase();
+            return SCHEMES.stream()
+                    .filter(scheme -> scheme.startsWith(input))
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class FormatProvider implements ValueProvider {
+        private static final List<String> FORMATS = List.of(
+                "pem",
+                "der",
+                "tss");
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            String input = context.currentWordUpToCursor().toLowerCase();
+            return FORMATS.stream()
+                    .filter(fmt -> fmt.startsWith(input))
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class NvAttributesProvider implements ValueProvider {
+        private static final List<String> ATTRIBUTES = List.of(
+                "ownerread",
+                "ownerwrite",
+                "authread",
+                "authwrite",
+                "policyread",
+                "policywrite",
+                "ppread",
+                "ppwrite",
+                "writedefine",
+                "writelocked",
+                "readlocked",
+                "orderly",
+                "clear_stclear",
+                "readstclear",
+                "writeall",
+                "no_da");
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            String input = context.currentWordUpToCursor().toLowerCase();
+            return ATTRIBUTES.stream()
+                    .filter(attr -> attr.startsWith(input))
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
 
     protected TPM2Commands() throws IOException {
     }
@@ -31,7 +168,8 @@ public class TPM2Commands extends CommonCommands {
     @ShellMethod(key = "tpm2.getcap", value = "Get TPM capabilities - eg: tpm2.getcap properties-fixed")
     @ShellMethodAvailability("availabilityCheck")
     void tpm2GetCap(
-            @ShellOption(value = { "--capability", "-c" }, defaultValue = "properties-fixed") String capability) {
+            @ShellOption(value = { "--capability",
+                    "-c" }, defaultValue = "properties-fixed", valueProvider = CapabilityProvider.class) String capability) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 Get Capability: ") + ColorPrinter.yellow(capability));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
@@ -117,7 +255,8 @@ public class TPM2Commands extends CommonCommands {
     @ShellMethod(key = "tpm2.createprimary", value = "Create primary key - eg: tpm2.createprimary --hierarchy o")
     @ShellMethodAvailability("availabilityCheck")
     void tpm2CreatePrimary(
-            @ShellOption(value = { "--hierarchy", "-H" }, defaultValue = "o") String hierarchy,
+            @ShellOption(value = { "--hierarchy",
+                    "-H" }, defaultValue = "o", valueProvider = HierarchyProvider.class) String hierarchy,
             @ShellOption(value = { "--context", "-c" }, defaultValue = "primary.ctx") String context) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 Create Primary Key"));
@@ -184,7 +323,8 @@ public class TPM2Commands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     void tpm2Hash(
             @ShellOption(value = { "--data", "-d" }) String data,
-            @ShellOption(value = { "--algorithm", "-g" }, defaultValue = "sha256") String algorithm) {
+            @ShellOption(value = { "--algorithm",
+                    "-g" }, defaultValue = "sha256", valueProvider = HashAlgorithmProvider.class) String algorithm) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 Hash"));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
@@ -511,7 +651,8 @@ public class TPM2Commands extends CommonCommands {
     void tpm2ReadPublicExport(
             @ShellOption(value = { "--handle" }, defaultValue = "0x81010001") String handle,
             @ShellOption(value = { "--output", "-o" }, defaultValue = "public.pem") String output,
-            @ShellOption(value = { "--format", "-f" }, defaultValue = "pem") String format) {
+            @ShellOption(value = { "--format",
+                    "-f" }, defaultValue = "pem", valueProvider = FormatProvider.class) String format) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 Read Public - Export to PEM"));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
@@ -529,8 +670,10 @@ public class TPM2Commands extends CommonCommands {
             @ShellOption(value = { "--handle", "-c" }, defaultValue = "0x81010001") String handle,
             @ShellOption(value = { "--hash", "-m" }) String hashFile,
             @ShellOption(value = { "--signature", "-o" }, defaultValue = "test.sig") String signature,
-            @ShellOption(value = { "--algorithm", "-g" }, defaultValue = "sha256") String algorithm,
-            @ShellOption(value = { "--scheme", "-s" }, defaultValue = "rsassa") String scheme) {
+            @ShellOption(value = { "--algorithm",
+                    "-g" }, defaultValue = "sha256", valueProvider = HashAlgorithmProvider.class) String algorithm,
+            @ShellOption(value = { "--scheme",
+                    "-s" }, defaultValue = "rsassa", valueProvider = SignatureSchemeProvider.class) String scheme) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 Sign (Advanced)"));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
@@ -549,7 +692,8 @@ public class TPM2Commands extends CommonCommands {
             @ShellOption(value = { "--handle", "-c" }, defaultValue = "0x81010001") String handle,
             @ShellOption(value = { "--hash", "-m" }) String hashFile,
             @ShellOption(value = { "--signature", "-s" }, defaultValue = "test.sig") String signature,
-            @ShellOption(value = { "--algorithm", "-g" }, defaultValue = "sha256") String algorithm) {
+            @ShellOption(value = { "--algorithm",
+                    "-g" }, defaultValue = "sha256", valueProvider = HashAlgorithmProvider.class) String algorithm) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 Verify Signature (Advanced)"));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
@@ -568,7 +712,8 @@ public class TPM2Commands extends CommonCommands {
     void tpm2NvDefineAdvanced(
             @ShellOption(value = { "--index", "-i" }) String index,
             @ShellOption(value = { "--size", "-s" }, defaultValue = "2048") int size,
-            @ShellOption(value = { "--attributes", "-a" }, defaultValue = "ownerread|ownerwrite") String attributes) {
+            @ShellOption(value = { "--attributes",
+                    "-a" }, defaultValue = "ownerread|ownerwrite", valueProvider = NvAttributesProvider.class) String attributes) {
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         System.out.println(ColorPrinter.cyan("  TPM2 NV Define (Advanced)"));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
