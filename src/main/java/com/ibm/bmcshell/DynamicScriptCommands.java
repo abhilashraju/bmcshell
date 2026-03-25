@@ -302,7 +302,7 @@ public class DynamicScriptCommands extends CommonCommands {
             throws IOException {
         List<String> matchingScripts = findMatchingScripts(pattern);
 
-        if (matchingscr.isEmpty()) {
+        if (matchingScripts.isEmpty()) {
             return ColorPrinter.red("No scripts found matching pattern: " + pattern);
         }
 
