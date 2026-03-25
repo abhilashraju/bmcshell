@@ -31,7 +31,7 @@ import java.util.stream.Stream;
  * 
  * Usage:
  * 1. Place script files in shellhome/ directory
- * 2. Run 'scripts.reload' to load them
+ * 2. Run 'scr.reload' to load them
  * 3. Type the script name to execute it
  * 
  * Example:
@@ -94,7 +94,7 @@ public class DynamicScriptCommands extends CommonCommands {
     /**
      * Reload scripts from shellhome directory
      */
-    @ShellMethod(key = "scripts.reload", value = "Reload script files from shellhome directory")
+    @ShellMethod(key = "scr.reload", value = "Reload script files from shellhome directory")
     public String reloadScripts() {
         scriptCache.clear();
         loadScripts();
@@ -104,11 +104,11 @@ public class DynamicScriptCommands extends CommonCommands {
     /**
      * List all available script commands
      */
-    @ShellMethod(key = "scripts.list", value = "List all available script commands from shellhome")
+    @ShellMethod(key = "scr.list", value = "List all available script commands from shellhome")
     public void listScripts() {
         if (scriptCache.isEmpty()) {
             System.out.println(ColorPrinter.yellow("No scripts found in shellhome/"));
-            System.out.println("Place your script files in the shellhome/ directory and run 'scripts.reload'");
+            System.out.println("Place your script files in the shellhome/ directory and run 'scr.reload'");
             return;
         }
 
@@ -119,8 +119,8 @@ public class DynamicScriptCommands extends CommonCommands {
             System.out.println(ColorPrinter.green("  " + name) + ColorPrinter.gray(" - run with: " + name));
         });
 
-        System.out.println(ColorPrinter.gray("\nTo see script content: scripts.show <scriptname>"));
-        System.out.println(ColorPrinter.gray("To reload scripts: scripts.reload\n"));
+        System.out.println(ColorPrinter.gray("\nTo see script content: scr.show <scriptname>"));
+        System.out.println(ColorPrinter.gray("To reload scripts: scr.reload\n"));
     }
 
     /**
@@ -186,7 +186,7 @@ public class DynamicScriptCommands extends CommonCommands {
                 System.out.println(ColorPrinter.red("Script not found: " + scriptName));
                 System.out
                         .println(ColorPrinter.yellow("Available scripts: " + String.join(", ", scriptCache.keySet())));
-                System.out.println(ColorPrinter.gray("Run 'scripts.list' to see all available scripts"));
+                System.out.println(ColorPrinter.gray("Run 'scr.list' to see all available scripts"));
                 return;
             }
         }
@@ -199,7 +199,7 @@ public class DynamicScriptCommands extends CommonCommands {
     /**
      * Create a new script in shellhome using vi editor
      */
-    @ShellMethod(key = "scripts.create", value = "Create a new script in shellhome using vi editor. Usage: scripts.create -s <name>")
+    @ShellMethod(key = "scr.create", value = "Create a new script in shellhome using vi editor. Usage: scr.create -s <name>")
     public String createScript(@ShellOption(value = { "-s", "--script" }) String scriptName)
             throws IOException, InterruptedException {
         Path scriptPath = Paths.get(getScriptHome() + scriptName);
@@ -229,7 +229,7 @@ public class DynamicScriptCommands extends CommonCommands {
     /**
      * Show script content - supports wildcards and regex
      */
-    @ShellMethod(key = "scripts.show", value = "Show the content of script(s). Supports wildcards (* ?) and regex. Usage: scripts.show [-s <pattern>]")
+    @ShellMethod(key = "scr.show", value = "Show the content of script(s). Supports wildcards (* ?) and regex. Usage: scr.show [-s <pattern>]")
     public void showScript(
             @ShellOption(value = { "-s", "--script" }, defaultValue = "*") String pattern)
             throws IOException {
@@ -271,7 +271,7 @@ public class DynamicScriptCommands extends CommonCommands {
     /**
      * Edit a script using vi editor
      */
-    @ShellMethod(key = "scripts.edit", value = "Edit a script using vi editor. Usage: scripts.edit -s <scriptname>")
+    @ShellMethod(key = "scr.edit", value = "Edit a script using vi editor. Usage: scr.edit -s <scriptname>")
     public String editScript(
             @ShellOption(value = { "-s", "--script" }, valueProvider = ShellHomeScriptProvider.class) String scriptName)
             throws IOException, InterruptedException {
@@ -296,13 +296,13 @@ public class DynamicScriptCommands extends CommonCommands {
     /**
      * Delete script(s) - supports wildcards and regex
      */
-    @ShellMethod(key = "scripts.delete", value = "Delete script(s). Supports wildcards (* ?) and regex. Usage: scripts.delete [-s <pattern>]")
+    @ShellMethod(key = "scr.delete", value = "Delete script(s). Supports wildcards (* ?) and regex. Usage: scr.delete [-s <pattern>]")
     public String deleteScript(
             @ShellOption(value = { "-s", "--script" }, defaultValue = "*") String pattern)
             throws IOException {
         List<String> matchingScripts = findMatchingScripts(pattern);
 
-        if (matchingScripts.isEmpty()) {
+        if (matchingscr.isEmpty()) {
             return ColorPrinter.red("No scripts found matching pattern: " + pattern);
         }
 

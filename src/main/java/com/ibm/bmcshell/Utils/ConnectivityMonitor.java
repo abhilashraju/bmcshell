@@ -53,7 +53,7 @@ public class ConnectivityMonitor {
                         updatePromptBasedOnConnectivity();
                     }
 
-                    Thread.sleep(1000); // Check every 1 second
+                    Thread.sleep(60000); // Check every 1 second
                 } catch (InterruptedException e) {
                     System.err.println("[ConnectivityMonitor] Thread interrupted for " + currentMachine);
                     break;
