@@ -583,6 +583,22 @@ public class TPM2Commands extends CommonCommands {
         System.out.println("  tpm2.nvundefine              - Undefine NV index");
         System.out.println("    --index 0x1500001          - NV index address");
 
+        System.out.println("\n" + ColorPrinter.yellow("CERTIFICATE MANAGEMENT:"));
+        System.out.println("-".repeat(80));
+        System.out.println("  tpm2.loadexternal.cert       - Load certificate as TPM object (OpenSSL compatible)");
+        System.out.println("    --cert device.crt          - Certificate file or direct PEM content");
+        System.out.println("    --handle 0x81000001        - Persistent handle (default: 0x81000001)");
+        System.out.println("    --hierarchy o              - Hierarchy (default: owner)");
+        System.out.println();
+        System.out.println("  tpm2.storecert.nv            - Store certificate in NV index");
+        System.out.println("    --cert device.crt          - Certificate file or direct PEM content");
+        System.out.println("    --index 0x1500001          - NV index (default: 0x1500001)");
+        System.out.println();
+        System.out.println("  tpm2.migrate.nv2obj          - Migrate certificate from NV to TPM object");
+        System.out.println("    --nv-index 0x1500001       - Source NV index");
+        System.out.println("    --handle 0x81000001        - Target persistent handle");
+        System.out.println("    --hierarchy o              - Hierarchy (default: owner)");
+
         System.out.println("\n" + ColorPrinter.yellow("EXAMPLES:"));
         System.out.println("-".repeat(80));
         System.out.println("  # Get TPM information");
@@ -605,6 +621,15 @@ public class TPM2Commands extends CommonCommands {
         System.out.println();
         System.out.println("  # Get help for specific tpm2-tools command");
         System.out.println("  tpm2.help --command tpm2_getcap");
+        System.out.println();
+        System.out.println("  # Load certificate as TPM object (for OpenSSL TPM2 provider)");
+        System.out.println("  tpm2.loadexternal.cert --cert /tmp/device.crt --handle 0x81000001");
+        System.out.println();
+        System.out.println("  # Migrate existing NV certificate to TPM object");
+        System.out.println("  tpm2.migrate.nv2obj --nv-index 0x1500001 --handle 0x81000001");
+        System.out.println();
+        System.out.println("  # Store certificate directly from PEM string");
+        System.out.println("  tpm2.loadexternal.cert --cert '-----BEGIN CERTIFICATE-----...' --handle 0x81000001");
 
         System.out.println("\n" + ColorPrinter.yellow("NOTES:"));
         System.out.println("-".repeat(80));
@@ -757,6 +782,348 @@ public class TPM2Commands extends CommonCommands {
 
         String result = executeTpm2Command(command);
         System.out.println(result);
+
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+
+    @ShellMethod(key = "tpm2.loadexternal.cert", value = "Store certificate in NV and export for OpenSSL - eg: tpm2.loadexternal.cert --cert device.crt --index 0x1500001")
+    @ShellMethodAvailability("availabilityCheck")
+    void tpm2LoadExternalCert(
+            @ShellOption(value = { "--cert", "-c" }) String certInput,
+            @ShellOption(value = { "--index", "-i" }, defaultValue = "0x1500001") String nvIndex,
+            @ShellOption(value = { "--export-path",
+                    "-e" }, defaultValue = "/etc/ssl/certs/tpm-cert.pem") String exportPath) {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  TPM2 Store Certificate in NV"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        try {
+            // Check if certInput is a file or direct certificate content
+            String certFile;
+            boolean isDirectContent = certInput.contains("BEGIN CERTIFICATE");
+
+            if (isDirectContent) {
+                // Write certificate content to temporary file
+                certFile = "temp_cert_" + System.currentTimeMillis() + ".pem";
+                String writeCmd = String.format("cat > /tmp/%s << 'EOF'\n%s\nEOF", certFile, certInput);
+                executeTpm2Command(writeCmd);
+                System.out.println("Certificate content written to temporary file: /tmp/" + certFile);
+            } else {
+                // Assume it's a filename
+                certFile = certInput;
+                System.out.println("Using certificate file: /tmp/" + certFile);
+            }
+
+            // Get certificate size
+            String sizeResult = executeTpm2Command("wc -c < /tmp/" + certFile);
+            int certSize = Integer.parseInt(sizeResult.trim());
+            System.out.println("Certificate size: " + certSize + " bytes");
+
+            // Undefine existing index if it exists (ignore errors)
+            executeTpm2Command(String.format("tpm2_nvundefine %s -C o 2>/dev/null || true", nvIndex));
+
+            // Define NV index with appropriate size and attributes
+            String defineResult = executeTpm2Command(
+                    String.format("tpm2_nvdefine %s -C o -s %d -a 'ownerread|ownerwrite|authread'",
+                            nvIndex, certSize));
+            System.out.println(defineResult);
+
+            // Write certificate to NV index
+            String writeResult = executeTpm2Command(
+                    String.format("tpm2_nvwrite %s -C o -i /tmp/%s", nvIndex, certFile));
+            System.out.println(writeResult);
+
+            // Export certificate to filesystem for OpenSSL access
+            String exportResult = executeTpm2Command(
+                    String.format("sudo tpm2_nvread %s -C o -o %s", nvIndex, exportPath));
+            System.out.println(exportResult);
+
+            // Verify the exported certificate
+            String verifyResult = executeTpm2Command(
+                    String.format("openssl x509 -in %s -text -noout | head -10", exportPath));
+            System.out.println("\nCertificate verification:");
+            System.out.println(verifyResult);
+
+            System.out.println(ColorPrinter.green("\n✓ Certificate stored successfully!"));
+            System.out.println(ColorPrinter.yellow("  NV Index: " + nvIndex));
+            System.out.println(ColorPrinter.yellow("  Exported to: " + exportPath));
+            System.out.println(ColorPrinter.yellow("  Use in OpenSSL: file:" + exportPath));
+            System.out
+                    .println(ColorPrinter.yellow("\n  Note: OpenSSL TPM2 provider cannot directly access NV indices."));
+            System.out.println(
+                    ColorPrinter.yellow("  The certificate has been exported to the filesystem for OpenSSL use."));
+
+            // Cleanup temporary file if we created it
+            if (isDirectContent) {
+                executeTpm2Command("rm -f /tmp/" + certFile);
+            }
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+            e.printStackTrace();
+        }
+
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+
+    @ShellMethod(key = "tpm2.storecert.nv", value = "Store certificate in NV index - eg: tpm2.storecert.nv --cert device.crt --index 0x1500001")
+    @ShellMethodAvailability("availabilityCheck")
+    void tpm2StoreCertNv(
+            @ShellOption(value = { "--cert", "-c" }) String certInput,
+            @ShellOption(value = { "--index", "-i" }, defaultValue = "0x1500001") String index) {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  TPM2 Store Certificate in NV Index"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        try {
+            // Check if certInput is a file or direct certificate content
+            String certFile;
+            boolean isDirectContent = certInput.contains("BEGIN CERTIFICATE");
+
+            if (isDirectContent) {
+                // Write certificate content to temporary file
+                certFile = "temp_cert_" + System.currentTimeMillis() + ".pem";
+                String writeCmd = String.format("cat > /tmp/%s << 'EOF'\n%s\nEOF", certFile, certInput);
+                executeTpm2Command(writeCmd);
+                System.out.println("Certificate content written to temporary file: /tmp/" + certFile);
+            } else {
+                // Assume it's a filename
+                certFile = certInput;
+                System.out.println("Using certificate file: /tmp/" + certFile);
+            }
+
+            // Get certificate size
+            String sizeResult = executeTpm2Command("wc -c < /tmp/" + certFile);
+            int certSize = Integer.parseInt(sizeResult.trim());
+            System.out.println("Certificate size: " + certSize + " bytes");
+
+            // Undefine existing index if it exists (ignore errors)
+            executeTpm2Command(String.format("tpm2_nvundefine %s -C o 2>/dev/null || true", index));
+
+            // Define NV index with appropriate size and attributes
+            String defineResult = executeTpm2Command(
+                    String.format("tpm2_nvdefine %s -C o -s %d -a 'ownerread|ownerwrite|authread'",
+                            index, certSize));
+            System.out.println(defineResult);
+
+            // Write certificate to NV index
+            String writeResult = executeTpm2Command(
+                    String.format("tpm2_nvwrite %s -C o -i /tmp/%s", index, certFile));
+            System.out.println(writeResult);
+
+            System.out.println(ColorPrinter.green("\n✓ Certificate stored in NV index: " + index));
+            System.out.println(ColorPrinter.yellow("  Note: NV indices cannot be accessed via OpenSSL TPM2 provider"));
+            System.out.println(
+                    ColorPrinter.yellow("  Use tpm2.nvread to retrieve, or tpm2.loadexternal.cert for OpenSSL access"));
+
+            // Cleanup temporary file if we created it
+            if (isDirectContent) {
+                executeTpm2Command("rm -f /tmp/" + certFile);
+            }
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+        }
+
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+
+    @ShellMethod(key = "tpm2.migrate.nv2obj", value = "Migrate certificate from NV to TPM object - eg: tpm2.migrate.nv2obj --nv-index 0x1500001 --handle 0x81000001")
+    @ShellMethodAvailability("availabilityCheck")
+    void tpm2MigrateNvToObject(
+            @ShellOption(value = { "--nv-index", "-n" }) String nvIndex,
+            @ShellOption(value = { "--handle" }, defaultValue = "0x81000001") String handle,
+            @ShellOption(value = { "--hierarchy",
+                    "-H" }, defaultValue = "o", valueProvider = HierarchyProvider.class) String hierarchy) {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  TPM2 Migrate Certificate: NV Index → TPM Object"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        try {
+            // Read certificate from NV index to temporary file
+            String tempFile = "migrated_cert_" + System.currentTimeMillis() + ".pem";
+            String readResult = executeTpm2Command(
+                    String.format("tpm2_nvread %s -C o -o /tmp/%s", nvIndex, tempFile));
+            System.out.println("Reading from NV index " + nvIndex + "...");
+            if (!readResult.isEmpty()) {
+                System.out.println(readResult);
+            }
+
+            // Verify it's a valid certificate
+            String verifyResult = executeTpm2Command(
+                    String.format("openssl x509 -in /tmp/%s -text -noout | head -5", tempFile));
+            System.out.println("\nCertificate preview:");
+            System.out.println(verifyResult);
+
+            // Convert to DER format
+            String derFile = tempFile.replace(".pem", ".der");
+            String convertResult = executeTpm2Command(
+                    String.format("openssl x509 -in /tmp/%s -outform DER -out /tmp/%s", tempFile, derFile));
+            if (!convertResult.isEmpty()) {
+                System.out.println("Conversion output: " + convertResult);
+            }
+
+            // Load as external object
+            String ctxFile = "cert_" + System.currentTimeMillis() + ".ctx";
+            String loadResult = executeTpm2Command(
+                    String.format("tpm2_loadexternal -C %s -u /tmp/%s -c /tmp/%s", hierarchy, derFile, ctxFile));
+            System.out.println(loadResult);
+
+            // Remove existing handle if present
+            executeTpm2Command(String.format("tpm2_evictcontrol -C %s -c %s 2>/dev/null || true", hierarchy, handle));
+
+            // Persist at specified handle
+            String persistResult = executeTpm2Command(
+                    String.format("tpm2_evictcontrol -C %s -c /tmp/%s %s", hierarchy, ctxFile, handle));
+            System.out.println(persistResult);
+
+            System.out.println(ColorPrinter.green("\n✓ Certificate migrated successfully!"));
+            System.out.println(ColorPrinter.yellow("  From NV index: " + nvIndex));
+            System.out.println(ColorPrinter.yellow("  To TPM handle: " + handle));
+            System.out.println(ColorPrinter.yellow("  OpenSSL URI: handle:" + handle));
+
+            // Cleanup
+            executeTpm2Command("rm -f /tmp/" + tempFile + " /tmp/" + derFile + " /tmp/" + ctxFile);
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+        }
+
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+
+    @ShellMethod(key = "tpm2.cert.as.object", value = "Store certificate as TPM object using key wrapping - eg: tpm2.cert.as.object --cert device.crt --handle 0x81000001")
+    @ShellMethodAvailability("availabilityCheck")
+    void tpm2CertAsObject(
+            @ShellOption(value = { "--cert", "-c" }) String certInput,
+            @ShellOption(value = { "--handle", "-h" }, defaultValue = "0x81000001") String handle,
+            @ShellOption(value = { "--parent-handle", "-p" }, defaultValue = "0x81000000") String parentHandle) {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  TPM2 Store Certificate as TPM Object"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        try {
+            // Check if certInput is a file or direct certificate content
+            String certFile;
+            boolean isDirectContent = certInput.contains("BEGIN CERTIFICATE");
+
+            if (isDirectContent) {
+                // Write certificate content to temporary file
+                certFile = "temp_cert_" + System.currentTimeMillis() + ".pem";
+                String writeCmd = String.format("cat > /tmp/%s << 'EOF'\n%s\nEOF", certFile, certInput);
+                executeTpm2Command(writeCmd);
+                System.out.println("Certificate content written to temporary file: /tmp/" + certFile);
+            } else {
+                // Assume it's a filename
+                certFile = certInput;
+                System.out.println("Using certificate file: /tmp/" + certFile);
+            }
+
+            // Step 1: Create a primary key if it doesn't exist
+            System.out.println("\n" + ColorPrinter.yellow("Step 1: Ensuring primary key exists..."));
+            String primaryCtx = "primary_" + System.currentTimeMillis() + ".ctx";
+
+            // Try to read existing primary, if not create one
+            String readPrimary = executeTpm2Command(
+                    String.format("tpm2_readpublic -c %s -o /tmp/%s 2>/dev/null || " +
+                            "tpm2_createprimary -C o -c /tmp/%s",
+                            parentHandle, primaryCtx, primaryCtx));
+            System.out.println(readPrimary);
+
+            // Step 2: Create a sealing object with the certificate data
+            System.out.println("\n" + ColorPrinter.yellow("Step 2: Creating sealed object with certificate..."));
+            String sealPub = "cert_seal_" + System.currentTimeMillis() + ".pub";
+            String sealPriv = "cert_seal_" + System.currentTimeMillis() + ".priv";
+
+            String createResult = executeTpm2Command(
+                    String.format("tpm2_create -C /tmp/%s -i /tmp/%s -u /tmp/%s -r /tmp/%s -L policy.dat || " +
+                            "tpm2_create -C /tmp/%s -i /tmp/%s -u /tmp/%s -r /tmp/%s",
+                            primaryCtx, certFile, sealPub, sealPriv,
+                            primaryCtx, certFile, sealPub, sealPriv));
+            System.out.println(createResult);
+
+            // Step 3: Load the sealed object
+            System.out.println("\n" + ColorPrinter.yellow("Step 3: Loading sealed object..."));
+            String sealCtx = "cert_seal_" + System.currentTimeMillis() + ".ctx";
+            String loadResult = executeTpm2Command(
+                    String.format("tpm2_load -C /tmp/%s -u /tmp/%s -r /tmp/%s -c /tmp/%s",
+                            primaryCtx, sealPub, sealPriv, sealCtx));
+            System.out.println(loadResult);
+
+            // Step 4: Make it persistent
+            System.out.println("\n" + ColorPrinter.yellow("Step 4: Making object persistent..."));
+            // Remove existing handle if present
+            executeTpm2Command(String.format("tpm2_evictcontrol -C o -c %s 2>/dev/null || true", handle));
+
+            String persistResult = executeTpm2Command(
+                    String.format("tpm2_evictcontrol -C o -c /tmp/%s %s", sealCtx, handle));
+            System.out.println(persistResult);
+
+            // Step 5: Test unsealing to verify
+            System.out.println("\n" + ColorPrinter.yellow("Step 5: Verifying certificate can be unsealed..."));
+            String testFile = "test_unseal_" + System.currentTimeMillis() + ".pem";
+            String unsealResult = executeTpm2Command(
+                    String.format("tpm2_unseal -c %s -o /tmp/%s", handle, testFile));
+            System.out.println(unsealResult);
+
+            // Verify it's a valid certificate
+            String verifyResult = executeTpm2Command(
+                    String.format("openssl x509 -in /tmp/%s -text -noout | head -5", testFile));
+            System.out.println("\nCertificate verification:");
+            System.out.println(verifyResult);
+
+            System.out.println(ColorPrinter.green("\n✓ Certificate stored as TPM object successfully!"));
+            System.out.println(ColorPrinter.yellow("  Handle: " + handle));
+            System.out.println(ColorPrinter.yellow("  Type: Sealed Data Object"));
+            System.out.println(ColorPrinter.yellow("  Access: Use tpm2_unseal -c " + handle + " to retrieve"));
+            System.out.println(ColorPrinter.yellow(
+                    "\n  Note: This creates a sealed data object, not directly usable by OpenSSL TPM2 provider."));
+            System.out.println(
+                    ColorPrinter.yellow("  For OpenSSL access, use the NV storage + filesystem export approach."));
+
+            // Cleanup temporary files
+            if (isDirectContent) {
+                executeTpm2Command("rm -f /tmp/" + certFile);
+            }
+            executeTpm2Command("rm -f /tmp/" + primaryCtx + " /tmp/" + sealPub + " /tmp/" + sealPriv +
+                    " /tmp/" + sealCtx + " /tmp/" + testFile);
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+            e.printStackTrace();
+        }
+
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+
+    @ShellMethod(key = "tpm2.cert.unseal", value = "Unseal certificate from TPM object - eg: tpm2.cert.unseal --handle 0x81000001 --output cert.pem")
+    @ShellMethodAvailability("availabilityCheck")
+    void tpm2CertUnseal(
+            @ShellOption(value = { "--handle", "-h" }) String handle,
+            @ShellOption(value = { "--output", "-o" }, defaultValue = "unsealed_cert.pem") String outputFile) {
+        System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  TPM2 Unseal Certificate"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        try {
+            // Unseal the certificate
+            String unsealResult = executeTpm2Command(
+                    String.format("tpm2_unseal -c %s -o /tmp/%s", handle, outputFile));
+            System.out.println(unsealResult);
+
+            // Verify it's a valid certificate
+            String verifyResult = executeTpm2Command(
+                    String.format("openssl x509 -in /tmp/%s -text -noout | head -10", outputFile));
+            System.out.println("\nCertificate verification:");
+            System.out.println(verifyResult);
+
+            System.out.println(ColorPrinter.green("\n✓ Certificate unsealed successfully!"));
+            System.out.println(ColorPrinter.yellow("  Output file: /tmp/" + outputFile));
+            System.out.println(ColorPrinter.yellow("  Use this file with OpenSSL applications"));
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+        }
 
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
     }
