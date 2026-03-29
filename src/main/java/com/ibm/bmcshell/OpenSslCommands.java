@@ -406,6 +406,49 @@ public class OpenSslCommands extends CommonCommands {
         scmd(command);
     }
 
+    /**
+     * Sign certificate with TPM CA key
+     * Signs a CSR using a TPM-based CA key via the tpm2tss OpenSSL engine
+     * This allows signing regular OpenSSL-generated CSRs with a CA key stored in
+     * TPM
+     *
+     * Example: ssl.sign-cert-tpm --csr device.csr --ca-cert ca.crt --ca-handle
+     * 0x81010001
+     * --cert device.crt --days 365 --password abhi
+     *
+     * @param csrFile    Path to the CSR file (regular OpenSSL CSR)
+     * @param caCertFile Path to the CA certificate file
+     * @param caHandle   TPM persistent handle for CA key (default: 0x81010001)
+     * @param certFile   Output path for signed certificate
+     * @param days       Validity period in days (default: 365)
+     * @param password   TPM key password (optional, use empty string for no
+     *                   password)
+     */
+    @ShellMethod(key = "ssl.sign-cert-tpm", value = "Sign certificate with TPM CA key")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void signCertTPM(
+            @ShellOption(value = { "--csr" }, valueProvider = RemoteFileCompleter.class) String csrFile,
+            @ShellOption(value = { "--ca-cert" }, valueProvider = RemoteFileCompleter.class) String caCertFile,
+            @ShellOption(value = { "--ca-handle" }, defaultValue = "0x81010001") String caHandle,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--days", "-d" }, defaultValue = "365") int days,
+            @ShellOption(value = { "--password", "-p" }, defaultValue = "") String password) {
+
+        String command;
+        if (!password.isEmpty()) {
+            command = String.format(
+                    "openssl x509 -req -in %s -CA %s -engine tpm2tss -CAkeyform engine -CAkey %s " +
+                            "-CAcreateserial -out %s -days %d -sha256 -passin pass:'%s'",
+                    csrFile, caCertFile, caHandle, certFile, days, password);
+        } else {
+            command = String.format(
+                    "openssl x509 -req -in %s -CA %s -engine tpm2tss -CAkeyform engine -CAkey %s " +
+                            "-CAcreateserial -out %s -days %d -sha256",
+                    csrFile, caCertFile, caHandle, certFile, days);
+        }
+        scmd(command);
+    }
+
     // ==================== PUBLIC KEY OPERATIONS ====================
 
     /**

@@ -234,6 +234,78 @@ public class RemoteCommands extends CommonCommands {
         scmd("reboot");
     }
 
+    @ShellMethod(key = "ro.upload.exec", value = "Upload local script and execute on BMC - eg: ro.upload.exec --local ~/script.sh --remote /tmp/script.sh --args '0x81010001 /C=US/O=Org ca.crt 3650'")
+    @ShellMethodAvailability("availabilityCheck")
+    void uploadAndExecute(
+            @ShellOption(value = { "--local",
+                    "-l" }, valueProvider = com.ibm.bmcshell.FileCompleter.class) String localPath,
+            @ShellOption(value = { "--remote", "-r" }, defaultValue = "") String remotePath,
+            @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args) {
+        try {
+            String name = userName.equals("root") ? userName : "service";
+            String fullMachine = Util.fullMachineName(machine);
+
+            // If remote path not specified, use /tmp with same filename
+            if (remotePath.isEmpty()) {
+                java.io.File localFile = new java.io.File(localPath);
+                remotePath = "/tmp/" + localFile.getName();
+            }
+
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.cyan("  Upload and Execute Script"));
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.yellow("Local:  " + localPath));
+            System.out.println(ColorPrinter.yellow("Remote: " + remotePath));
+            if (!args.isEmpty()) {
+                System.out.println(ColorPrinter.yellow("Args:   " + args));
+            }
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+            // Step 1: Upload file using SFTP
+            System.out.println(ColorPrinter.cyan("\nStep 1: Uploading script to BMC..."));
+            Session session = SSHShellClient.getSession(fullMachine, name, passwd, port);
+            if (session == null) {
+                System.out.println(ColorPrinter.red("Failed to establish SSH session"));
+                return;
+            }
+
+            ChannelSftp sftpChannel = (ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+
+            try {
+                sftpChannel.put(localPath, remotePath);
+                sftpChannel.disconnect();
+                System.out.println(ColorPrinter.green("✓ Script uploaded successfully"));
+            } catch (Exception uploadEx) {
+                sftpChannel.disconnect();
+                System.out.println(ColorPrinter.red("✗ Upload failed: " + uploadEx.getMessage()));
+                return;
+            }
+
+            // Step 2: Make executable
+            System.out.println(ColorPrinter.cyan("\nStep 2: Making script executable..."));
+            String chmodCmd = name.equals("root")
+                    ? String.format("chmod +x %s", remotePath)
+                    : String.format("sudo chmod +x %s", remotePath);
+            scmd(chmodCmd);
+
+            // Step 3: Execute script
+            System.out.println(ColorPrinter.cyan("\nStep 3: Executing script..."));
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            String execCmd = name.equals("root")
+                    ? String.format("%s %s", remotePath, args)
+                    : String.format("sudo %s %s", remotePath, args);
+            scmd(execCmd);
+
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.green("✓ Script execution completed"));
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+            e.printStackTrace();
+        }
+    }
+
     @ShellMethod(key = "mem.start", value = "eg: mem.start servicename [--exe exename] [--interval 2] - Start live memory monitoring")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat(
