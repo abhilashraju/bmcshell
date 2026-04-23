@@ -520,15 +520,502 @@ public class OpenSslCommands extends CommonCommands {
         String command = String.format("openssl x509 -in %s -inform DER -out %s", inFile, outFile);
         scmd(command);
     }
+    // ==================== CERTIFICATE CHAIN OPERATIONS ====================
+
+    /**
+     * Create certificate chain file from multiple certificates
+     * Concatenates multiple certificate files into a single chain file
+     * The order matters: typically leaf cert first, then intermediates, then root
+     * CA
+     * 
+     * Example: ssl.create-chain --certs cert1.pem cert2.pem cert3.pem --output
+     * chain.pem
+     * Example: ssl.create-chain --certs leaf.pem intermediate.pem root.pem --output
+     * fullchain.pem
+     * 
+     * @param certFiles  Array of certificate file paths to concatenate (in order)
+     * @param outputFile Output path for the certificate chain file
+     */
+    @ShellMethod(key = "ssl.create-chain", value = "Create certificate chain from multiple certificates")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void createCertChain(
+            @ShellOption(value = { "--certs",
+                    "-c" }, arity = 2147483647, valueProvider = RemoteFileCompleter.class) String[] certFiles,
+            @ShellOption(value = { "--output", "-o" }, valueProvider = RemoteFileCompleter.class) String outputFile) {
+        if (certFiles == null || certFiles.length < 2) {
+            System.err.println("Error: At least 2 certificate files are required to create a chain");
+            return;
+        }
+
+        // Build the cat command to concatenate all certificates
+        StringBuilder command = new StringBuilder("cat");
+        for (String certFile : certFiles) {
+            command.append(" ").append(certFile);
+        }
+        command.append(" > ").append(outputFile);
+
+        scmd(command.toString());
+    }
+
+    // ==================== SERVER CERTIFICATE INSPECTION ====================
+
+    /**
+     * Inspect certificate from a remote server
+     * Connects to server and displays certificate information
+     *
+     * Example: ssl.inspect-server --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.inspect-server", value = "Inspect certificate from remote server")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void inspectServer(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -text -noout", host,
+                port);
+        scmd(command);
+    }
+
+    /**
+     * Get certificate from remote server
+     * Downloads and displays the server certificate
+     *
+     * Example: ssl.get-server-cert --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.get-server-cert", value = "Get certificate from remote server")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void getServerCert(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format("openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null", host, port);
+        scmd(command);
+    }
+
+    /**
+     * Save server certificate to file
+     * Downloads server certificate and saves it to a file
+     *
+     * Example: ssl.save-server-cert --host example.com --port 443 --output
+     * server.pem
+     *
+     * @param host       Server hostname or IP address
+     * @param port       Server port (default: 443)
+     * @param outputFile Output path for certificate
+     */
+    @ShellMethod(key = "ssl.save-server-cert", value = "Save server certificate to file")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void saveServerCert(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--output", "-o" }, valueProvider = RemoteFileCompleter.class) String outputFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -outform PEM > %s",
+                host, port, outputFile);
+        scmd(command);
+    }
+
+    /**
+     * Check server certificate expiration
+     * Shows validity dates for server certificate
+     *
+     * Example: ssl.check-server-expiry --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.check-server-expiry", value = "Check server certificate expiration")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void checkServerExpiry(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -noout -dates", host,
+                port);
+        scmd(command);
+    }
+
+    /**
+     * Get server certificate subject
+     * Shows the subject DN of server certificate
+     *
+     * Example: ssl.get-server-subject --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.get-server-subject", value = "Get server certificate subject")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void getServerSubject(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -noout -subject",
+                host, port);
+        scmd(command);
+    }
+
+    /**
+     * Get server certificate issuer
+     * Shows the issuer DN of server certificate
+     *
+     * Example: ssl.get-server-issuer --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.get-server-issuer", value = "Get server certificate issuer")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void getServerIssuer(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -noout -issuer", host,
+                port);
+        scmd(command);
+    }
+
+    /**
+     * Get server certificate fingerprint
+     * Shows SHA256 fingerprint of server certificate
+     *
+     * Example: ssl.get-server-fingerprint --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.get-server-fingerprint", value = "Get server certificate fingerprint")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void getServerFingerprint(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256",
+                host, port);
+        scmd(command);
+    }
+
+    /**
+     * Inspect server with SNI (Server Name Indication)
+     * Useful for servers with virtual hosting
+     *
+     * Example: ssl.inspect-server-sni --host example.com --servername example.com
+     * --port 443
+     *
+     * @param host       Server hostname or IP address
+     * @param serverName SNI server name
+     * @param port       Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.inspect-server-sni", value = "Inspect server certificate with SNI")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void inspectServerSNI(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--servername", "-s" }) String serverName,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -servername %s -showcerts </dev/null 2>/dev/null | openssl x509 -text -noout",
+                host, port, serverName);
+        scmd(command);
+    }
+
+    /**
+     * Verify server certificate against CA
+     * Connects to server and verifies its certificate
+     *
+     * Example: ssl.verify-server-cert --host example.com --port 443 --ca
+     * ca_cert.pem
+     * Example: ssl.verify-server-cert --host example.com --port 443 --ca-nv-index
+     * 0x1500001
+     *
+     * @param host      Server hostname or IP address
+     * @param port      Server port (default: 443)
+     * @param caFile    Path to CA certificate file
+     * @param caNvIndex TPM NV index containing the CA certificate in PEM format
+     */
+    @ShellMethod(key = "ssl.verify-server-cert", value = "Verify server certificate against CA")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void verifyServerCert(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = {
+                    "--ca" }, defaultValue = ShellOption.NULL, valueProvider = RemoteFileCompleter.class) String caFile,
+            @ShellOption(value = { "--ca-nv-index" }, defaultValue = ShellOption.NULL) String caNvIndex) {
+        String caSource = caFile;
+        if (caSource == null || caSource.isBlank()) {
+            if (caNvIndex == null || caNvIndex.isBlank()) {
+                System.out.println("Error: Provide either --ca <ca_cert.pem> or --ca-nv-index <0x1500001>");
+                return;
+            }
+            String tempCaFile = String.format("/tmp/tpm_ca_cert_%d.pem", System.currentTimeMillis());
+            caSource = tempCaFile;
+            String command = String.format(
+                    "tpm2_nvread %s -C o -o %s ; openssl s_client -connect %s:%d -CAfile %s -showcerts </dev/null 2>/dev/null; rm -f %s",
+                    caNvIndex, tempCaFile, host, port, tempCaFile, tempCaFile);
+            scmd(command);
+            return;
+        }
+        String command = String.format("openssl s_client -connect %s:%d -CAfile %s -showcerts </dev/null 2>/dev/null",
+                host, port, caSource);
+        scmd(command);
+    }
+
+    /**
+     * Get full certificate chain from server
+     * Downloads and displays the complete certificate chain
+     *
+     * Example: ssl.get-server-chain --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.get-server-chain", value = "Get full certificate chain from server")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void getServerChain(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format("openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null", host, port);
+        scmd(command);
+    }
+
+    /**
+     * Test TLS connection to server
+     * Shows connection details and supported protocols
+     *
+     * Example: ssl.test-connection --host example.com --port 443
+     *
+     * @param host Server hostname or IP address
+     * @param port Server port (default: 443)
+     */
+    @ShellMethod(key = "ssl.test-connection", value = "Test TLS connection to server")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testConnection(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
+        String command = String.format("openssl s_client -connect %s:%d -brief </dev/null 2>/dev/null", host, port);
+        scmd(command);
+    }
+
+    /**
+     * Test specific TLS version with server
+     * Checks if server supports specific TLS version
+     *
+     * Example: ssl.test-tls-version --host example.com --port 443 --version tls1_2
+     *
+     * @param host    Server hostname or IP address
+     * @param port    Server port (default: 443)
+     * @param version TLS version (tls1, tls1_1, tls1_2, tls1_3)
+     */
+    @ShellMethod(key = "ssl.test-tls-version", value = "Test specific TLS version with server")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testTLSVersion(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--version", "-v" }) String version) {
+        String command = String.format("openssl s_client -connect %s:%d -%s -showcerts </dev/null 2>/dev/null", host,
+                port, version);
+        scmd(command);
+    }
+
+    // ==================== MUTUAL TLS (mTLS) COMMANDS ====================
+
+    /**
+     * Test mTLS connection with client certificate
+     * Establishes mutual TLS connection where both client and server authenticate
+     *
+     * Example: ssl.test-mtls --host example.com --port 443 --cert client.pem --key
+     * client-key.pem
+     *
+     * @param host     Server hostname or IP address
+     * @param port     Server port (default: 443)
+     * @param certFile Path to client certificate file
+     * @param keyFile  Path to client private key file
+     */
+    @ShellMethod(key = "ssl.test-mtls", value = "Test mTLS connection with client certificate")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testMTLS(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -cert %s -key %s -showcerts </dev/null 2>/dev/null",
+                host, port, certFile, keyFile);
+        scmd(command);
+    }
+
+    /**
+     * Test mTLS connection with full verification
+     * Establishes mutual TLS with client cert and verifies server cert against CA
+     *
+     * Example: ssl.test-mtls-verify --host example.com --port 443 --cert client.pem
+     * --key client-key.pem --ca ca.pem
+     *
+     * @param host     Server hostname or IP address
+     * @param port     Server port (default: 443)
+     * @param certFile Path to client certificate file
+     * @param keyFile  Path to client private key file
+     * @param caFile   Path to CA certificate file for server verification
+     */
+    @ShellMethod(key = "ssl.test-mtls-verify", value = "Test mTLS with full certificate verification")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testMTLSVerify(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile,
+            @ShellOption(value = { "--ca" }, valueProvider = RemoteFileCompleter.class) String caFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -cert %s -key %s -CAfile %s -showcerts </dev/null 2>/dev/null",
+                host, port, certFile, keyFile, caFile);
+        scmd(command);
+    }
+
+    /**
+     * Test mTLS connection with certificate chain
+     * Uses client certificate with intermediate CA chain
+     *
+     * Example: ssl.test-mtls-chain --host example.com --port 443 --cert client.pem
+     * --key client-key.pem --chain chain.pem
+     *
+     * @param host      Server hostname or IP address
+     * @param port      Server port (default: 443)
+     * @param certFile  Path to client certificate file
+     * @param keyFile   Path to client private key file
+     * @param chainFile Path to certificate chain file
+     */
+    @ShellMethod(key = "ssl.test-mtls-chain", value = "Test mTLS with certificate chain")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testMTLSChain(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile,
+            @ShellOption(value = { "--chain" }, valueProvider = RemoteFileCompleter.class) String chainFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -cert %s -key %s -cert_chain %s -showcerts </dev/null 2>/dev/null",
+                host, port, certFile, keyFile, chainFile);
+        scmd(command);
+    }
+
+    /**
+     * Test mTLS with SNI support
+     * Mutual TLS connection with Server Name Indication
+     *
+     * Example: ssl.test-mtls-sni --host 192.168.1.100 --servername example.com
+     * --port 443 --cert client.pem --key client-key.pem
+     *
+     * @param host       Server hostname or IP address
+     * @param serverName SNI server name
+     * @param port       Server port (default: 443)
+     * @param certFile   Path to client certificate file
+     * @param keyFile    Path to client private key file
+     */
+    @ShellMethod(key = "ssl.test-mtls-sni", value = "Test mTLS with SNI support")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testMTLSSNI(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--servername", "-s" }) String serverName,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -servername %s -cert %s -key %s -showcerts </dev/null 2>/dev/null",
+                host, port, serverName, certFile, keyFile);
+        scmd(command);
+    }
+
+    /**
+     * Verify mTLS connection status
+     * Shows detailed connection information including client cert verification
+     *
+     * Example: ssl.verify-mtls --host example.com --port 443 --cert client.pem
+     * --key client-key.pem --ca ca.pem
+     *
+     * @param host     Server hostname or IP address
+     * @param port     Server port (default: 443)
+     * @param certFile Path to client certificate file
+     * @param keyFile  Path to client private key file
+     * @param caFile   Path to CA certificate file
+     */
+    @ShellMethod(key = "ssl.verify-mtls", value = "Verify mTLS connection status")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void verifyMTLS(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile,
+            @ShellOption(value = { "--ca" }, valueProvider = RemoteFileCompleter.class) String caFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -cert %s -key %s -CAfile %s -state -debug </dev/null 2>&1",
+                host, port, certFile, keyFile, caFile);
+        scmd(command);
+    }
+
+    /**
+     * Test mTLS with specific TLS version
+     * Mutual TLS connection using specific protocol version
+     *
+     * Example: ssl.test-mtls-version --host example.com --port 443 --cert
+     * client.pem --key client-key.pem --version tls1_2
+     *
+     * @param host     Server hostname or IP address
+     * @param port     Server port (default: 443)
+     * @param certFile Path to client certificate file
+     * @param keyFile  Path to client private key file
+     * @param version  TLS version (tls1, tls1_1, tls1_2, tls1_3)
+     */
+    @ShellMethod(key = "ssl.test-mtls-version", value = "Test mTLS with specific TLS version")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void testMTLSVersion(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile,
+            @ShellOption(value = { "--version", "-v" }) String version) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -cert %s -key %s -%s -showcerts </dev/null 2>/dev/null",
+                host, port, certFile, keyFile, version);
+        scmd(command);
+    }
+
+    /**
+     * Debug mTLS connection
+     * Shows verbose debugging information for mTLS troubleshooting
+     *
+     * Example: ssl.debug-mtls --host example.com --port 443 --cert client.pem --key
+     * client-key.pem
+     *
+     * @param host     Server hostname or IP address
+     * @param port     Server port (default: 443)
+     * @param certFile Path to client certificate file
+     * @param keyFile  Path to client private key file
+     */
+    @ShellMethod(key = "ssl.debug-mtls", value = "Debug mTLS connection with verbose output")
+    @ShellMethodAvailability("availabilityCheck")
+    protected void debugMTLS(
+            @ShellOption(value = { "--host" }) String host,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+            @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+            @ShellOption(value = { "--key", "-k" }, valueProvider = RemoteFileCompleter.class) String keyFile) {
+        String command = String.format(
+                "openssl s_client -connect %s:%d -cert %s -key %s -state -msg -debug -showcerts 2>&1",
+                host, port, certFile, keyFile);
+        scmd(command);
+    }
 
     // ==================== CUSTOM OPENSSL COMMAND ====================
 
     /**
      * Execute custom OpenSSL command
      * Allows running any OpenSSL command
-     * 
+     *
      * Example: ssl.custom "openssl version"
-     * 
+     *
      * @param opensslCommand The complete OpenSSL command to execute
      */
     @ShellMethod(key = "ssl.custom", value = "Execute custom OpenSSL command")

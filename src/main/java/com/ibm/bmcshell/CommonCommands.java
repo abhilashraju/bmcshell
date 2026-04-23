@@ -112,7 +112,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     static String lastCurlResponse;
 
-    private Stack<List<Util.EndPoints>> endPoints = new Stack<>();
+    protected static Stack<List<Util.EndPoints>> endPoints = new Stack<>();
 
     public static String getUserName() {
         return userName;
@@ -609,6 +609,17 @@ public class CommonCommands implements ApplicationContextAware {
         }
     }
 
+    @Component
+    public static class DebugLevelProvider implements ValueProvider {
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List.of("disabled", "enabled", "debug", "info", "warning", "error", "critical")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
     @ShellMethod(key = { "machine", "m" })
     protected String machine(@ShellOption(valueProvider = MachineProvider.class) String m) throws IOException {
 
@@ -640,7 +651,7 @@ public class CommonCommands implements ApplicationContextAware {
         System.setOut(originalOut);
     }
 
-    private void serialise() throws IOException {
+    protected void serialise() throws IOException {
         FileOutputStream out = new FileOutputStream(new File("history"));
         ObjectMapper mapper = new ObjectMapper();
         Map<String, Object> map = new HashMap<>();
@@ -775,8 +786,10 @@ public class CommonCommands implements ApplicationContextAware {
         makePostRequest(target, data, contentType);
     }
 
-    @ShellMethod(key = "setDebugLevel", value = "eg setDebugLevel debug")
-    public void setDebugLevel(String level) {
+    @ShellMethod(key = "setdebuglevel", value = "eg setDebugLevel debug")
+    public void setDebugLevel(
+            @ShellOption(value = { "--level",
+                    "-l" }, defaultValue = "debug", valueProvider = DebugLevelProvider.class) String level) {
         String command = String.format("bmcweb loglevel %s", level);
         scmd(command);
     }
@@ -849,6 +862,10 @@ public class CommonCommands implements ApplicationContextAware {
             @ShellOption(value = { "--patch", "-p" }, defaultValue = "false") boolean p,
             @ShellOption(value = { "--output", "-o" }, defaultValue = "") String o)
             throws URISyntaxException, IOException {
+        if (endPoints.isEmpty()) {
+            System.out.println("No endpoints available. Please run a command that generates a selection menu first.");
+            return;
+        }
         if (checkMachineSelection(index))
             return;
         if (!d.isEmpty()) {
@@ -865,6 +882,10 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "select_all", value = "select all links in the current menu level")
     @ShellMethodAvailability("availabilityCheck")
     public void select_all() throws URISyntaxException, IOException {
+        if (endPoints.isEmpty()) {
+            System.out.println("No endpoints available. Please run a command that generates a selection menu first.");
+            return;
+        }
         for (var e : endPoints.peek()) {
             if (!e.action.equals("Get") || e.url.equals("back")) {
                 continue;
@@ -876,6 +897,10 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "select_recur", value = "select all links from the current menu level downwards recursively")
     @ShellMethodAvailability("availabilityCheck")
     public void select_recur() throws URISyntaxException, IOException {
+        if (endPoints.isEmpty()) {
+            System.out.println("No endpoints available. Please run a command that generates a selection menu first.");
+            return;
+        }
         for (var e : endPoints.peek()) {
             if (!e.action.equals("Get") || e.url.equals("back")) {
                 continue;

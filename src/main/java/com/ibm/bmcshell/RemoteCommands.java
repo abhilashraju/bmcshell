@@ -52,6 +52,12 @@ public class RemoteCommands extends CommonCommands {
         scmd(String.format("mv %s %s", source, dest));
     }
 
+    @ShellMethod(key = { "ro.rm", "rm" }, value = "eg: ro.rm filepath")
+    @ShellMethodAvailability("availabilityCheck")
+    void rm(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
+        scmd(String.format("rm %s", p));
+    }
+
     @ShellMethod(key = { "ro.cmd", "cmd" }, value = "eg: ro.cmd command")
     @ShellMethodAvailability("availabilityCheck")
     void cmd(String cmd) {
@@ -234,13 +240,14 @@ public class RemoteCommands extends CommonCommands {
         scmd("reboot");
     }
 
-    @ShellMethod(key = "ro.upload.exec", value = "Upload local script and execute on BMC - eg: ro.upload.exec --local ~/script.sh --remote /tmp/script.sh --args '0x81010001 /C=US/O=Org ca.crt 3650'")
+    @ShellMethod(key = "ro.upload.exec", value = "Upload local script and execute on BMC - eg: ro.upload.exec --local ~/script.sh --remote /tmp/script.sh --args '0x81010001 /C=US/O=Org ca.crt 3650' --background")
     @ShellMethodAvailability("availabilityCheck")
     void uploadAndExecute(
             @ShellOption(value = { "--local",
                     "-l" }, valueProvider = com.ibm.bmcshell.FileCompleter.class) String localPath,
             @ShellOption(value = { "--remote", "-r" }, defaultValue = "") String remotePath,
-            @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args) {
+            @ShellOption(value = { "--args", "-a" }, defaultValue = "") String args,
+            @ShellOption(value = { "--background", "-bg" }, defaultValue = "false") boolean background) {
         try {
             String name = userName.equals("root") ? userName : "service";
             String fullMachine = Util.fullMachineName(machine);
@@ -259,6 +266,7 @@ public class RemoteCommands extends CommonCommands {
             if (!args.isEmpty()) {
                 System.out.println(ColorPrinter.yellow("Args:   " + args));
             }
+            System.out.println(ColorPrinter.yellow("Mode:   " + (background ? "Background" : "Foreground")));
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
 
             // Step 1: Upload file using SFTP
@@ -292,13 +300,33 @@ public class RemoteCommands extends CommonCommands {
             // Step 3: Execute script
             System.out.println(ColorPrinter.cyan("\nStep 3: Executing script..."));
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            String execCmd = name.equals("root")
-                    ? String.format("%s %s", remotePath, args)
-                    : String.format("sudo %s %s", remotePath, args);
+
+            String execCmd;
+            if (background) {
+                // Run in background with nohup and redirect output to log file
+                String logFile = remotePath + ".log";
+                if (name.equals("root")) {
+                    execCmd = String.format("nohup %s %s > %s 2>&1 &", remotePath, args, logFile);
+                } else {
+                    execCmd = String.format("sudo nohup %s %s > %s 2>&1 &", remotePath, args, logFile);
+                }
+                System.out.println(ColorPrinter.yellow("Running in background, output logged to: " + logFile));
+            } else {
+                // Run in foreground
+                execCmd = name.equals("root")
+                        ? String.format("%s %s", remotePath, args)
+                        : String.format("sudo %s %s", remotePath, args);
+            }
+
             scmd(execCmd);
 
             System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            System.out.println(ColorPrinter.green("✓ Script execution completed"));
+            if (background) {
+                System.out.println(ColorPrinter.green("✓ Script started in background"));
+                System.out.println(ColorPrinter.yellow("  Check log file: " + remotePath + ".log"));
+            } else {
+                System.out.println(ColorPrinter.green("✓ Script execution completed"));
+            }
 
         } catch (Exception e) {
             System.out.println(ColorPrinter.red("Error: " + e.getMessage()));

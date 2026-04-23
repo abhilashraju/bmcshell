@@ -56,6 +56,18 @@ public class AccountServiceCommand extends CommonCommands {
         }
     }
 
+    @Component
+    public static class MtlsParsingModeProvider implements ValueProvider {
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List.of("CommonName", "UserPrincipalName", "Whole")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
     protected AccountServiceCommand(DbusCommnads dbusCommnads) throws IOException {
         this.dbusCommnads = dbusCommnads;
     }
@@ -206,5 +218,25 @@ public class AccountServiceCommand extends CommonCommands {
             e.printStackTrace();
         }
 
+    }
+
+    @ShellMethod(key = "as.enable_tls_auth", value = "eg: as.enable_tls_auth --enable true")
+    @ShellMethodAvailability("availabilityCheck")
+    public void enableTlsAuth(@ShellOption(value = { "--enable", "-e" }, defaultValue = "true") boolean enable)
+            throws URISyntaxException, IOException {
+        String data = String.format("{\"Oem\":{\"OpenBMC\":{\"AuthMethods\":{\"TLS\":%s}}}}", enable);
+        patch("/redfish/v1/AccountService", data);
+    }
+
+    @ShellMethod(key = "as.set_mtls_parsing_mode", value = "eg: as.set_mtls_parsing_mode --mode CommonName")
+    @ShellMethodAvailability("availabilityCheck")
+    public void setMtlsParsingMode(
+            @ShellOption(value = { "--mode",
+                    "-m" }, defaultValue = "CommonName", valueProvider = MtlsParsingModeProvider.class) String mode)
+            throws URISyntaxException, IOException {
+        // Valid modes: CommonName, UserPrincipalName, Whole
+        String data = String.format(
+                "{\"Oem\":{\"OpenBMC\":{\"CertificateMappingAttribute\":\"%s\"}}}", mode);
+        patch("/redfish/v1/AccountService", data);
     }
 }
