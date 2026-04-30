@@ -1202,7 +1202,7 @@ public class CommonCommands implements ApplicationContextAware {
     public void scmd(String command) {
         String name = userName.equals("root") ? userName : "service";
         var newCmd = name.equals("root") ? Optional.of(command)
-                : Arrays.stream(command.split(";")).map(a -> "sudo -i " + a).reduce((a, b) -> a + ";" + b);
+                : Optional.of("sudo -i " + command);
         newCmd.ifPresentOrElse(a -> {
             runCommand(Util.fullMachineName(machine), name, passwd, a);
         }, () -> {

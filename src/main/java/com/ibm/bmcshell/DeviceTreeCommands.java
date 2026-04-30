@@ -43,6 +43,29 @@ public class DeviceTreeCommands extends CommonCommands {
         }
     }
 
+    @Component
+    public static class DeviceTypeProvider implements ValueProvider {
+        private static final List<String> DEVICE_TYPES = List.of(
+                "CPU",
+                "Memory",
+                "I2C",
+                "SPI",
+                "GPIO",
+                "Serial",
+                "Network",
+                "USB",
+                "PCI",
+                "Flash",
+                "Device");
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return DEVICE_TYPES.stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
     String currentNode;
 
     // Cache for device tree structure to improve performance
@@ -54,67 +77,184 @@ public class DeviceTreeCommands extends CommonCommands {
 
     }
 
-    @ShellMethod(key = "dt.list", value = "eg: dt.list [--path /proc/device-tree/]")
+    @ShellMethod(key = "dt.list", value = "eg: dt.list [--path /proc/device-tree/] [--depth 3] [--limit 100] [--type CPU]")
     @ShellMethodAvailability("availabilityCheck")
     void deviceTreeList(
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "/proc/device-tree/") String path)
+            @ShellOption(value = { "--path", "-p" }, defaultValue = "/proc/device-tree/") String path,
+            @ShellOption(value = { "--depth", "-d" }, defaultValue = "3") int depth,
+            @ShellOption(value = { "--limit", "-l" }, defaultValue = "100") int limit,
+            @ShellOption(value = { "--type",
+                    "-t" }, defaultValue = "", valueProvider = DeviceTypeProvider.class) String typeFilter)
             throws IOException {
-        deviceTreeList(path, true);
+        deviceTreeList(path, depth, limit, typeFilter, true);
     }
 
-    void deviceTreeList(String path, boolean displayTable) throws IOException {
+    void deviceTreeList(String path, int depth, int limit, String typeFilter, boolean displayTable) throws IOException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
         try {
-            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
-                    String.format("find %s -maxdepth 3 -type d 2>/dev/null | head -n 100", path));
+            String command;
+            if (depth <= 0) {
+                // No depth limit - show full tree
+                if (limit <= 0) {
+                    // No limit on nodes
+                    command = String.format("find %s -type d 2>/dev/null", path);
+                } else {
+                    command = String.format("find %s -type d 2>/dev/null | head -n %d", path, limit);
+                }
+            } else {
+                // With depth limit
+                if (limit <= 0) {
+                    command = String.format("find %s -maxdepth %d -type d 2>/dev/null", path, depth);
+                } else {
+                    command = String.format("find %s -maxdepth %d -type d 2>/dev/null | head -n %d",
+                            path, depth, limit);
+                }
+            }
+
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, command);
 
             DeviceTreeNodeProvider.deviceTreeNodes = extractNodePaths(outputStream.toString(), path);
 
             if (displayTable) {
-                displayDeviceTreeTable(outputStream.toString(), path);
+                displayDeviceTreeTable(outputStream.toString(), path, typeFilter);
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void displayDeviceTreeTable(String findOutput, String basePath) {
-        List<DeviceTreeNodeInfo> nodes = parseDeviceTreeNodes(findOutput, basePath);
+    private void displayDeviceTreeTable(String findOutput, String basePath, String typeFilter) {
+        List<DeviceTreeNodeInfo> allNodes = parseDeviceTreeNodes(findOutput, basePath);
+        List<DeviceTreeNodeInfo> filteredNodes = allNodes;
 
-        if (nodes.isEmpty()) {
+        // Apply type filter if specified
+        if (typeFilter != null && !typeFilter.isEmpty()) {
+            String filterUpper = typeFilter.toUpperCase();
+            filteredNodes = allNodes.stream()
+                    .filter(node -> node.type.equalsIgnoreCase(filterUpper))
+                    .collect(Collectors.toList());
+
+            if (filteredNodes.isEmpty()) {
+                System.out.println("No device tree nodes found matching type: " + typeFilter);
+                return;
+            }
+
+            // Add parent nodes to maintain tree structure
+            Set<String> nodePaths = new HashSet<>();
+            for (DeviceTreeNodeInfo node : filteredNodes) {
+                nodePaths.add(node.path);
+                // Add all parent paths
+                String parentPath = getParentPath(node.path);
+                while (!parentPath.isEmpty()) {
+                    nodePaths.add(parentPath);
+                    parentPath = getParentPath(parentPath);
+                }
+            }
+
+            // Include parent nodes in the display
+            filteredNodes = allNodes.stream()
+                    .filter(node -> nodePaths.contains(node.path))
+                    .collect(Collectors.toList());
+        }
+
+        if (filteredNodes.isEmpty()) {
             System.out.println("No device tree nodes found.");
             return;
         }
 
-        // Calculate column widths
-        int pathWidth = Math.max(50, nodes.stream().mapToInt(n -> n.path.length()).max().orElse(50));
-        int depthWidth = 8;
-        int typeWidth = 15;
-
-        // Limit path width for better readability
-        pathWidth = Math.min(pathWidth, 80);
-
-        // Print header
-        String headerFormat = "%-" + pathWidth + "s  %-" + depthWidth + "s  %-" + typeWidth + "s%n";
-        String rowFormat = "%-" + pathWidth + "s  %-" + depthWidth + "s  %-" + typeWidth + "s%n";
-
         System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-        System.out.println(ColorPrinter.cyan("  Device Tree Nodes"));
+        String title = "  Device Tree Structure";
+        if (typeFilter != null && !typeFilter.isEmpty()) {
+            title += " (Type: " + typeFilter + ")";
+        }
+        System.out.println(ColorPrinter.cyan(title));
         System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-        System.out.printf(headerFormat, "PATH", "DEPTH", "TYPE");
-        System.out.println("=".repeat(pathWidth + depthWidth + typeWidth + 4));
 
-        // Print nodes
+        // Build tree structure
+        Map<String, List<DeviceTreeNodeInfo>> tree = buildTreeStructure(filteredNodes);
+
+        // Print root
+        System.out.println(ColorPrinter.yellow(basePath));
+
+        // Print tree recursively with type filter highlighting
+        printTreeNode("", tree, "", true, typeFilter);
+
+        // Count only the filtered type nodes
+        long matchCount = filteredNodes.stream()
+                .filter(node -> typeFilter == null || typeFilter.isEmpty() ||
+                        node.type.equalsIgnoreCase(typeFilter))
+                .count();
+
+        if (typeFilter != null && !typeFilter.isEmpty()) {
+            System.out.println("\n" + ColorPrinter.green("Matching nodes: " + matchCount +
+                    " (Total displayed: " + filteredNodes.size() + ")"));
+        } else {
+            System.out.println("\n" + ColorPrinter.green("Total nodes: " + filteredNodes.size()));
+        }
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+    }
+
+    private Map<String, List<DeviceTreeNodeInfo>> buildTreeStructure(List<DeviceTreeNodeInfo> nodes) {
+        Map<String, List<DeviceTreeNodeInfo>> tree = new LinkedHashMap<>();
+
         for (DeviceTreeNodeInfo node : nodes) {
-            String displayPath = node.path.length() > pathWidth
-                    ? "..." + node.path.substring(node.path.length() - pathWidth + 3)
-                    : node.path;
-            System.out.printf(rowFormat, displayPath, node.depth, node.type);
+            String parentPath = getParentPath(node.path);
+            tree.computeIfAbsent(parentPath, k -> new ArrayList<>()).add(node);
         }
 
-        System.out.println("\nTotal nodes: " + nodes.size());
-        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        return tree;
+    }
+
+    private String getParentPath(String path) {
+        if (path == null || path.isEmpty() || !path.contains("/")) {
+            return "";
+        }
+        int lastSlash = path.lastIndexOf('/');
+        return lastSlash > 0 ? path.substring(0, lastSlash) : "";
+    }
+
+    private void printTreeNode(String parentPath, Map<String, List<DeviceTreeNodeInfo>> tree,
+            String prefix, boolean isRoot, String typeFilter) {
+        List<DeviceTreeNodeInfo> children = tree.get(parentPath);
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+
+        for (int i = 0; i < children.size(); i++) {
+            DeviceTreeNodeInfo node = children.get(i);
+            boolean isLast = (i == children.size() - 1);
+
+            // Get node name (last part of path)
+            String nodeName = node.path.contains("/")
+                    ? node.path.substring(node.path.lastIndexOf('/') + 1)
+                    : node.path;
+
+            // Print current node with tree characters
+            String connector = isLast ? "└── " : "├── ";
+
+            // Highlight matching nodes when filtering
+            boolean isMatch = typeFilter != null && !typeFilter.isEmpty() &&
+                    node.type.equalsIgnoreCase(typeFilter);
+
+            String nodeDisplay;
+            if (isMatch) {
+                // Highlight matching nodes in yellow
+                nodeDisplay = ColorPrinter.yellow(nodeName) +
+                        ColorPrinter.yellow(" [" + node.type + "]");
+            } else {
+                nodeDisplay = ColorPrinter.green(nodeName) +
+                        ColorPrinter.cyan(" [" + node.type + "]");
+            }
+
+            System.out.println(prefix + connector + nodeDisplay);
+
+            // Prepare prefix for children
+            String childPrefix = prefix + (isLast ? "    " : "│   ");
+
+            // Recursively print children
+            printTreeNode(node.path, tree, childPrefix, false, typeFilter);
+        }
     }
 
     private List<DeviceTreeNodeInfo> parseDeviceTreeNodes(String findOutput, String basePath) {
@@ -181,7 +321,7 @@ public class DeviceTreeCommands extends CommonCommands {
             throws IOException {
 
         if (DeviceTreeNodeProvider.deviceTreeNodes.isEmpty()) {
-            deviceTreeList("/proc/device-tree/", false);
+            deviceTreeList("/proc/device-tree/", 3, 100, "", false);
         }
 
         if (node == null || node.isEmpty()) {
