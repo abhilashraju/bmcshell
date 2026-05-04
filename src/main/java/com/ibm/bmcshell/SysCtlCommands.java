@@ -738,11 +738,87 @@ public class SysCtlCommands extends CommonCommands {
   }
 
   /**
+   * List all active systemd sockets
+   * Display all systemd socket units and their status
+   *
+   * Example: sysctl.list-sockets
+   */
+  @ShellMethod(key = "sysctl.list-sockets", value = "List all active systemd sockets")
+  @ShellMethodAvailability("availabilityCheck")
+  protected void listSockets() {
+    scmd("systemctl list-sockets");
+  }
+
+  /**
+   * List systemd sockets with filter
+   * Display systemd socket units matching a pattern
+   *
+   * Example: sysctl.list-sockets-filter --pattern bmcweb
+   *
+   * @param pattern Pattern to filter socket names
+   */
+  @ShellMethod(key = "sysctl.list-sockets-filter", value = "List systemd sockets with filter")
+  @ShellMethodAvailability("availabilityCheck")
+  protected void listSocketsFilter(
+      @ShellOption(value = { "--pattern", "-p" }) String pattern) {
+    String command = String.format("systemctl list-sockets | grep %s", pattern);
+    scmd(command);
+  }
+
+  /**
+   * Show detailed status of a systemd socket
+   * Display detailed information about a specific socket unit
+   *
+   * Example: sysctl.socket-status --name bmcweb.socket
+   *
+   * @param name Socket unit name (e.g., bmcweb.socket, bmcweb_444.socket)
+   */
+  @ShellMethod(key = "sysctl.socket-status", value = "Show detailed status of a systemd socket")
+  @ShellMethodAvailability("availabilityCheck")
+  protected void socketStatus(
+      @ShellOption(value = { "--name", "-n" }) String name) {
+    String command = String.format("systemctl status %s", name);
+    scmd(command);
+  }
+
+  /**
+   * Show systemd socket unit file contents
+   * Display the configuration file contents of a socket unit
+   *
+   * Example: sysctl.socket-cat --name bmcweb.socket
+   *
+   * @param name Socket unit name (e.g., bmcweb.socket, bmcweb_444.socket)
+   */
+  @ShellMethod(key = "sysctl.socket-cat", value = "Show systemd socket unit file contents")
+  @ShellMethodAvailability("availabilityCheck")
+  protected void socketCat(
+      @ShellOption(value = { "--name", "-n" }) String name) {
+    String command = String.format("systemctl cat %s", name);
+    scmd(command);
+  }
+
+  /**
+   * Show properties of a systemd socket
+   * Display all properties of a socket unit
+   *
+   * Example: sysctl.socket-show --name bmcweb.socket
+   *
+   * @param name Socket unit name (e.g., bmcweb.socket, bmcweb_444.socket)
+   */
+  @ShellMethod(key = "sysctl.socket-show", value = "Show properties of a systemd socket")
+  @ShellMethodAvailability("availabilityCheck")
+  protected void socketShow(
+      @ShellOption(value = { "--name", "-n" }) String name) {
+    String command = String.format("systemctl show %s", name);
+    scmd(command);
+  }
+
+  /**
    * Execute custom sysctl command
    * Run any sysctl command directly
-   * 
+   *
    * Example: sysctl.custom "sysctl -w net.ipv4.tcp_tw_reuse=1"
-   * 
+   *
    * @param command The complete sysctl command to execute
    */
   @ShellMethod(key = "sysctl.custom", value = "Execute custom sysctl command")
@@ -907,6 +983,22 @@ public class SysCtlCommands extends CommonCommands {
           sysctl.show-kernel
             Show kernel-related parameters
 
+        SYSTEMD SOCKET COMMANDS:
+          sysctl.list-sockets
+            List all active systemd sockets
+
+          sysctl.list-sockets-filter --pattern <name>
+            List systemd sockets matching pattern (e.g., bmcweb)
+
+          sysctl.socket-status --name <socket>
+            Show detailed status of a systemd socket
+
+          sysctl.socket-cat --name <socket>
+            Show systemd socket unit file contents
+
+          sysctl.socket-show --name <socket>
+            Show all properties of a systemd socket
+
         CUSTOM COMMANDS:
           sysctl.set --parameter <name> --value <value>
             Set any custom sysctl parameter
@@ -935,6 +1027,21 @@ public class SysCtlCommands extends CommonCommands {
 
           # Load settings from custom file
           sysctl.load --file /etc/sysctl.d/99-custom.conf
+
+          # List all systemd sockets
+          sysctl.list-sockets
+
+          # List bmcweb sockets only
+          sysctl.list-sockets-filter --pattern bmcweb
+
+          # Show status of bmcweb socket
+          sysctl.socket-status --name bmcweb.socket
+
+          # Show bmcweb socket configuration
+          sysctl.socket-cat --name bmcweb.socket
+
+          # Show all properties of bmcweb socket
+          sysctl.socket-show --name bmcweb.socket
 
         ╚══════════════════════════════════════════════════════════════════════════════╝
         """;

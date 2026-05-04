@@ -68,6 +68,68 @@ public class AccountServiceCommand extends CommonCommands {
         }
     }
 
+    @Component
+    public static class RoleIdProvider implements ValueProvider {
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List.of("Administrator", "Operator", "User", "ReadOnly")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class AccountTypesProvider implements ValueProvider {
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List
+                    .of("Redfish", "SNMP", "OEM", "HostConsole", "ManagerConsole", "IPMI", "KVMIP", "VirtualMedia",
+                            "WebUI")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class BooleanProvider implements ValueProvider {
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List.of("true", "false")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class MfaBypassTypesProvider implements ValueProvider {
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List.of("GoogleAuthenticator", "None")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Component
+    public static class HttpBasicAuthProvider implements ValueProvider {
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            return List.of("Enabled", "Disabled")
+                    .stream()
+                    .map(CompletionProposal::new)
+                    .collect(Collectors.toList());
+        }
+    }
+
     protected AccountServiceCommand(DbusCommnads dbusCommnads) throws IOException {
         this.dbusCommnads = dbusCommnads;
     }
@@ -76,23 +138,40 @@ public class AccountServiceCommand extends CommonCommands {
 
     @ShellMethod(key = "as.create_user")
     @ShellMethodAvailability("availabilityCheck")
-    public void createUser(@ShellOption(value = { "--name", "-n" }) String name,
-            @ShellOption(value = { "--privilege", "-p" }, defaultValue = "Administrator") String privilege)
+    public void createUser(
+            @ShellOption(value = { "--name", "-n" }) String name,
+            @ShellOption(value = { "--password", "-pw" }, defaultValue = "0penBmc0") String password,
+            @ShellOption(value = { "--privilege",
+                    "-p" }, defaultValue = "Administrator", valueProvider = RoleIdProvider.class) String privilege,
+            @ShellOption(value = { "--enabled", "-e" }, defaultValue = "true") boolean enabled,
+            @ShellOption(value = { "--account-types",
+                    "-at" }, defaultValue = ShellOption.NULL, valueProvider = AccountTypesProvider.class) String accountTypes)
             throws URISyntaxException, IOException {
 
-        // String args = String.format("%s %d %s %s true", name, 2, "ssh redfish",
-        // privilege);
-        // dbusCommnads.call("xyz.openbmc_project.User.Manager",
-        // "/xyz/openbmc_project/user",
-        // "xyz.openbmc_project.User.Manager",
-        // "CreateUser",
-        // "sassb", args);
-        post("/redfish/v1/AccountService/Accounts",
-                String.format(
-                        "{\"UserName\": \"%s\", \"Password\": \"0penBmc0\", \"RoleId\": \"%s\", \"Enabled\": true}",
-                        name, privilege),
-                false);
+        // Build JSON payload
+        StringBuilder jsonBuilder = new StringBuilder();
+        jsonBuilder.append("{");
+        jsonBuilder.append(String.format("\"UserName\": \"%s\"", name));
+        jsonBuilder.append(String.format(", \"Password\": \"%s\"", password));
+        jsonBuilder.append(String.format(", \"RoleId\": \"%s\"", privilege));
+        jsonBuilder.append(String.format(", \"Enabled\": %s", enabled));
 
+        // Add AccountTypes if provided
+        if (accountTypes != null && !accountTypes.isEmpty()) {
+            jsonBuilder.append(", \"AccountTypes\": [");
+            String[] types = accountTypes.split(",");
+            for (int i = 0; i < types.length; i++) {
+                jsonBuilder.append(String.format("\"%s\"", types[i].trim()));
+                if (i < types.length - 1) {
+                    jsonBuilder.append(", ");
+                }
+            }
+            jsonBuilder.append("]");
+        }
+
+        jsonBuilder.append("}");
+
+        post("/redfish/v1/AccountService/Accounts", jsonBuilder.toString(), false);
     }
 
     @ShellMethod(key = "as.change_password")
@@ -100,8 +179,79 @@ public class AccountServiceCommand extends CommonCommands {
     public void changePassword(@ShellOption(value = { "--name", "-n" }) String name,
             @ShellOption(value = { "--password", "-p" }) String passwString) throws URISyntaxException, IOException {
         String data = String.format("{\"Password\":\"%s\"}", passwString);
-        patch(String.format("AccountService/Accounts/%s", name), data);
+        patch(String.format("/redfish/v1/AccountService/Accounts/%s", name), data);
+    }
 
+    @ShellMethod(key = "as.update_user", value = "Update user account properties")
+    @ShellMethodAvailability("availabilityCheck")
+    public void updateUser(
+            @ShellOption(value = { "--name", "-n" }) String name,
+            @ShellOption(value = { "--new-name", "-nn" }, defaultValue = ShellOption.NULL) String newUserName,
+            @ShellOption(value = { "--password", "-pw" }, defaultValue = ShellOption.NULL) String password,
+            @ShellOption(value = { "--role-id",
+                    "-r" }, defaultValue = ShellOption.NULL, valueProvider = RoleIdProvider.class) String roleId,
+            @ShellOption(value = { "--enabled",
+                    "-e" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String enabled,
+            @ShellOption(value = { "--locked",
+                    "-l" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String locked,
+            @ShellOption(value = { "--account-types",
+                    "-at" }, defaultValue = ShellOption.NULL, valueProvider = AccountTypesProvider.class) String accountTypes)
+            throws URISyntaxException, IOException {
+
+        StringBuilder jsonBuilder = new StringBuilder();
+        jsonBuilder.append("{");
+        boolean first = true;
+
+        if (newUserName != null) {
+            jsonBuilder.append(String.format("\"UserName\": \"%s\"", newUserName));
+            first = false;
+        }
+
+        if (password != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"Password\": \"%s\"", password));
+            first = false;
+        }
+
+        if (roleId != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"RoleId\": \"%s\"", roleId));
+            first = false;
+        }
+
+        if (enabled != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"Enabled\": %s", enabled));
+            first = false;
+        }
+
+        if (locked != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"Locked\": %s", locked));
+            first = false;
+        }
+
+        if (accountTypes != null && !accountTypes.isEmpty()) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append("\"AccountTypes\": [");
+            String[] types = accountTypes.split(",");
+            for (int i = 0; i < types.length; i++) {
+                jsonBuilder.append(String.format("\"%s\"", types[i].trim()));
+                if (i < types.length - 1) {
+                    jsonBuilder.append(", ");
+                }
+            }
+            jsonBuilder.append("]");
+        }
+
+        jsonBuilder.append("}");
+
+        patch(String.format("/redfish/v1/AccountService/Accounts/%s", name), jsonBuilder.toString());
     }
 
     @ShellMethod(key = "as.install_acf")
@@ -141,10 +291,130 @@ public class AccountServiceCommand extends CommonCommands {
 
     @ShellMethod(key = "as.enablemfa")
     @ShellMethodAvailability("availabilityCheck")
-    public void enablemfa(boolean enable) throws URISyntaxException, IOException {
-
+    public void enablemfa(
+            @ShellOption(value = { "--enable", "-e" }, valueProvider = BooleanProvider.class) boolean enable)
+            throws URISyntaxException, IOException {
         patch("/redfish/v1/AccountService/", toJson(new ObjectMapper().createObjectNode(),
                 "MultiFactorAuth/GoogleAuthenticator/Enabled", (node, key) -> node.put(key, enable)));
+    }
+
+    @ShellMethod(key = "as.set_account_lockout", value = "Set account lockout threshold and duration")
+    @ShellMethodAvailability("availabilityCheck")
+    public void setAccountLockout(
+            @ShellOption(value = { "--threshold", "-t" }, defaultValue = ShellOption.NULL) Integer lockoutThreshold,
+            @ShellOption(value = { "--duration", "-d" }, defaultValue = ShellOption.NULL) Integer unlockTimeout)
+            throws URISyntaxException, IOException {
+
+        StringBuilder jsonBuilder = new StringBuilder();
+        jsonBuilder.append("{");
+        boolean first = true;
+
+        if (lockoutThreshold != null) {
+            jsonBuilder.append(String.format("\"AccountLockoutThreshold\": %d", lockoutThreshold));
+            first = false;
+        }
+
+        if (unlockTimeout != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"AccountLockoutDuration\": %d", unlockTimeout));
+        }
+
+        jsonBuilder.append("}");
+
+        patch("/redfish/v1/AccountService", jsonBuilder.toString());
+    }
+
+    @ShellMethod(key = "as.set_password_policy", value = "Set password policy (min/max length)")
+    @ShellMethodAvailability("availabilityCheck")
+    public void setPasswordPolicy(
+            @ShellOption(value = { "--min-length", "-min" }, defaultValue = ShellOption.NULL) Integer minPasswordLength,
+            @ShellOption(value = { "--max-length", "-max" }, defaultValue = ShellOption.NULL) Integer maxPasswordLength)
+            throws URISyntaxException, IOException {
+
+        StringBuilder jsonBuilder = new StringBuilder();
+        jsonBuilder.append("{");
+        boolean first = true;
+
+        if (minPasswordLength != null) {
+            jsonBuilder.append(String.format("\"MinPasswordLength\": %d", minPasswordLength));
+            first = false;
+        }
+
+        if (maxPasswordLength != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"MaxPasswordLength\": %d", maxPasswordLength));
+        }
+
+        jsonBuilder.append("}");
+
+        patch("/redfish/v1/AccountService", jsonBuilder.toString());
+    }
+
+    @ShellMethod(key = "as.set_http_basic_auth", value = "Enable or disable HTTP Basic Authentication")
+    @ShellMethodAvailability("availabilityCheck")
+    public void setHttpBasicAuth(
+            @ShellOption(value = { "--state", "-s" }, valueProvider = HttpBasicAuthProvider.class) String state)
+            throws URISyntaxException, IOException {
+        String data = String.format("{\"HTTPBasicAuth\": \"%s\"}", state);
+        patch("/redfish/v1/AccountService", data);
+    }
+
+    @ShellMethod(key = "as.set_auth_methods", value = "Configure authentication methods (BasicAuth, Cookie, SessionToken, TLS, XToken)")
+    @ShellMethodAvailability("availabilityCheck")
+    public void setAuthMethods(
+            @ShellOption(value = { "--basic-auth",
+                    "-ba" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String basicAuth,
+            @ShellOption(value = { "--cookie",
+                    "-c" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String cookie,
+            @ShellOption(value = { "--session-token",
+                    "-st" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String sessionToken,
+            @ShellOption(value = { "--tls",
+                    "-t" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String tls,
+            @ShellOption(value = { "--xtoken",
+                    "-xt" }, defaultValue = ShellOption.NULL, valueProvider = BooleanProvider.class) String xToken)
+            throws URISyntaxException, IOException {
+
+        StringBuilder jsonBuilder = new StringBuilder();
+        jsonBuilder.append("{\"Oem\":{\"OpenBMC\":{\"AuthMethods\":{");
+        boolean first = true;
+
+        if (basicAuth != null) {
+            jsonBuilder.append(String.format("\"BasicAuth\": %s", basicAuth));
+            first = false;
+        }
+
+        if (cookie != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"Cookie\": %s", cookie));
+            first = false;
+        }
+
+        if (sessionToken != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"SessionToken\": %s", sessionToken));
+            first = false;
+        }
+
+        if (tls != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"TLS\": %s", tls));
+            first = false;
+        }
+
+        if (xToken != null) {
+            if (!first)
+                jsonBuilder.append(", ");
+            jsonBuilder.append(String.format("\"XToken\": %s", xToken));
+        }
+
+        jsonBuilder.append("}}}}");
+
+        patch("/redfish/v1/AccountService", jsonBuilder.toString());
     }
 
     @ShellMethod(key = "as.generateSecretKey")
@@ -187,12 +457,14 @@ public class AccountServiceCommand extends CommonCommands {
 
     @ShellMethod(key = "as.bypass_mfa")
     @ShellMethodAvailability("availabilityCheck")
-    public void bypassMfa(@ShellOption(value = { "--bypass", "-b" }) boolean bypass)
+    public void bypassMfa(
+            @ShellOption(value = { "--name", "-n" }, defaultValue = ShellOption.NULL) String name,
+            @ShellOption(value = { "--bypass-type",
+                    "-bt" }, valueProvider = MfaBypassTypesProvider.class) String bypassType)
             throws URISyntaxException, IOException {
-        String data = String.format("{\"MFABypass\":{\"BypassTypes\":[\"%s\"]}}",
-                bypass ? "GoogleAuthenticator"
-                        : "None");
-        patch(String.format("/redfish/v1/AccountService/Accounts/%s", getUserName()), data);
+        String username = (name != null) ? name : getUserName();
+        String data = String.format("{\"MFABypass\":{\"BypassTypes\":[\"%s\"]}}", bypassType);
+        patch(String.format("/redfish/v1/AccountService/Accounts/%s", username), data);
     }
 
     @ShellMethod(key = "as.clear_secret_key")
