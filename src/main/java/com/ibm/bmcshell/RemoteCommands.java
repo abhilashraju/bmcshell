@@ -83,7 +83,7 @@ public class RemoteCommands extends CommonCommands {
         scmd(String.format("cat %s", p));
     }
 
-    @ShellMethod(key = "ro.vi", value = "eg: ro.vi filepath - Edit remote file locally with vi")
+    @ShellMethod(key = { "ro.vi", "vi" }, value = "eg: ro.vi filepath - Edit remote file locally with vi")
     @ShellMethodAvailability("availabilityCheck")
     void vi(@ShellOption(valueProvider = RemoteFileCompleter.class) String p) {
         java.io.File tempFile = null;
@@ -159,6 +159,17 @@ public class RemoteCommands extends CommonCommands {
                 sftpChannel.put(tempFile.getAbsolutePath(), remoteTempFile);
                 sftpChannel.disconnect();
 
+                // Extract directory path and create it if it doesn't exist
+                String dirPath = p.substring(0, p.lastIndexOf('/'));
+                if (!dirPath.isEmpty()) {
+                    String mkdirCommand = name.equals("root")
+                            ? String.format("mkdir -p %s", dirPath)
+                            : String.format("sudo -i mkdir -p %s", dirPath);
+
+                    ByteArrayOutputStream mkdirResult = new ByteArrayOutputStream();
+                    runCommandShort(mkdirResult, fullMachine, name, passwd, mkdirCommand);
+                }
+
                 // Now move the file to final location with proper permissions
                 String moveCommand = name.equals("root")
                         ? String.format("mv %s %s", remoteTempFile, p)
@@ -209,8 +220,7 @@ public class RemoteCommands extends CommonCommands {
 
     @ShellMethod(key = { "ro.running", "running" }, value = "eg: ro.running pattern [<path>]")
     @ShellMethodAvailability("availabilityCheck")
-    void running(String pattern,
-            @ShellOption(value = { "--path", "-p" }, defaultValue = "/") String path) {
+    void running(String pattern) {
         scmd(String.format("ps | grep %s", pattern));
     }
 

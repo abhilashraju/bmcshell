@@ -36,7 +36,7 @@ public class InstallCommands extends CommonCommands {
     @ShellMethod(key = "install.mount", value = "eg: install.mount")
     void mount() {
 
-        scmd("mkdir -p /tmp/persist/usr ; mkdir -p /tmp/persist/work/usr;mount -t overlay  -o lowerdir=/usr,upperdir=/tmp/persist/usr,workdir=/tmp/persist/work/usr overlay /usr");
+        scmd("sudo sh -c 'mkdir -p /tmp/persist/usr && mkdir -p /tmp/persist/work/usr && mount -t overlay -o lowerdir=/usr,upperdir=/tmp/persist/usr,workdir=/tmp/persist/work/usr overlay /usr'");
 
     }
 
@@ -75,7 +75,7 @@ public class InstallCommands extends CommonCommands {
             pkgname = pkgname.split("_")[0];
 
             String command = String.format(
-                    "opkg remove --force-remove %s;opkg install --force-reinstall --force-depends %s",
+                    "sudo opkg remove --force-remove %s;sudo opkg install --force-reinstall --force-depends %s",
                     pkgname, a);
             System.out.println(command);
             scmd(command);
