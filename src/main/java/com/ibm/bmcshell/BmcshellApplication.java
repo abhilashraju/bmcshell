@@ -65,6 +65,11 @@ public class BmcshellApplication {
 	}
 
 	public static void main(String[] args) {
+		// Configure JVM to prefer IPv4 and use system DNS resolver
+		System.setProperty("java.net.preferIPv4Stack", "true");
+		System.setProperty("networkaddress.cache.ttl", "0");
+		System.setProperty("networkaddress.cache.negative.ttl", "0");
+
 		// String[] disabledCommands = {"--spring.shell.command.help.enabled=false"};
 		// String[] fullArgs = StringUtils.concatenateStringArrays(args,
 		// disabledCommands);

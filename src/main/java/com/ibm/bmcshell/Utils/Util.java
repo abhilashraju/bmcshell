@@ -108,7 +108,9 @@ public class Util {
         final ExchangeStrategies strategies = ExchangeStrategies.builder()
                 .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(size))
                 .build();
-        HttpClient httpClient = HttpClient.create(connectionProvider).secure(t -> t.sslContext(sslContext))
+
+        HttpClient httpClient = HttpClient.create(connectionProvider)
+                .secure(t -> t.sslContext(sslContext))
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
                 .option(ChannelOption.SO_KEEPALIVE, false)
                 .responseTimeout(Duration.ofMillis(15000))
@@ -239,7 +241,7 @@ public class Util {
         if (m.startsWith("qemu")) {
             return localName;
         }
-        if(m.contains(".com")){
+        if (m.contains(".com")) {
             return m;
         }
         return String.format(baseName, m);
@@ -348,5 +350,4 @@ public class Util {
         return next;
     }
 
-    
 }

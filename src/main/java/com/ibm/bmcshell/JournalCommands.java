@@ -64,7 +64,7 @@ public class JournalCommands extends CommonCommands {
 
     @ShellMethod(key = "journal.clear", value = "eg: journal.clear")
     void journalctlClear() {
-        scmd("journalctl --rotate; journalctl --vacuum-time=1s");
+        scmd(" journalctl --rotate; journalctl --vacuum-time=1s");
     }
 
     @ShellMethod(key = "journal.help", value = "Show journal commands help. eg: journal.help")

@@ -338,7 +338,18 @@ public class CommonCommands implements ApplicationContextAware {
                         .block();
                 return response.getBody();
             } catch (Exception ex) {
-                System.out.println("Error: " + ex.getMessage());
+                String errorMsg = ex.getMessage();
+                if (errorMsg != null && errorMsg.contains("Failed to resolve")) {
+                    System.err.println("Error: Failed to resolve '" + auri.getHost() + "'");
+                    System.err.println("This is a DNS resolution issue. Possible solutions:");
+                    System.err.println("  1. Check your network connection");
+                    System.err.println("  2. Verify the hostname is correct");
+                    System.err.println(
+                            "  3. Clear DNS cache: sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder");
+                    System.err.println("  4. Try using IP address instead of hostname");
+                } else {
+                    System.err.println("Error: " + errorMsg);
+                }
                 return null;
 
             }
@@ -570,6 +581,16 @@ public class CommonCommands implements ApplicationContextAware {
     protected void makeApiList() throws URISyntaxException, JsonProcessingException {
         var mapper = new ObjectMapper();
         var resp = makeUnAuthRequest(Util.normalise(""));
+
+        if (resp == null || resp.isEmpty()) {
+            System.err.println("Error: Failed to connect to BMC. Please check:");
+            System.err.println("  1. Network connectivity");
+            System.err.println("  2. DNS resolution for the BMC hostname");
+            System.err.println("  3. BMC is powered on and accessible");
+            System.err.println("\nTry running 'machine <hostname>' to set a different BMC target.");
+            return;
+        }
+
         lastCurlResponse = resp;
         endPoints.push(Util.sorted(Util.buildLinksAndTargets(mapper.readTree(resp))));
         endPoints.peek().add(0, new Util.EndPoints("back", "Get"));
@@ -1201,13 +1222,36 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethodAvailability("availabilityCheck")
     public void scmd(String command) {
         String name = userName.equals("root") ? userName : "service";
-        var newCmd = name.equals("root") ? Optional.of(command)
-                : Optional.of("sudo -i " + command);
+        // Add sudo to each command in a chain if not already present
+        String commandWithSudo = addSudoToCommands(command);
+        var newCmd = Optional.of(commandWithSudo);
         newCmd.ifPresentOrElse(a -> {
             runCommand(Util.fullMachineName(machine), name, passwd, a);
         }, () -> {
             System.out.println(command + " is invalid");
         });
+    }
+
+    private String addSudoToCommands(String command) {
+        String trimmedCommand = command.trim();
+
+        // If command already starts with sudo, return as is
+        if (trimmedCommand.startsWith("sudo")) {
+            return trimmedCommand;
+        }
+
+        // For complex commands with pipes, redirects, or command chains,
+        // wrap the entire command in sudo -i sh -c
+        if (trimmedCommand.contains("|") || trimmedCommand.contains("&&") ||
+                trimmedCommand.contains("||") || trimmedCommand.contains(";") ||
+                trimmedCommand.contains(">") || trimmedCommand.contains("<")) {
+            // Escape single quotes in the command
+            String escapedCommand = trimmedCommand.replace("'", "'\\''");
+            return "sudo -i sh -c '" + escapedCommand + "'";
+        }
+
+        // For simple commands, just prepend sudo -i
+        return "sudo -i " + trimmedCommand;
     }
 
     @ShellMethod(key = "cmd", value = "eg cmd 'ls /tmp/' . Will execute the specified command in machine")
