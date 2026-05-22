@@ -1,7 +1,9 @@
 package com.ibm.bmcshell.console;
 
+import com.ibm.bmcshell.exceptions.HttpClientException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ConnectTimeoutException;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
@@ -9,20 +11,28 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
+import reactor.netty.http.client.HttpClientResponse;
 import reactor.netty.http.websocket.WebsocketInbound;
 import reactor.netty.http.websocket.WebsocketOutbound;
 
 import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLHandshakeException;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.ConnectException;
 import java.net.URI;
+import java.net.UnknownHostException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -101,7 +111,16 @@ public class ObmcConsoleClientReactor {
     }
 
     public CompletableFuture<Void> connect() {
+        return connectWithRetry(0);
+    }
+
+    /**
+     * Connect with retry logic based on error type
+     */
+    private CompletableFuture<Void> connectWithRetry(int attemptNumber) {
         return CompletableFuture.runAsync(() -> {
+            AtomicReference<HttpClientException> lastException = new AtomicReference<>();
+
             try {
                 // Determine path based on console type
                 String path;
@@ -112,8 +131,8 @@ public class ObmcConsoleClientReactor {
                 }
                 URI uri = new URI("wss://" + bmcUrl + path);
 
-                logger.info("Connecting to BMC {} console: {}",
-                        consoleType == ConsoleType.BMC_SHELL ? "shell" : "serial", uri);
+                logger.info("Connecting to BMC {} console: {} (attempt {})",
+                        consoleType == ConsoleType.BMC_SHELL ? "shell" : "serial", uri, attemptNumber + 1);
 
                 // Create HTTP client with SSL that trusts all certificates
                 HttpClient httpClient = HttpClient.create()
@@ -124,23 +143,24 @@ public class ObmcConsoleClientReactor {
                                         .build());
                             } catch (SSLException e) {
                                 logger.error("Failed to configure SSL", e);
+                                lastException.set(HttpClientException.sslError("SSL configuration failed", e));
                             }
                         })
                         .headers(headers -> {
                             if (token != null && !token.isEmpty()) {
                                 headers.add("X-Auth-Token", token);
-                                logger.info("Added X-Auth-Token header (length: {})", token.length());
+                                logger.debug("Added X-Auth-Token header");
                             } else {
                                 String auth = username + ":" + password;
                                 String encodedAuth = java.util.Base64.getEncoder()
                                         .encodeToString(auth.getBytes(StandardCharsets.UTF_8));
                                 headers.add("Authorization", "Basic " + encodedAuth);
-                                logger.info("Added Basic Authorization header for user: {}", username);
+                                logger.debug("Added Basic Authorization header for user: {}", username);
                             }
                         })
                         .responseTimeout(Duration.ofSeconds(30));
 
-                // Connect to WebSocket
+                // Connect to WebSocket with error handling
                 httpClient.websocket()
                         .uri(uri.toString())
                         .handle((inbound, outbound) -> {
@@ -163,9 +183,10 @@ public class ObmcConsoleClientReactor {
                                         }
                                     })
                                     .doOnError(error -> {
-                                        logger.error("WebSocket error", error);
+                                        HttpClientException httpEx = categorizeError(error);
+                                        logger.error("WebSocket error: {}", httpEx.getUserMessage());
                                         if (errorHandler != null) {
-                                            errorHandler.accept("WebSocket error: " + error.getMessage());
+                                            errorHandler.accept(httpEx.getUserMessage());
                                         }
                                     })
                                     .doOnComplete(() -> {
@@ -178,23 +199,167 @@ public class ObmcConsoleClientReactor {
                                     })
                                     .then();
                         })
+                        .doOnError(error -> {
+                            HttpClientException httpEx = categorizeError(error);
+                            lastException.set(httpEx);
+                            logger.error("Connection error: {}", httpEx.getUserMessage());
+                        })
                         .subscribe();
 
                 // Wait for connection
                 if (!connectLatch.await(30, TimeUnit.SECONDS)) {
-                    throw new IOException("Connection timeout");
+                    throw HttpClientException.timeoutError("Connection timeout after 30 seconds");
                 }
 
                 logger.info("Successfully connected to BMC console");
 
+            } catch (HttpClientException e) {
+                lastException.set(e);
+                handleConnectionError(e, attemptNumber);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                HttpClientException httpEx = new HttpClientException(
+                        HttpClientException.ErrorType.UNKNOWN_ERROR, "Connection interrupted", e);
+                lastException.set(httpEx);
+                handleConnectionError(httpEx, attemptNumber);
             } catch (Exception e) {
-                logger.error("Failed to connect to BMC console", e);
-                if (errorHandler != null) {
-                    errorHandler.accept("Connection failed: " + e.getMessage());
+                HttpClientException httpEx = categorizeError(e);
+                lastException.set(httpEx);
+                handleConnectionError(httpEx, attemptNumber);
+            }
+
+            // If we have an exception and should retry, do so
+            HttpClientException finalException = lastException.get();
+            if (finalException != null) {
+                if (shouldRetry(finalException, attemptNumber)) {
+                    logger.info("Retrying connection (attempt {}/{})",
+                            attemptNumber + 2, finalException.getMaxRetryAttempts() + 1);
+                    try {
+                        Thread.sleep(1000 * (attemptNumber + 1)); // Exponential backoff
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                    connectWithRetry(attemptNumber + 1).join();
+                } else {
+                    throw new RuntimeException(finalException);
                 }
-                throw new RuntimeException("Failed to connect", e);
             }
         });
+    }
+
+    /**
+     * Categorize exception into HttpClientException
+     */
+    private HttpClientException categorizeError(Throwable error) {
+        // Unwrap if needed
+        Throwable cause = error.getCause() != null ? error.getCause() : error;
+
+        // Network connectivity errors
+        if (cause instanceof UnknownHostException) {
+            return HttpClientException.connectivityError(
+                    "Cannot resolve hostname: " + bmcUrl + ". Please check the BMC address.", cause);
+        }
+        if (cause instanceof ConnectException || cause instanceof ConnectTimeoutException) {
+            return HttpClientException.connectivityError(
+                    "Cannot connect to BMC at " + bmcUrl
+                            + ". Please verify the BMC is reachable and the network is working.",
+                    cause);
+        }
+        if (cause instanceof ClosedChannelException) {
+            return HttpClientException.connectivityError(
+                    "Connection closed unexpectedly. The BMC may have rejected the connection.", cause);
+        }
+
+        // SSL/TLS errors
+        if (cause instanceof SSLException || cause instanceof SSLHandshakeException) {
+            return HttpClientException.sslError(
+                    "SSL/TLS handshake failed. This may indicate certificate issues or incompatible SSL protocols.",
+                    cause);
+        }
+
+        // Timeout errors
+        if (cause instanceof TimeoutException) {
+            return HttpClientException.timeoutError(
+                    "Request timed out. The BMC may be slow to respond or unreachable.");
+        }
+
+        // Check for HTTP status codes in error message
+        String errorMsg = error.getMessage();
+        if (errorMsg != null) {
+            if (errorMsg.contains("401") || errorMsg.contains("Unauthorized")) {
+                return HttpClientException.authError(
+                        "Authentication failed. Please check your username, password, or token.");
+            }
+            if (errorMsg.contains("403") || errorMsg.contains("Forbidden")) {
+                return HttpClientException.fromStatusCode(403,
+                        "Access forbidden. You may not have permission to access this console.");
+            }
+            if (errorMsg.contains("404") || errorMsg.contains("Not Found")) {
+                return HttpClientException.fromStatusCode(404,
+                        "Console endpoint not found. The BMC may not support this console type.");
+            }
+            if (errorMsg.matches(".*\\b[45]\\d{2}\\b.*")) {
+                // Extract status code
+                try {
+                    int statusCode = Integer.parseInt(errorMsg.replaceAll(".*\\b([45]\\d{2})\\b.*", "$1"));
+                    return HttpClientException.fromStatusCode(statusCode, errorMsg);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        // Default unknown error
+        return new HttpClientException(HttpClientException.ErrorType.UNKNOWN_ERROR,
+                "Unexpected error: " + error.getMessage(), error);
+    }
+
+    /**
+     * Handle connection error with appropriate logging and user notification
+     */
+    private void handleConnectionError(HttpClientException exception, int attemptNumber) {
+        String userMessage = exception.getUserMessage();
+
+        // Log based on error type
+        switch (exception.getErrorType()) {
+            case CONNECTIVITY_ERROR:
+                logger.error("Network connectivity issue: {}", exception.getMessage());
+                break;
+            case CLIENT_ERROR:
+                logger.error("Client error (HTTP {}): {}", exception.getStatusCode(), exception.getMessage());
+                break;
+            case SERVER_ERROR:
+                logger.warn("Server error (HTTP {}): {}", exception.getStatusCode(), exception.getMessage());
+                break;
+            case SSL_ERROR:
+                logger.error("SSL/TLS error: {}", exception.getMessage());
+                break;
+            case AUTH_ERROR:
+                logger.error("Authentication error: {}", exception.getMessage());
+                break;
+            case TIMEOUT_ERROR:
+                logger.error("Timeout error: {}", exception.getMessage());
+                break;
+            default:
+                logger.error("Unknown error: {}", exception.getMessage());
+        }
+
+        // Notify error handler
+        if (errorHandler != null) {
+            errorHandler.accept(userMessage);
+        }
+    }
+
+    /**
+     * Determine if we should retry based on error type and attempt number
+     */
+    private boolean shouldRetry(HttpClientException exception, int attemptNumber) {
+        // Don't retry if not retryable
+        if (!exception.isRetryable()) {
+            return false;
+        }
+
+        // Check if we've exceeded max retry attempts
+        return attemptNumber < exception.getMaxRetryAttempts();
     }
 
     public void sendData(byte[] data) throws IOException {

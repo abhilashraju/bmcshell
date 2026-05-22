@@ -70,21 +70,130 @@ public class Util {
         }
     };
 
+    /**
+     * Retry a callable operation with intelligent error handling
+     * - Connectivity errors: no retry, fail immediately
+     * - Client errors (4xx): no retry, fail immediately
+     * - Server errors (5xx): retry up to 2 times
+     * - Other errors: no retry
+     */
     public static <R> R tryUntil(int count, Callable<R> f) {
-        while (count > 0) {
+        int maxRetries = Math.min(count, 3); // Cap at 3 total attempts
+        int attempt = 0;
+        Exception lastException = null;
+
+        while (attempt < maxRetries) {
             try {
                 return f.apply();
             } catch (Exception ex) {
-                if (--count == 0) {
-                    try {
-                        throw ex;
-                    } catch (JsonProcessingException e) {
-                        throw new RuntimeException(e);
+                lastException = ex;
+                attempt++;
+
+                // Determine if we should retry based on exception type
+                boolean shouldRetry = shouldRetryException(ex, attempt, maxRetries);
+
+                if (!shouldRetry || attempt >= maxRetries) {
+                    // Log the error appropriately
+                    logException(ex, attempt, false);
+
+                    if (ex instanceof JsonProcessingException) {
+                        throw new RuntimeException(ex);
                     }
+                    throw new RuntimeException("Operation failed after " + attempt + " attempt(s)", ex);
+                }
+
+                // Log retry attempt
+                logException(ex, attempt, true);
+
+                // Exponential backoff before retry
+                try {
+                    Thread.sleep(1000L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Operation interrupted", ie);
                 }
             }
         }
-        return null;
+
+        throw new RuntimeException("Operation failed after " + attempt + " attempts", lastException);
+    }
+
+    /**
+     * Determine if an exception should trigger a retry
+     */
+    private static boolean shouldRetryException(Exception ex, int attempt, int maxRetries) {
+        String message = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+
+        // Network connectivity errors - don't retry
+        if (ex instanceof java.net.UnknownHostException ||
+                ex instanceof java.net.ConnectException ||
+                message.contains("connection refused") ||
+                message.contains("no route to host") ||
+                message.contains("network is unreachable")) {
+            System.err.println("Network connectivity issue detected - not retrying");
+            return false;
+        }
+
+        // SSL/TLS errors - don't retry
+        if (ex instanceof javax.net.ssl.SSLException ||
+                message.contains("ssl") ||
+                message.contains("certificate")) {
+            System.err.println("SSL/TLS error detected - not retrying");
+            return false;
+        }
+
+        // Authentication errors - don't retry
+        if (message.contains("401") ||
+                message.contains("unauthorized") ||
+                message.contains("403") ||
+                message.contains("forbidden")) {
+            System.err.println("Authentication/Authorization error detected - not retrying");
+            return false;
+        }
+
+        // Client errors (4xx) - don't retry
+        if (message.matches(".*\\b4\\d{2}\\b.*")) {
+            System.err.println("Client error (4xx) detected - not retrying");
+            return false;
+        }
+
+        // Server errors (5xx) - retry up to 2 times (3 total attempts)
+        if (message.matches(".*\\b5\\d{2}\\b.*")) {
+            if (attempt < 3) {
+                System.err.println("Server error (5xx) detected - will retry (attempt " + attempt + "/3)");
+                return true;
+            }
+            System.err.println("Server error (5xx) - max retries reached");
+            return false;
+        }
+
+        // Timeout errors - don't retry (BMC is likely overloaded or unreachable)
+        if (ex instanceof java.util.concurrent.TimeoutException ||
+                message.contains("timeout") ||
+                message.contains("timed out")) {
+            System.err.println("Timeout error detected - not retrying");
+            return false;
+        }
+
+        // For other errors, don't retry by default
+        System.err.println("Unknown error type - not retrying");
+        return false;
+    }
+
+    /**
+     * Log exception with appropriate context
+     */
+    private static void logException(Exception ex, int attempt, boolean willRetry) {
+        String message = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+
+        if (willRetry) {
+            System.err.println("Attempt " + attempt + " failed: " + message + " - Retrying...");
+        } else {
+            System.err.println("Operation failed: " + message);
+            if (ex.getCause() != null) {
+                System.err.println("Caused by: " + ex.getCause().getMessage());
+            }
+        }
     }
 
     static String currentEventFilters = "*";

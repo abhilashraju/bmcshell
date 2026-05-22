@@ -14,11 +14,16 @@ import org.springframework.shell.standard.ShellOption;
 import org.springframework.shell.standard.ValueProvider;
 import org.springframework.stereotype.Component;
 
+import com.ibm.bmcshell.exceptions.HttpClientException;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -423,125 +428,124 @@ public class ConsoleCommands extends CommonCommands {
                     .onDisconnected(() -> logger.info("BMC shell disconnected"))
                     .build();
 
-            // Connect
+            // Connect with timeout
             CompletableFuture<Void> connectFuture = activeConsoleClient.connect();
-            connectFuture.get(); // Wait for connection
+            try {
+                connectFuture.get(35, TimeUnit.SECONDS); // Wait for connection with timeout
+            } catch (TimeoutException te) {
+                activeConsoleClient = null;
+                return ColorPrinter.red("✗ Connection timeout: Failed to connect within 35 seconds");
+            }
 
             return ColorPrinter.green("✓ Connected to BMC shell: " + machine + "/bmc-console");
 
+        } catch (ExecutionException e) {
+            // Unwrap the exception to get the root cause
+            Throwable cause = unwrapException(e);
+            String errorMessage = formatErrorMessage(cause);
+            logger.error("Failed to connect to BMC shell: {}", errorMessage, cause);
+
+            // Clean up failed connection
+            if (activeConsoleClient != null) {
+                try {
+                    activeConsoleClient.disconnect();
+                } catch (Exception cleanupError) {
+                    logger.debug("Error cleaning up failed connection", cleanupError);
+                }
+                activeConsoleClient = null;
+            }
+
+            return ColorPrinter.red("✗ " + errorMessage);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Connection interrupted", e);
+            if (activeConsoleClient != null) {
+                activeConsoleClient = null;
+            }
+            return ColorPrinter.red("✗ Connection interrupted");
         } catch (Exception e) {
-            logger.error("Failed to connect to BMC shell", e);
-            return ColorPrinter.red("✗ Failed to connect: " + e.getMessage());
+            logger.error("Unexpected error connecting to BMC shell", e);
+            if (activeConsoleClient != null) {
+                activeConsoleClient = null;
+            }
+            return ColorPrinter.red("✗ Unexpected error: " + e.getMessage());
         }
     }
 
     /**
-     * Start interactive BMC shell session with special key support
+     * Unwrap nested exceptions to get the root cause
+     * Handles ExecutionException -> RuntimeException -> HttpClientException chain
      */
-    @ShellMethod(value = "Start interactive BMC shell session", key = "bmc-shell-interactive")
-    public String bmcShellInteractive() {
-        if (activeConsoleClient == null || !activeConsoleClient.isConnected()) {
-            return ColorPrinter.red("✗ Not connected to BMC shell. Use 'bmc-shell-connect' first.");
+    private Throwable unwrapException(Throwable throwable) {
+        Throwable current = throwable;
+
+        // Unwrap ExecutionException
+        if (current instanceof ExecutionException && current.getCause() != null) {
+            current = current.getCause();
         }
 
-        try {
-            terminal.writer().println(ColorPrinter.cyan("Starting interactive BMC shell session..."));
-            terminal.writer().println(ColorPrinter.yellow("Type 'exit' to return to BMC SHELL"));
-            terminal.writer().println(
-                    ColorPrinter.yellow(
-                            "Special keys: Alt+C (Mac: Option+C) for Ctrl-C, Alt+D for Ctrl-D, Alt+Z for Ctrl-Z, Alt+E for ESC"));
-            terminal.writer().println(ColorPrinter.yellow("Commands are sent when you press Enter"));
-            terminal.writer().flush();
-
-            // Use JLine terminal reader with custom key bindings
-            org.jline.reader.LineReader reader = org.jline.reader.LineReaderBuilder.builder()
-                    .terminal(terminal)
-                    .build();
-
-            // Bind Alt+C to send Ctrl-C to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-ctrl-c"),
-                    org.jline.keymap.KeyMap.alt('c'));
-            // Bind Alt+D to send Ctrl-D to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-ctrl-d"),
-                    org.jline.keymap.KeyMap.alt('d'));
-            // Bind Alt+Z to send Ctrl-Z to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-ctrl-z"),
-                    org.jline.keymap.KeyMap.alt('z'));
-            // Bind Alt+E to send ESC to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-esc"),
-                    org.jline.keymap.KeyMap.alt('e'));
-
-            // Add custom widgets for special keys
-            reader.getWidgets().put("send-ctrl-c", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x03 });
-                    terminal.writer().println(ColorPrinter.gray("[Sent Ctrl-C]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send Ctrl-C", e);
-                }
-                return true;
-            });
-            reader.getWidgets().put("send-ctrl-d", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x04 });
-                    terminal.writer().println(ColorPrinter.gray("[Sent Ctrl-D]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send Ctrl-D", e);
-                }
-                return true;
-            });
-            reader.getWidgets().put("send-ctrl-z", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x1A });
-                    terminal.writer().println(ColorPrinter.gray("[Sent Ctrl-Z]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send Ctrl-Z", e);
-                }
-                return true;
-            });
-            reader.getWidgets().put("send-esc", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x1B });
-                    terminal.writer().println(ColorPrinter.gray("[Sent ESC]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send ESC", e);
-                }
-                return true;
-            });
-
-            // Read and send commands line by line
-            while (activeConsoleClient.isConnected()) {
-                try {
-                    String line = reader.readLine("");
-                    if (line == null || line.equals("exit")) {
-                        break;
-                    }
-                    // Send the command with newline
-                    activeConsoleClient.sendText(line + "\n");
-                    // Give time for response
-                    Thread.sleep(100);
-                } catch (org.jline.reader.UserInterruptException e) {
-                    // Ctrl+C pressed locally - exit interactive mode
-                    terminal.writer().println(ColorPrinter.yellow("\n[Local Ctrl+C - exiting interactive mode]"));
-                    terminal.writer().flush();
-                    break;
-                } catch (org.jline.reader.EndOfFileException e) {
-                    // Ctrl+D pressed locally - exit interactive mode
-                    terminal.writer().println(ColorPrinter.yellow("\n[Local Ctrl+D - exiting interactive mode]"));
-                    terminal.writer().flush();
-                    break;
-                }
+        // Unwrap RuntimeException if it wraps another exception
+        if (current instanceof RuntimeException && current.getCause() != null) {
+            Throwable cause = current.getCause();
+            // Only unwrap if the cause is more specific (HttpClientException, IOException,
+            // etc.)
+            if (cause instanceof HttpClientException ||
+                    cause instanceof IOException ||
+                    cause instanceof java.net.ConnectException) {
+                current = cause;
             }
-
-            return ColorPrinter.green("✓ BMC shell session ended");
-
-        } catch (Exception e) {
-            logger.error("Error in interactive BMC shell", e);
-            return ColorPrinter.red("✗ Shell error: " + e.getMessage());
         }
+
+        return current;
     }
+
+    /**
+     * Format error message based on exception type
+     */
+    private String formatErrorMessage(Throwable throwable) {
+        // Handle HttpClientException with user-friendly messages
+        if (throwable instanceof HttpClientException) {
+            HttpClientException httpEx = (HttpClientException) throwable;
+            return httpEx.getUserMessage();
+        }
+
+        // Handle authentication errors
+        if (throwable.getMessage() != null &&
+                (throwable.getMessage().contains("401") ||
+                        throwable.getMessage().contains("Unauthorized") ||
+                        throwable.getMessage().contains("Authentication failed"))) {
+            return "Authentication failed: Invalid credentials or expired token. Please check your username, password, or token.";
+        }
+
+        // Handle connection timeout
+        if (throwable instanceof java.net.SocketTimeoutException ||
+                (throwable.getMessage() != null && throwable.getMessage().contains("timeout"))) {
+            return "Connection timeout: Unable to reach BMC. Please check network connectivity and BMC availability.";
+        }
+
+        // Handle connection refused
+        if (throwable instanceof java.net.ConnectException ||
+                (throwable.getMessage() != null && throwable.getMessage().contains("Connection refused"))) {
+            return "Connection refused: BMC is not accepting connections. Please verify the BMC address and port.";
+        }
+
+        // Handle SSL/TLS errors
+        if (throwable instanceof javax.net.ssl.SSLException ||
+                (throwable.getMessage() != null && throwable.getMessage().contains("SSL"))) {
+            return "SSL/TLS error: " + throwable.getMessage();
+        }
+
+        // Handle WebSocket handshake errors
+        if (throwable.getMessage() != null && throwable.getMessage().contains("WebSocket")) {
+            return "WebSocket connection failed: " + throwable.getMessage();
+        }
+
+        // Default message
+        String message = throwable.getMessage();
+        if (message == null || message.isEmpty()) {
+            message = throwable.getClass().getSimpleName();
+        }
+        return "Connection failed: " + message;
+    }
+
 }
