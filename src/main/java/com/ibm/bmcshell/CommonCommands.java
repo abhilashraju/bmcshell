@@ -942,12 +942,10 @@ public class CommonCommands implements ApplicationContextAware {
                     endPoints.push(Util.sorted(Util.buildLinksAndTargets(new ObjectMapper().readTree(resp))));
                     endPoints.peek().add(0, new Util.EndPoints("back", "Get"));
                 }
+                displayCurrent();
             }
-        }
-        System.out.println("No response");
-
-        if (showMenu) {
-            displayCurrent();
+        } else {
+            System.out.println("No response");
         }
 
     }

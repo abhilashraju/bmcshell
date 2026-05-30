@@ -25,6 +25,9 @@ public class RedfishUriCache {
     private final Set<String> allUris = ConcurrentHashMap.newKeySet();
     private volatile boolean isIndexed = false;
     private volatile boolean isIndexing = false;
+    private volatile int totalUrisToProcess = 0;
+    private volatile int processedUrisCount = 0;
+    private volatile long indexingStartTime = 0;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -48,6 +51,22 @@ public class RedfishUriCache {
      *                  null for unauthenticated access
      */
     public CompletableFuture<Void> initializeCache(WebClient webClient, String baseUrl, String authToken) {
+        return initializeCache(webClient, baseUrl, authToken, false);
+    }
+
+    /**
+     * Initialize the cache by fetching all Redfish URIs in the background with
+     * authentication, with option for incremental indexing
+     *
+     * @param webClient   WebClient instance for HTTP requests
+     * @param baseUrl     Base URL for the Redfish service
+     * @param authToken   Authentication token (X-Auth-Token header value), can be
+     *                    null for unauthenticated access
+     * @param incremental If true, continue indexing from existing cached URIs
+     *                    instead of starting from scratch
+     */
+    public CompletableFuture<Void> initializeCache(WebClient webClient, String baseUrl, String authToken,
+            boolean incremental) {
         if (isIndexed || isIndexing) {
             return CompletableFuture.completedFuture(null);
         }
@@ -56,9 +75,46 @@ public class RedfishUriCache {
 
         return CompletableFuture.runAsync(() -> {
             try {
-                System.out.println("Starting Redfish URI indexing...");
-                fetchAllUris(webClient, baseUrl, "/redfish/v1", authToken);
-                System.out.println("Indexing complete. Found " + allUris.size() + " URIs.");
+                int initialUriCount = allUris.size();
+                indexingStartTime = System.currentTimeMillis();
+                processedUrisCount = 0;
+
+                if (incremental && !allUris.isEmpty()) {
+                    System.out.println("Starting incremental indexing from " + initialUriCount + " cached URIs...");
+                    // Create a sorted list of URIs in reverse order (deepest/newest first)
+                    List<String> cachedUrisList = new ArrayList<>(allUris);
+                    // Sort by URI depth (number of slashes) and then alphabetically, in reverse
+                    cachedUrisList.sort((a, b) -> {
+                        int depthA = a.length() - a.replace("/", "").length();
+                        int depthB = b.length() - b.replace("/", "").length();
+                        if (depthA != depthB) {
+                            return Integer.compare(depthB, depthA); // Deeper URIs first
+                        }
+                        return b.compareTo(a); // Reverse alphabetical for same depth
+                    });
+
+                    totalUrisToProcess = cachedUrisList.size();
+
+                    // Fetch immediate children only (not deep recursion) for each cached URI
+                    // Process in reverse order (deepest/newest first)
+                    for (String uri : cachedUrisList) {
+                        processedUrisCount++;
+                        try {
+                            // Fetch only immediate children, not deep recursion
+                            fetchImmediateChildren(webClient, baseUrl, uri, authToken);
+                        } catch (Exception e) {
+                            // Silently continue on errors
+                        }
+                    }
+                } else {
+                    System.out.println("Starting Redfish URI indexing from base URI...");
+                    totalUrisToProcess = 1; // Starting from base URI
+                    fetchAllUris(webClient, baseUrl, "/redfish/v1", authToken);
+                }
+
+                int newUrisFound = allUris.size() - initialUriCount;
+                System.out.println("Indexing complete. Total URIs: " + allUris.size() +
+                        (incremental ? " (+" + newUrisFound + " new)" : ""));
                 isIndexed = true;
 
                 // Automatically save cache after successful indexing
@@ -79,7 +135,7 @@ public class RedfishUriCache {
     }
 
     /**
-     * Recursively fetch all Redfish URIs starting from a root path
+     * Fetch all Redfish URIs starting from a root path using breadth-first search
      *
      * @param webClient WebClient instance for HTTP requests
      * @param baseUrl   Base URL for the Redfish service
@@ -87,35 +143,18 @@ public class RedfishUriCache {
      * @param authToken Authentication token (can be null)
      */
     private void fetchAllUris(WebClient webClient, String baseUrl, String path, String authToken) {
-        fetchAllUrisRecursive(webClient, baseUrl, path, new HashSet<>(), authToken);
+        fetchAllUrisBreadthFirst(webClient, baseUrl, path, authToken);
     }
 
     /**
-     * Recursively fetch all Redfish URIs with cycle detection
+     * Fetch only immediate children of a URI (non-recursive)
      *
-     * @param webClient   WebClient instance for HTTP requests
-     * @param baseUrl     Base URL for the Redfish service
-     * @param path        Current URI path to fetch
-     * @param parentPaths Set of parent URIs in the current recursion path to detect
-     *                    cycles
-     * @param authToken   Authentication token (can be null)
+     * @param webClient WebClient instance for HTTP requests
+     * @param baseUrl   Base URL for the Redfish service
+     * @param path      URI path to fetch children from
+     * @param authToken Authentication token (can be null)
      */
-    private void fetchAllUrisRecursive(WebClient webClient, String baseUrl, String path, Set<String> parentPaths,
-            String authToken) {
-        // Check for circular reference - if this path appears in parent chain, stop
-        // recursion
-        if (parentPaths.contains(path)) {
-            System.err.println("Circular reference detected: " + path + " already in parent chain");
-            return;
-        }
-
-        // Add to global visited set (even if we've seen it before, we still record it)
-        allUris.add(path);
-
-        // Create new parent set for this recursion branch
-        Set<String> currentParents = new HashSet<>(parentPaths);
-        currentParents.add(path);
-
+    private void fetchImmediateChildren(WebClient webClient, String baseUrl, String path, String authToken) {
         try {
             // Build request with optional authentication
             WebClient.RequestHeadersSpec<?> request = webClient.get()
@@ -133,26 +172,21 @@ public class RedfishUriCache {
 
             if (response != null) {
                 JsonNode rootNode = objectMapper.readTree(response);
-                extractUrisFromNode(rootNode, webClient, baseUrl, currentParents, authToken);
+                // Extract only immediate child URIs, don't recurse
+                extractImmediateUris(rootNode);
             }
         } catch (Exception e) {
-            // Continue indexing even if this URI fails - log error and move on
-            System.err.println(
-                    "Warning: Failed to fetch " + path + " - " + e.getMessage() + " (continuing with other URIs)");
+            // Continue indexing even if this URI fails
+            System.err.println("Warning: Failed to fetch " + path + " - " + e.getMessage());
         }
     }
 
     /**
-     * Extract URIs from a JSON node recursively
+     * Extract immediate child URIs from a JSON node (non-recursive)
      *
-     * @param node        JSON node to extract URIs from
-     * @param webClient   WebClient instance for HTTP requests
-     * @param baseUrl     Base URL for the Redfish service
-     * @param parentPaths Set of parent URIs in the current recursion path
-     * @param authToken   Authentication token (can be null)
+     * @param node JSON node to extract URIs from
      */
-    private void extractUrisFromNode(JsonNode node, WebClient webClient, String baseUrl, Set<String> parentPaths,
-            String authToken) {
+    private void extractImmediateUris(JsonNode node) {
         if (node.isObject()) {
             node.fields().forEachRemaining(entry -> {
                 JsonNode value = entry.getValue();
@@ -160,11 +194,7 @@ public class RedfishUriCache {
                 // Check for @odata.id fields
                 if (entry.getKey().equals("@odata.id") && value.isTextual()) {
                     String uri = value.asText();
-                    // Only check for circular reference in current path, not global visited
-                    if (!parentPaths.contains(uri)) {
-                        // Depth-first: recursively fetch immediately (synchronous)
-                        fetchAllUrisRecursive(webClient, baseUrl, uri, parentPaths, authToken);
-                    }
+                    allUris.add(uri);
                 }
 
                 // Check for Members array
@@ -172,20 +202,137 @@ public class RedfishUriCache {
                     value.forEach(member -> {
                         if (member.has("@odata.id")) {
                             String uri = member.get("@odata.id").asText();
-                            // Only check for circular reference in current path, not global visited
-                            if (!parentPaths.contains(uri)) {
-                                // Depth-first: recursively fetch immediately (synchronous)
-                                fetchAllUrisRecursive(webClient, baseUrl, uri, parentPaths, authToken);
-                            }
+                            allUris.add(uri);
                         }
                     });
                 }
-
-                // Recursively process nested objects and arrays
-                extractUrisFromNode(value, webClient, baseUrl, parentPaths, authToken);
             });
-        } else if (node.isArray()) {
-            node.forEach(element -> extractUrisFromNode(element, webClient, baseUrl, parentPaths, authToken));
+        }
+    }
+
+    /**
+     * Fetch all Redfish URIs using breadth-first search with cycle detection
+     *
+     * @param webClient WebClient instance for HTTP requests
+     * @param baseUrl   Base URL for the Redfish service
+     * @param startPath Starting URI path to fetch
+     * @param authToken Authentication token (can be null)
+     */
+    private void fetchAllUrisBreadthFirst(WebClient webClient, String baseUrl, String startPath, String authToken) {
+        // Queue for BFS traversal
+        Queue<String> queue = new LinkedList<>();
+        // Set to track visited URIs to avoid cycles
+        Set<String> visited = new HashSet<>();
+
+        // Initialize with starting path
+        queue.offer(startPath);
+        visited.add(startPath);
+        allUris.add(startPath);
+
+        // BFS traversal
+        while (!queue.isEmpty()) {
+            String currentPath = queue.poll();
+
+            // Show progress for URIs discovered during indexing
+            if (isIndexing && allUris.size() % 5 == 0) {
+                System.out.println("  → Discovered " + allUris.size() + " URIs so far...");
+            }
+
+            try {
+                // Build request with optional authentication
+                WebClient.RequestHeadersSpec<?> request = webClient.get()
+                        .uri(baseUrl + currentPath);
+
+                // Add authentication header if token is provided
+                if (authToken != null && !authToken.isEmpty()) {
+                    request = request.header("X-Auth-Token", authToken);
+                }
+
+                String response = request
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+
+                if (response != null) {
+                    JsonNode rootNode = objectMapper.readTree(response);
+                    // Extract child URIs and add to queue
+                    List<String> childUris = extractUrisFromNodeBFS(rootNode);
+
+                    for (String uri : childUris) {
+                        if (!visited.contains(uri)) {
+                            visited.add(uri);
+                            allUris.add(uri);
+                            queue.offer(uri);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Continue indexing even if this URI fails - log error and move on
+                System.err.println(
+                        "Warning: Failed to fetch " + currentPath + " - " + e.getMessage()
+                                + " (continuing with other URIs)");
+            }
+        }
+    }
+
+    /**
+     * Extract URIs from a JSON node for BFS traversal (non-recursive)
+     *
+     * @param node JSON node to extract URIs from
+     * @return List of URIs found in the node
+     */
+    private List<String> extractUrisFromNodeBFS(JsonNode node) {
+        List<String> uris = new ArrayList<>();
+        extractUrisFromNodeBFSHelper(node, uris);
+        return uris;
+    }
+
+    /**
+     * Helper method to extract URIs from a JSON node (non-recursive traversal)
+     *
+     * @param node JSON node to extract URIs from
+     * @param uris List to collect URIs
+     */
+    private void extractUrisFromNodeBFSHelper(JsonNode node, List<String> uris) {
+        // Use a queue to traverse the JSON structure iteratively
+        Queue<JsonNode> nodeQueue = new LinkedList<>();
+        nodeQueue.offer(node);
+
+        while (!nodeQueue.isEmpty()) {
+            JsonNode currentNode = nodeQueue.poll();
+
+            if (currentNode.isObject()) {
+                currentNode.fields().forEachRemaining(entry -> {
+                    JsonNode value = entry.getValue();
+
+                    // Check for @odata.id fields
+                    if (entry.getKey().equals("@odata.id") && value.isTextual()) {
+                        String uri = value.asText();
+                        uris.add(uri);
+                    }
+
+                    // Check for Members array
+                    if (entry.getKey().equals("Members") && value.isArray()) {
+                        value.forEach(member -> {
+                            if (member.has("@odata.id")) {
+                                String uri = member.get("@odata.id").asText();
+                                uris.add(uri);
+                            }
+                        });
+                    }
+
+                    // Add nested objects and arrays to queue for processing
+                    if (value.isObject() || value.isArray()) {
+                        nodeQueue.offer(value);
+                    }
+                });
+            } else if (currentNode.isArray()) {
+                currentNode.forEach(element -> {
+                    if (element.isObject() || element.isArray()) {
+                        nodeQueue.offer(element);
+                    }
+                });
+            }
         }
     }
 
@@ -264,7 +411,71 @@ public class RedfishUriCache {
         stats.put("isIndexed", isIndexed);
         stats.put("isIndexing", isIndexing);
         stats.put("totalUris", allUris.size());
+        stats.put("processedUris", processedUrisCount);
+        stats.put("totalToProcess", totalUrisToProcess);
+
+        if (isIndexing && indexingStartTime > 0) {
+            long elapsedSeconds = (System.currentTimeMillis() - indexingStartTime) / 1000;
+            stats.put("elapsedSeconds", elapsedSeconds);
+
+            if (processedUrisCount > 0 && totalUrisToProcess > 0) {
+                double percentComplete = (processedUrisCount * 100.0) / totalUrisToProcess;
+                stats.put("percentComplete", percentComplete);
+
+                // Estimate time remaining
+                if (percentComplete > 0) {
+                    long estimatedTotalSeconds = (long) (elapsedSeconds / (percentComplete / 100.0));
+                    long remainingSeconds = estimatedTotalSeconds - elapsedSeconds;
+                    stats.put("estimatedRemainingSeconds", remainingSeconds);
+                }
+            }
+        }
+
         return stats;
+    }
+
+    /**
+     * Get detailed indexing progress information
+     *
+     * @return Formatted string with progress details
+     */
+    public String getIndexingProgress() {
+        if (!isIndexing) {
+            if (isIndexed) {
+                return "Indexing complete. Total URIs: " + allUris.size();
+            } else {
+                return "Indexing not started. Run 'rf.index_uris' to begin.";
+            }
+        }
+
+        StringBuilder progress = new StringBuilder();
+        progress.append("Indexing in progress...\n");
+        progress.append("─────────────────────────────\n");
+
+        if (totalUrisToProcess > 0) {
+            double percentComplete = (processedUrisCount * 100.0) / totalUrisToProcess;
+            progress.append(String.format("Processed: %d/%d URIs (%.1f%%)\n",
+                    processedUrisCount, totalUrisToProcess, percentComplete));
+        }
+
+        progress.append(String.format("Total URIs discovered: %d\n", allUris.size()));
+
+        if (indexingStartTime > 0) {
+            long elapsedSeconds = (System.currentTimeMillis() - indexingStartTime) / 1000;
+            progress.append(String.format("Elapsed time: %d seconds\n", elapsedSeconds));
+
+            if (processedUrisCount > 0 && totalUrisToProcess > 0) {
+                double percentComplete = (processedUrisCount * 100.0) / totalUrisToProcess;
+                if (percentComplete > 0) {
+                    long estimatedTotalSeconds = (long) (elapsedSeconds / (percentComplete / 100.0));
+                    long remainingSeconds = estimatedTotalSeconds - elapsedSeconds;
+                    progress.append(String.format("Estimated time remaining: %d seconds\n",
+                            Math.max(0, remainingSeconds)));
+                }
+            }
+        }
+
+        return progress.toString();
     }
 
     /**
@@ -273,6 +484,13 @@ public class RedfishUriCache {
     public void clearCache() {
         allUris.clear();
         uriCache.clear();
+        isIndexed = false;
+    }
+
+    /**
+     * Clear the indexed flag to allow re-indexing
+     */
+    public void clearIndexedFlag() {
         isIndexed = false;
     }
 

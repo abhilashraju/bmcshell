@@ -182,12 +182,15 @@ public class ObmcConsoleClientReactor {
                                             messageHandler.accept(data);
                                         }
                                     })
-                                    .doOnError(error -> {
+                                    .onErrorResume(error -> {
+                                        // Handle errors gracefully without dropping them
                                         HttpClientException httpEx = categorizeError(error);
                                         logger.error("WebSocket error: {}", httpEx.getUserMessage());
                                         if (errorHandler != null) {
                                             errorHandler.accept(httpEx.getUserMessage());
                                         }
+                                        // Return empty to complete the stream
+                                        return Mono.empty();
                                     })
                                     .doOnComplete(() -> {
                                         logger.info("WebSocket connection closed");
@@ -203,15 +206,36 @@ public class ObmcConsoleClientReactor {
                             HttpClientException httpEx = categorizeError(error);
                             lastException.set(httpEx);
                             logger.error("Connection error: {}", httpEx.getUserMessage());
+                            // Ensure connection state is reset on error
+                            connected.set(false);
+                            connectLatch.countDown();
                         })
-                        .subscribe();
+                        .subscribe(
+                                null,
+                                error -> {
+                                    // Handle subscription errors
+                                    HttpClientException httpEx = categorizeError(error);
+                                    lastException.set(httpEx);
+                                    logger.error("Subscription error: {}", httpEx.getUserMessage());
+                                    connected.set(false);
+                                    connectLatch.countDown();
+                                });
 
                 // Wait for connection
                 if (!connectLatch.await(30, TimeUnit.SECONDS)) {
                     throw HttpClientException.timeoutError("Connection timeout after 30 seconds");
                 }
 
-                logger.info("Successfully connected to BMC console");
+                // Check if connection was actually successful
+                if (connected.get()) {
+                    logger.info("Successfully connected to BMC console");
+                } else {
+                    // Connection failed, exception should have been set
+                    if (lastException.get() == null) {
+                        throw new HttpClientException(HttpClientException.ErrorType.UNKNOWN_ERROR,
+                                "Connection failed without specific error");
+                    }
+                }
 
             } catch (HttpClientException e) {
                 lastException.set(e);
@@ -287,8 +311,14 @@ public class ObmcConsoleClientReactor {
         String errorMsg = error.getMessage();
         if (errorMsg != null) {
             if (errorMsg.contains("401") || errorMsg.contains("Unauthorized")) {
-                return HttpClientException.authError(
-                        "Authentication failed. Please check your username, password, or token.");
+                // Provide more specific error message based on authentication method
+                String authMessage;
+                if (token != null && !token.isEmpty()) {
+                    authMessage = "Authentication failed. The provided token is invalid or has expired. Please obtain a new token.";
+                } else {
+                    authMessage = "Authentication failed. Please check your username and password.";
+                }
+                return HttpClientException.authError(authMessage);
             }
             if (errorMsg.contains("403") || errorMsg.contains("Forbidden")) {
                 return HttpClientException.fromStatusCode(403,
@@ -371,12 +401,16 @@ public class ObmcConsoleClientReactor {
                 new String(data, StandardCharsets.UTF_8).replace("\n", "\\n").replace("\r", "\\r"));
 
         try {
-            // Send as WebSocket binary frame using Mono
+            // Send as WebSocket binary frame using Mono with proper error handling
             outbound.sendByteArray(Mono.just(data))
                     .then()
+                    .onErrorResume(error -> {
+                        logger.error("Error sending data: {}", error.getMessage());
+                        return Mono.empty();
+                    })
                     .subscribe(
                             null,
-                            error -> logger.error("Error sending data", error),
+                            error -> logger.error("Subscription error while sending data", error),
                             () -> logger.debug("Send operation completed successfully"));
         } catch (Exception e) {
             logger.error("Failed to send data", e);
@@ -395,8 +429,16 @@ public class ObmcConsoleClientReactor {
 
         if (outbound != null && connected.get()) {
             try {
-                outbound.sendClose().then().subscribe();
-                logger.info("Disconnected from BMC console");
+                outbound.sendClose()
+                        .then()
+                        .onErrorResume(error -> {
+                            logger.warn("Error during close handshake: {}", error.getMessage());
+                            return Mono.empty();
+                        })
+                        .subscribe(
+                                null,
+                                error -> logger.error("Error closing WebSocket", error),
+                                () -> logger.info("Disconnected from BMC console"));
             } catch (Exception e) {
                 logger.error("Error closing WebSocket", e);
             }

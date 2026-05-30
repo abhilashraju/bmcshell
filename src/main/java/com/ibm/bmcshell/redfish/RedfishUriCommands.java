@@ -31,13 +31,38 @@ public class RedfishUriCommands extends CommonCommands {
     @ShellMethod(key = "rf.index_uris", value = "Index all Redfish URIs for fast searching (runs in background)")
     @ShellMethodAvailability("availabilityCheck")
     public String indexUris() throws Exception {
-        if (uriCache.isReady()) {
-            return "URI cache is already indexed with " + uriCache.getAllUris().size() + " URIs";
-        }
-
         if (uriCache.isIndexing()) {
             return "URI indexing is already in progress...";
         }
+
+        // If already indexed, perform incremental re-indexing
+        if (uriCache.isReady()) {
+            int currentUriCount = uriCache.getAllUris().size();
+
+            // Get authentication token
+            String authToken = getToken();
+
+            // Create WebClient with SSL configuration
+            WebClient webClient = Util.createWebClient();
+            String baseUrl = base();
+
+            // Clear the indexed flag to allow re-indexing
+            uriCache.clearIndexedFlag();
+
+            // Start incremental indexing from existing URIs
+            uriCache.initializeCache(webClient, baseUrl, authToken, true)
+                    .thenRun(() -> System.out.println("✓ Redfish URI re-indexing completed. Total URIs: " +
+                            uriCache.getAllUris().size()));
+
+            return "Cache has " + currentUriCount + " URIs. Starting incremental re-indexing in background...";
+        }
+
+        // First, try to load from cache file
+        String cacheFilePath = RedfishUriCache.getDefaultCacheFilePath();
+        boolean loadedFromCache = uriCache.loadFromFile(cacheFilePath);
+
+        boolean hasCache = loadedFromCache && !uriCache.getAllUris().isEmpty();
+        int cachedUriCount = hasCache ? uriCache.getAllUris().size() : 0;
 
         // Get authentication token
         String authToken = getToken();
@@ -46,11 +71,21 @@ public class RedfishUriCommands extends CommonCommands {
         WebClient webClient = Util.createWebClient();
         String baseUrl = base();
 
-        uriCache.initializeCache(webClient, baseUrl, authToken)
+        // Clear the indexed flag set by loadFromFile to allow indexing
+        if (hasCache) {
+            uriCache.clearIndexedFlag();
+        }
+
+        // Start incremental indexing if cache exists, otherwise start from base URI
+        uriCache.initializeCache(webClient, baseUrl, authToken, hasCache)
                 .thenRun(() -> System.out.println("✓ Redfish URI indexing completed. Total URIs: " +
                         uriCache.getAllUris().size()));
 
-        return "Started indexing Redfish URIs in background...";
+        if (hasCache) {
+            return "Loaded " + cachedUriCount + " URIs from cache. Starting incremental indexing in background...";
+        } else {
+            return "No cache found. Starting full indexing from base URI in background...";
+        }
     }
 
     @ShellMethod(key = "rf.search_uris", value = "Search Redfish URIs by pattern. eg: rf.search_uris --pattern 'Systems.*Processors'")
@@ -76,7 +111,7 @@ public class RedfishUriCommands extends CommonCommands {
         // Convert URIs to EndPoints for selection with 's' command
         List<Util.EndPoints> endpoints = new ArrayList<>();
         for (String uri : results) {
-            endpoints.add(new Util.EndPoints(uri.replace("/redfish/v1/", ""), uri));
+            endpoints.add(new Util.EndPoints(uri, "Get"));
         }
         endPoints.push(endpoints);
 
@@ -125,7 +160,7 @@ public class RedfishUriCommands extends CommonCommands {
         // Convert URIs to EndPoints for selection with 's' command
         List<Util.EndPoints> endpoints = new ArrayList<>();
         for (String uri : results) {
-            endpoints.add(new Util.EndPoints(uri.replace("/redfish/v1/", ""), uri));
+            endpoints.add(new Util.EndPoints(uri, "Get"));
         }
         endPoints.push(endpoints);
 
@@ -167,7 +202,7 @@ public class RedfishUriCommands extends CommonCommands {
         // Convert URIs to EndPoints for selection with 's' command
         List<Util.EndPoints> endpoints = new ArrayList<>();
         for (String uri : allUris) {
-            endpoints.add(new Util.EndPoints(uri.replace("/redfish/v1/", ""), uri));
+            endpoints.add(new Util.EndPoints(uri, "Get"));
         }
         endPoints.push(endpoints);
 
@@ -211,6 +246,12 @@ public class RedfishUriCommands extends CommonCommands {
         }
 
         return output.toString();
+    }
+
+    @ShellMethod(key = "rf.indexing_progress", value = "Show current indexing progress")
+    @ShellMethodAvailability("availabilityCheck")
+    public String indexingProgress() {
+        return uriCache.getIndexingProgress();
     }
 
     @ShellMethod(key = "rf.clear_cache", value = "Clear the Redfish URI cache")
