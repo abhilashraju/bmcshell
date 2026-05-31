@@ -30,6 +30,9 @@ public class RedfishUriCache {
     private volatile long indexingStartTime = 0;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final Pattern EXCLUDED_URI_PATTERN = Pattern.compile(
+            "^/redfish/v1/Systems/system/LogServices(?:/.*)?$"
+                    + "|^/redfish/v1/Managers/bmc/LogServices(?:/.*)?$");
 
     /**
      * Initialize the cache by fetching all Redfish URIs in the background
@@ -95,12 +98,12 @@ public class RedfishUriCache {
 
                     totalUrisToProcess = cachedUrisList.size();
 
-                    // Fetch immediate children only (not deep recursion) for each cached URI
+                    // Fetch all descendants using BFS for each cached URI
                     // Process in reverse order (deepest/newest first)
                     for (String uri : cachedUrisList) {
                         processedUrisCount++;
                         try {
-                            // Fetch only immediate children, not deep recursion
+                            // Fetch all descendants using breadth-first search
                             fetchImmediateChildren(webClient, baseUrl, uri, authToken);
                         } catch (Exception e) {
                             // Silently continue on errors
@@ -147,37 +150,61 @@ public class RedfishUriCache {
     }
 
     /**
-     * Fetch only immediate children of a URI (non-recursive)
+     * Fetch all descendants of a URI using breadth-first search
+     * This explores all levels starting from the given path, discovering
+     * new URIs that weren't in the cache before.
      *
      * @param webClient WebClient instance for HTTP requests
      * @param baseUrl   Base URL for the Redfish service
-     * @param path      URI path to fetch children from
+     * @param path      URI path to start fetching descendants from
      * @param authToken Authentication token (can be null)
      */
     private void fetchImmediateChildren(WebClient webClient, String baseUrl, String path, String authToken) {
-        try {
-            // Build request with optional authentication
-            WebClient.RequestHeadersSpec<?> request = webClient.get()
-                    .uri(baseUrl + path);
+        // Use breadth-first search to explore all levels
+        Queue<String> queue = new LinkedList<>();
+        Set<String> visited = new HashSet<>();
 
-            // Add authentication header if token is provided
-            if (authToken != null && !authToken.isEmpty()) {
-                request = request.header("X-Auth-Token", authToken);
+        queue.offer(path);
+        visited.add(path);
+
+        // BFS traversal - process level by level
+        while (!queue.isEmpty()) {
+            String currentPath = queue.poll();
+
+            try {
+                // Build request with optional authentication
+                WebClient.RequestHeadersSpec<?> request = webClient.get()
+                        .uri(baseUrl + currentPath);
+
+                // Add authentication header if token is provided
+                if (authToken != null && !authToken.isEmpty()) {
+                    request = request.header("X-Auth-Token", authToken);
+                }
+
+                String response = request
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+
+                if (response != null) {
+                    JsonNode rootNode = objectMapper.readTree(response);
+                    // Extract child URIs from this node
+                    List<String> childUris = extractUrisFromNodeBFS(rootNode);
+
+                    // Add new URIs to queue for further exploration
+                    for (String uri : childUris) {
+                        // Only process URIs we haven't visited and aren't already in cache
+                        if (!visited.contains(uri) && !allUris.contains(uri)) {
+                            visited.add(uri);
+                            addUriIfAllowed(uri);
+                            queue.offer(uri); // Add to queue for BFS exploration
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Continue indexing even if this URI fails
+                System.err.println("Warning: Failed to fetch " + currentPath + " - " + e.getMessage());
             }
-
-            String response = request
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-
-            if (response != null) {
-                JsonNode rootNode = objectMapper.readTree(response);
-                // Extract only immediate child URIs, don't recurse
-                extractImmediateUris(rootNode);
-            }
-        } catch (Exception e) {
-            // Continue indexing even if this URI fails
-            System.err.println("Warning: Failed to fetch " + path + " - " + e.getMessage());
         }
     }
 
@@ -194,7 +221,7 @@ public class RedfishUriCache {
                 // Check for @odata.id fields
                 if (entry.getKey().equals("@odata.id") && value.isTextual()) {
                     String uri = value.asText();
-                    allUris.add(uri);
+                    addUriIfAllowed(uri);
                 }
 
                 // Check for Members array
@@ -202,7 +229,7 @@ public class RedfishUriCache {
                     value.forEach(member -> {
                         if (member.has("@odata.id")) {
                             String uri = member.get("@odata.id").asText();
-                            allUris.add(uri);
+                            addUriIfAllowed(uri);
                         }
                     });
                 }
@@ -227,7 +254,7 @@ public class RedfishUriCache {
         // Initialize with starting path
         queue.offer(startPath);
         visited.add(startPath);
-        allUris.add(startPath);
+        addUriIfAllowed(startPath);
 
         // BFS traversal
         while (!queue.isEmpty()) {
@@ -261,7 +288,7 @@ public class RedfishUriCache {
                     for (String uri : childUris) {
                         if (!visited.contains(uri)) {
                             visited.add(uri);
-                            allUris.add(uri);
+                            addUriIfAllowed(uri);
                             queue.offer(uri);
                         }
                     }
@@ -308,7 +335,7 @@ public class RedfishUriCache {
                     // Check for @odata.id fields
                     if (entry.getKey().equals("@odata.id") && value.isTextual()) {
                         String uri = value.asText();
-                        uris.add(uri);
+                        addUriToListIfAllowed(uris, uri);
                     }
 
                     // Check for Members array
@@ -316,7 +343,7 @@ public class RedfishUriCache {
                         value.forEach(member -> {
                             if (member.has("@odata.id")) {
                                 String uri = member.get("@odata.id").asText();
-                                uris.add(uri);
+                                addUriToListIfAllowed(uris, uri);
                             }
                         });
                     }
@@ -553,7 +580,7 @@ public class RedfishUriCache {
 
             // Clear existing cache and load new data
             allUris.clear();
-            allUris.addAll(uris);
+            uris.forEach(this::addUriIfAllowed);
             isIndexed = true;
 
             System.out.println("URI cache loaded from: " + filePath);
@@ -569,6 +596,22 @@ public class RedfishUriCache {
         } catch (IOException e) {
             System.err.println("Failed to load URI cache: " + e.getMessage());
             return false;
+        }
+    }
+
+    private boolean shouldIncludeUri(String uri) {
+        return uri != null && !EXCLUDED_URI_PATTERN.matcher(uri).matches();
+    }
+
+    private void addUriIfAllowed(String uri) {
+        if (shouldIncludeUri(uri)) {
+            allUris.add(uri);
+        }
+    }
+
+    private void addUriToListIfAllowed(List<String> uris, String uri) {
+        if (shouldIncludeUri(uri)) {
+            uris.add(uri);
         }
     }
 

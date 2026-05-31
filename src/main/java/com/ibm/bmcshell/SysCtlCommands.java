@@ -814,6 +814,18 @@ public class SysCtlCommands extends CommonCommands {
   }
 
   /**
+   * Reload systemd daemon configuration
+   * Reloads systemd manager configuration and unit files
+   * 
+   * Example: sysctl.daemon-reload
+   */
+  @ShellMethod(key = "sysctl.daemon-reload", value = "Reload systemd daemon configuration")
+  @ShellMethodAvailability("availabilityCheck")
+  protected void daemonReload() {
+    scmd("systemctl daemon-reload");
+  }
+
+  /**
    * Execute custom sysctl command
    * Run any sysctl command directly
    *
@@ -999,6 +1011,9 @@ public class SysCtlCommands extends CommonCommands {
           sysctl.socket-show --name <socket>
             Show all properties of a systemd socket
 
+          sysctl.daemon-reload
+            Reload systemd daemon configuration
+
         CUSTOM COMMANDS:
           sysctl.set --parameter <name> --value <value>
             Set any custom sysctl parameter
@@ -1042,6 +1057,9 @@ public class SysCtlCommands extends CommonCommands {
 
           # Show all properties of bmcweb socket
           sysctl.socket-show --name bmcweb.socket
+
+          # Reload systemd daemon configuration
+          sysctl.daemon-reload
 
         ╚══════════════════════════════════════════════════════════════════════════════╝
         """;
