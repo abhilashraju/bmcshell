@@ -328,7 +328,7 @@ public class Util {
         final String localUrl = "%s://127.0.0.1:2443";
 
         // final String baseUrl="https://%s.aus.stglabs.ibm.com:18080";
-        if (IPAddressValidator.isValidIP(m)) {
+        if (IPAddressValidator.isValidIP(m) || m.startsWith("host")) {
             return String.format("%s://%s:%d", scheme, m, targetport);
         }
         if (m.startsWith("qemu")) {
@@ -344,7 +344,7 @@ public class Util {
     public static String fullMachineName(String m) {
         final String baseName = "%s.aus.stglabs.ibm.com";
         final String localName = "localhost";
-        if (IPAddressValidator.isValidIP(m)) {
+        if (IPAddressValidator.isValidIP(m) || m.startsWith("host")) {
             return String.format("%s", m);
         }
         if (m.startsWith("qemu")) {
