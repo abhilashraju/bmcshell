@@ -495,9 +495,17 @@ public class DeviceTreeCommands extends CommonCommands {
             @ShellOption(value = { "--depth", "-d" }, defaultValue = "3") int depth) {
         try {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
-                    String.format("tree -L %d -F %s 2>/dev/null || find %s -maxdepth %d -type d 2>/dev/null | sort",
-                            depth, path, path, depth));
+            String command;
+
+            if (depth <= 0) {
+                // No depth limit - show full tree
+                command = String.format("find %s -type d 2>/dev/null", path);
+            } else {
+                // With depth limit
+                command = String.format("find %s -maxdepth %d -type d 2>/dev/null", path, depth);
+            }
+
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, command);
 
             String output = outputStream.toString();
             if (output.isEmpty()) {
@@ -505,11 +513,8 @@ public class DeviceTreeCommands extends CommonCommands {
                 return;
             }
 
-            System.out.println("\n" + ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            System.out.println(ColorPrinter.cyan("  Device Tree Structure"));
-            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            System.out.println(output);
-            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            // Use the same tree display logic as dt.list
+            displayDeviceTreeTable(output, path, "");
 
         } catch (Exception e) {
             System.err.println("Error displaying device tree: " + e.getMessage());

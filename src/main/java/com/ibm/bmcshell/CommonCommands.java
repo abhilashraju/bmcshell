@@ -275,13 +275,76 @@ public class CommonCommands implements ApplicationContextAware {
 
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
         } catch (WebClientResponseException ex) {
-
             System.err.println(ex.getResponseBodyAsString());
             HttpHeaders responseHeaders = ex.getHeaders();
             List<String> headerValue = responseHeaders.get("X-Auth-Token");
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
+        } catch (Exception ex) {
+            handleConnectionException(ex, Util.base(machine));
+            return "";
         }
 
+    }
+
+    private static void handleConnectionException(Exception ex, String targetUrl) {
+        String errorMsg = ex.getMessage();
+        Throwable cause = ex.getCause();
+
+        // Check for SSL handshake timeout
+        if (errorMsg != null && errorMsg.contains("handshake timed out")) {
+            System.err.println("Error: SSL/TLS handshake timed out");
+            System.err.println("Failed to establish secure connection to BMC. Possible causes:");
+            System.err.println("  1. BMC is not responding or is overloaded");
+            System.err.println("  2. Network latency or firewall blocking SSL traffic");
+            System.err.println("  3. BMC SSL/TLS service may be misconfigured");
+            System.err.println("  4. Certificate validation issues");
+            System.err.println("\nTry running 'machine <hostname>' to set a different BMC target.");
+            return;
+        }
+
+        // Check for connection timeout
+        if (errorMsg != null && (errorMsg.contains("timed out") || errorMsg.contains("timeout"))) {
+            System.err.println("Error: Connection timed out");
+            System.err.println("Failed to connect to BMC. Please check:");
+            System.err.println("  1. Network connectivity");
+            System.err.println("  2. BMC is powered on and accessible");
+            System.err.println("  3. Firewall settings");
+            System.err.println("\nTry running 'machine <hostname>' to set a different BMC target.");
+            return;
+        }
+
+        // Check for DNS resolution failure
+        if (errorMsg != null && errorMsg.contains("Failed to resolve")) {
+            System.err.println("Error: Failed to resolve hostname");
+            System.err.println("DNS resolution failed. Please check:");
+            System.err.println("  1. Network connectivity");
+            System.err.println("  2. DNS server configuration");
+            System.err.println("  3. Hostname spelling");
+            System.err.println("  4. Try using IP address instead");
+            return;
+        }
+
+        // Check for connection refused
+        if (errorMsg != null && errorMsg.contains("Connection refused")) {
+            System.err.println("Error: Connection refused");
+            System.err.println("BMC refused the connection. Please check:");
+            System.err.println("  1. BMC is powered on");
+            System.err.println("  2. Redfish service is running on the BMC");
+            System.err.println("  3. Correct port is being used");
+            System.err.println("  4. Firewall is not blocking the connection");
+            return;
+        }
+
+        // Generic error handling
+        System.err.println("Error: Failed to connect to BMC");
+        if (errorMsg != null && !errorMsg.isEmpty()) {
+            System.err.println("Details: " + errorMsg);
+        }
+        System.err.println("\nPlease verify:");
+        System.err.println("  1. Network connectivity");
+        System.err.println("  2. BMC hostname/IP is correct");
+        System.err.println("  3. BMC is powered on and accessible");
+        System.err.println("\nTry running 'machine <hostname>' to set a different BMC target.");
     }
 
     void resetToken() {
@@ -338,20 +401,8 @@ public class CommonCommands implements ApplicationContextAware {
                         .block();
                 return response.getBody();
             } catch (Exception ex) {
-                String errorMsg = ex.getMessage();
-                if (errorMsg != null && errorMsg.contains("Failed to resolve")) {
-                    System.err.println("Error: Failed to resolve '" + auri.getHost() + "'");
-                    System.err.println("This is a DNS resolution issue. Possible solutions:");
-                    System.err.println("  1. Check your network connection");
-                    System.err.println("  2. Verify the hostname is correct");
-                    System.err.println(
-                            "  3. Clear DNS cache: sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder");
-                    System.err.println("  4. Try using IP address instead of hostname");
-                } else {
-                    System.err.println("Error: " + errorMsg);
-                }
+                handleConnectionException(ex, base());
                 return null;
-
             }
 
         });
@@ -398,6 +449,7 @@ public class CommonCommands implements ApplicationContextAware {
                         .block();
                 return response.getBody();
             } catch (Exception ex) {
+                handleConnectionException(ex, base());
                 resetToken();
                 throw ex;
             }
@@ -453,6 +505,7 @@ public class CommonCommands implements ApplicationContextAware {
                 return ex.getResponseBodyAsString();
 
             } catch (Exception ex) {
+                handleConnectionException(ex, base());
                 resetToken();
                 throw ex;
             }
@@ -508,6 +561,7 @@ public class CommonCommands implements ApplicationContextAware {
                 return ex.getResponseBodyAsString();
 
             } catch (Exception ex) {
+                handleConnectionException(ex, base());
                 resetToken();
                 throw ex;
             }
@@ -533,6 +587,7 @@ public class CommonCommands implements ApplicationContextAware {
                 return ex.getResponseBodyAsString();
 
             } catch (Exception ex) {
+                handleConnectionException(ex, base());
                 resetToken();
                 throw ex;
             }
@@ -560,7 +615,7 @@ public class CommonCommands implements ApplicationContextAware {
                 return ex.getResponseBodyAsString();
 
             } catch (Exception ex) {
-
+                handleConnectionException(ex, base());
                 resetToken();
                 throw ex;
             }

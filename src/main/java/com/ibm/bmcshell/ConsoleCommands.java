@@ -94,16 +94,48 @@ public class ConsoleCommands extends CommonCommands {
                     .onDisconnected(() -> logger.info("Console disconnected"))
                     .build();
 
-            // Connect
+            // Connect with timeout
             CompletableFuture<Void> connectFuture = activeConsoleClient.connect();
-            connectFuture.get(); // Wait for connection
+            try {
+                connectFuture.get(35, TimeUnit.SECONDS); // Wait for connection with timeout
+            } catch (TimeoutException te) {
+                activeConsoleClient = null;
+                return ColorPrinter.red("✗ Connection timeout: Failed to connect within 35 seconds");
+            }
 
             String consolePath = consoleId.equals("default") ? "/console0" : "/console/" + consoleId;
             return ColorPrinter.green("✓ Connected to BMC console: " + machine + consolePath);
 
+        } catch (ExecutionException e) {
+            // Unwrap the exception to get the root cause
+            Throwable cause = unwrapException(e);
+            String errorMessage = formatErrorMessage(cause);
+            logger.error("Failed to connect to console: {}", errorMessage, cause);
+
+            // Clean up failed connection
+            if (activeConsoleClient != null) {
+                try {
+                    activeConsoleClient.disconnect();
+                } catch (Exception cleanupError) {
+                    logger.debug("Error cleaning up failed connection", cleanupError);
+                }
+                activeConsoleClient = null;
+            }
+
+            return ColorPrinter.red("✗ " + errorMessage);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Connection interrupted", e);
+            if (activeConsoleClient != null) {
+                activeConsoleClient = null;
+            }
+            return ColorPrinter.red("✗ Connection interrupted");
         } catch (Exception e) {
-            logger.error("Failed to connect to console", e);
-            return ColorPrinter.red("✗ Failed to connect: " + e.getMessage());
+            logger.error("Unexpected error connecting to console", e);
+            if (activeConsoleClient != null) {
+                activeConsoleClient = null;
+            }
+            return ColorPrinter.red("✗ Unexpected error: " + e.getMessage());
         }
     }
 
@@ -509,43 +541,78 @@ public class ConsoleCommands extends CommonCommands {
             return httpEx.getUserMessage();
         }
 
+        String errorMsg = throwable.getMessage();
+        String className = throwable.getClass().getName();
+
+        // Handle SSL handshake timeout
+        // (io.netty.handler.ssl.SslHandshakeTimeoutException)
+        if (className.contains("SslHandshakeTimeoutException") ||
+                (errorMsg != null && errorMsg.contains("handshake timed out"))) {
+            return "SSL/TLS handshake timed out\n" +
+                    "Failed to establish secure connection to BMC. Possible causes:\n" +
+                    "  1. BMC is not responding or is overloaded\n" +
+                    "  2. Network latency or firewall blocking SSL traffic\n" +
+                    "  3. BMC SSL/TLS service may be misconfigured\n" +
+                    "  4. Certificate validation issues\n" +
+                    "\nTry running 'machine <hostname>' to set a different BMC target.";
+        }
+
         // Handle authentication errors
-        if (throwable.getMessage() != null &&
-                (throwable.getMessage().contains("401") ||
-                        throwable.getMessage().contains("Unauthorized") ||
-                        throwable.getMessage().contains("Authentication failed"))) {
+        if (errorMsg != null &&
+                (errorMsg.contains("401") ||
+                        errorMsg.contains("Unauthorized") ||
+                        errorMsg.contains("Authentication failed"))) {
             return "Authentication failed: Invalid credentials or expired token. Please check your username, password, or token.";
         }
 
         // Handle connection timeout
         if (throwable instanceof java.net.SocketTimeoutException ||
-                (throwable.getMessage() != null && throwable.getMessage().contains("timeout"))) {
-            return "Connection timeout: Unable to reach BMC. Please check network connectivity and BMC availability.";
+                (errorMsg != null && (errorMsg.contains("timed out") || errorMsg.contains("timeout")))) {
+            return "Connection timed out\n" +
+                    "Failed to connect to BMC. Please check:\n" +
+                    "  1. Network connectivity\n" +
+                    "  2. BMC is powered on and accessible\n" +
+                    "  3. Firewall settings\n" +
+                    "\nTry running 'machine <hostname>' to set a different BMC target.";
         }
 
         // Handle connection refused
         if (throwable instanceof java.net.ConnectException ||
-                (throwable.getMessage() != null && throwable.getMessage().contains("Connection refused"))) {
-            return "Connection refused: BMC is not accepting connections. Please verify the BMC address and port.";
+                (errorMsg != null && errorMsg.contains("Connection refused"))) {
+            return "Connection refused\n" +
+                    "BMC refused the connection. Please check:\n" +
+                    "  1. BMC is powered on\n" +
+                    "  2. Console service is running on the BMC\n" +
+                    "  3. Correct port is being used\n" +
+                    "  4. Firewall is not blocking the connection";
+        }
+
+        // Handle DNS resolution failure
+        if (errorMsg != null && errorMsg.contains("Failed to resolve")) {
+            return "Failed to resolve hostname\n" +
+                    "DNS resolution failed. Please check:\n" +
+                    "  1. Network connectivity\n" +
+                    "  2. DNS server configuration\n" +
+                    "  3. Hostname spelling\n" +
+                    "  4. Try using IP address instead";
         }
 
         // Handle SSL/TLS errors
         if (throwable instanceof javax.net.ssl.SSLException ||
-                (throwable.getMessage() != null && throwable.getMessage().contains("SSL"))) {
-            return "SSL/TLS error: " + throwable.getMessage();
+                (errorMsg != null && errorMsg.contains("SSL"))) {
+            return "SSL/TLS error: " + errorMsg;
         }
 
         // Handle WebSocket handshake errors
-        if (throwable.getMessage() != null && throwable.getMessage().contains("WebSocket")) {
-            return "WebSocket connection failed: " + throwable.getMessage();
+        if (errorMsg != null && errorMsg.contains("WebSocket")) {
+            return "WebSocket connection failed: " + errorMsg;
         }
 
         // Default message
-        String message = throwable.getMessage();
-        if (message == null || message.isEmpty()) {
-            message = throwable.getClass().getSimpleName();
+        if (errorMsg == null || errorMsg.isEmpty()) {
+            errorMsg = throwable.getClass().getSimpleName();
         }
-        return "Connection failed: " + message;
+        return "Connection failed: " + errorMsg;
     }
 
 }
