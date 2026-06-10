@@ -40,14 +40,44 @@ public class InstallCommands extends CommonCommands {
 
     }
 
+    /**
+     * Fetches the first available firmware version from the specified image path.
+     *
+     * @param imagePath The path to the directory containing firmware images
+     * @return The first available firmware version/image ID
+     * @throws IOException If no images are found or if there's an error listing
+     *                     images
+     */
+    private String getFirstAvailableVersion(String imagePath) throws IOException {
+        System.out.println("Listing available versions in " + imagePath + "...");
+        ByteArrayOutputStream lsOutputStream = new ByteArrayOutputStream();
+        try {
+            runCommandShort(lsOutputStream, Util.fullMachineName(machine), userName, passwd, "ls " + imagePath);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to list images", e);
+        }
+
+        String lsOutput = lsOutputStream.toString().trim();
+        System.out.println("Available images:\n" + lsOutput);
+
+        // Get the first image from the list
+        String[] images = lsOutput.split("\n");
+        if (images.length == 0 || images[0].trim().isEmpty()) {
+            throw new IOException("No images found in " + imagePath);
+        }
+
+        String version = images[0].trim();
+        System.out.println("Selected image: " + version);
+        return version;
+    }
+
     @ShellMethod(key = "install.flash", value = "eg: install.flash . To flash images")
-    void flash() throws InterruptedException {
-        scmd("mv /tmp/obmc-phosphor-image-p10bmc.ext4.mmc.tar /tmp/images");
-        sleep(1);
-        scmd("ls /tmp/images");
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter image id from above : ");
-        String imageid = scanner.nextLine();
+    void flash() throws InterruptedException, IOException {
+        String imagePath = "/tmp/images";
+
+        // Get the first available version
+        String imageid = getFirstAvailableVersion(imagePath);
+
         String command = String.format(
                 "busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",
                 imageid);
@@ -188,26 +218,8 @@ public class InstallCommands extends CommonCommands {
             System.out.println("Target boot side for update: " + label);
         }
 
-        // List available versions in /tmp/images and get the first one
-        System.out.println("Listing available versions in " + imagePath + "...");
-        ByteArrayOutputStream lsOutputStream = new ByteArrayOutputStream();
-        try {
-            runCommandShort(lsOutputStream, Util.fullMachineName(machine), userName, passwd, "ls " + imagePath);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to list images", e);
-        }
-
-        String lsOutput = lsOutputStream.toString().trim();
-        System.out.println("Available images:\n" + lsOutput);
-
-        // Get the first image from the list
-        String[] images = lsOutput.split("\n");
-        if (images.length == 0 || images[0].trim().isEmpty()) {
-            throw new IOException("No images found in " + imagePath);
-        }
-
-        String version = images[0].trim();
-        System.out.println("Selected image: " + version);
+        // Get the first available version using the reusable method
+        String version = getFirstAvailableVersion(imagePath);
 
         System.out.println("Loading firmware update script from resources...");
 

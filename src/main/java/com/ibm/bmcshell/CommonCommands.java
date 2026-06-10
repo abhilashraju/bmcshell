@@ -1285,6 +1285,38 @@ public class CommonCommands implements ApplicationContextAware {
         });
     }
 
+    /**
+     * Helper method to execute a script from resources on the remote BMC
+     * Uses runCommand directly to avoid sudo wrapping issues with heredoc
+     *
+     * @param scriptName Name of the script file in resources
+     * @param args       Optional arguments to pass to the script
+     */
+    protected void executeResourceScript(String scriptName, String... args) throws IOException {
+        String name = userName.equals("root") ? userName : "service";
+        try {
+            // Read script from resources
+            org.springframework.core.io.ClassPathResource resource = new org.springframework.core.io.ClassPathResource(
+                    scriptName);
+            java.io.InputStream inputStream = resource.getInputStream();
+            String scriptContent = new String(inputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+
+            // Create temp file on remote system
+            String remotePath = "/tmp/" + scriptName;
+            String argStr = args.length > 0 ? " " + String.join(" ", args) : "";
+
+            // Use runCommand directly to avoid addSudoToCommands wrapping that breaks
+            // heredoc
+            String command = String.format("cat > %s << 'EOFSCRIPT'\n%s\nEOFSCRIPT\nchmod +x %s && %s%s && rm -f %s",
+                    remotePath, scriptContent, remotePath, remotePath, argStr, remotePath);
+
+            runCommand(Util.fullMachineName(machine), name, passwd, command);
+        } catch (IOException e) {
+            System.err.println("Error executing script: " + e.getMessage());
+            throw e;
+        }
+    }
+
     private String addSudoToCommands(String command) {
         String trimmedCommand = command.trim();
 
