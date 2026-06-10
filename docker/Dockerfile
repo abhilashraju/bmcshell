@@ -37,7 +37,7 @@ RUN yum install -y  python3-setuptools
 RUN git clone git@github.com:ibm-openbmc/openpower-pel-parsers.git /root/openpower-pel-parsers
 RUN cd /root/openpower-pel-parsers ;python3 setup.py install;pip3 install .
 RUN yum install -y vi
-
+ARG CACHE_BUST=1
 RUN cd /root/bmcshell && git pull && mvn package #run14
 RUN rm -rf /root/.ssh
 COPY start.sh /start.sh
