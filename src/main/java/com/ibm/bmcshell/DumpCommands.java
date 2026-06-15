@@ -25,6 +25,10 @@ import java.util.stream.Stream;
 
 @ShellComponent
 public class DumpCommands extends CommonCommands {
+    // Track active downloads
+    private volatile DownloadData activeDownload = null;
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+
     protected DumpCommands() throws IOException {
     }
 
@@ -146,15 +150,28 @@ public class DumpCommands extends CommonCommands {
         @JsonProperty
         public String metadataFile;
 
+        @JsonProperty
+        public long startTimeMillis;
+
+        @JsonProperty
+        public int chunkSizeMB;
+
+        @JsonProperty
+        public int concurrency;
+
         // Default constructor for Jackson
         public DownloadData() {
             collatestarted = new AtomicBoolean(false);
+            startTimeMillis = System.currentTimeMillis();
         }
 
-        public DownloadData(String s) {
+        public DownloadData(String s, int chunkSize, int concur) {
             saveName = s;
             metadataFile = s + ".metadata.json";
             collatestarted = new AtomicBoolean(false);
+            startTimeMillis = System.currentTimeMillis();
+            chunkSizeMB = chunkSize;
+            concurrency = concur;
         }
 
         // Getters and setters for Jackson
@@ -182,6 +199,14 @@ public class DumpCommands extends CommonCommands {
             this.metadataFile = file;
         }
 
+        public long getStartTimeMillis() {
+            return startTimeMillis;
+        }
+
+        public void setStartTimeMillis(long time) {
+            this.startTimeMillis = time;
+        }
+
         // Save metadata to file for resume capability
         public void saveMetadata() throws IOException {
             ObjectMapper mapper = new ObjectMapper();
@@ -205,13 +230,24 @@ public class DumpCommands extends CommonCommands {
         }
     }
 
-    @ShellMethod(key = "dump.bmc.offload", value = "eg: bmc_dump_offload 4 out_filename [--resume]")
+    @ShellMethod(key = "dump.bmc.offload", value = "eg: bmc_dump_offload 4 --filename out_filename --chunkSizeMB 1 --resume --concurrency 20")
     @ShellMethodAvailability("availabilityCheck")
-    public void bmc_dump_offload(String id, String filename, boolean resume)
+    public void bmc_dump_offload(
+            String id,
+            @org.springframework.shell.standard.ShellOption(defaultValue = "") String filename,
+            @org.springframework.shell.standard.ShellOption(defaultValue = "1") int chunkSizeMB,
+            @org.springframework.shell.standard.ShellOption(defaultValue = "false") boolean resume,
+            @org.springframework.shell.standard.ShellOption(defaultValue = "20") int concurrency)
             throws URISyntaxException, IOException, InterruptedException {
-        if (filename == null) {
+        long offloadStartTime = System.currentTimeMillis();
+
+        // Default filename to id if not specified
+        if (filename == null || filename.isEmpty()) {
             filename = id;
         }
+
+        // Reset stop flag for new download
+        stopRequested.set(false);
 
         // Try to resume from existing metadata
         DownloadData data = null;
@@ -224,7 +260,7 @@ public class DumpCommands extends CommonCommands {
                         .count();
                 System.out.println(String.format("Found %d/%d completed chunks",
                         completed, data.downLoadStatus.size()));
-                downLoadParts(data, 3);
+                downLoadParts(data, concurrency);
                 return;
             } else {
                 System.out.println("No metadata found, starting fresh download...");
@@ -243,29 +279,59 @@ public class DumpCommands extends CommonCommands {
         var header = response.getHeaders().get("Transfer-Encoding");
         if (header != null && header.contains("multipart")) {
             System.out.println("Detected chunked download mode");
-            // Chunked download mode
+            // Chunked download mode with new format: {chunkSizeMB: [urls]}
             ObjectMapper mapper = new ObjectMapper();
             var tree = mapper.readTree(response.getBody());
-            data = new DownloadData(filename);
+            data = new DownloadData(filename, chunkSizeMB, concurrency);
 
-            System.out.println("Detected chunked download mode");
-            for (var node : tree.get("urls")) {
+            // Get the chunk size key to use (in MB)
+            String chunkSizeKey = String.valueOf(chunkSizeMB);
+
+            // Check if the requested chunk size exists in the response
+            if (!tree.has(chunkSizeKey)) {
+                System.out.println(String.format("Warning: Chunk size %d MB not available in response", chunkSizeMB));
+                System.out.println("Available chunk sizes (MB): " + tree.fieldNames());
+
+                // Fall back to first available chunk size
+                var fieldNames = tree.fieldNames();
+                if (fieldNames.hasNext()) {
+                    chunkSizeKey = fieldNames.next();
+                    System.out.println(String.format("Using chunk size: %s MB", chunkSizeKey));
+                } else {
+                    System.err.println("Error: No chunk sizes available in response");
+                    return;
+                }
+            }
+
+            System.out.println(String.format("Using chunk size: %s MB", chunkSizeKey));
+            var urlsArray = tree.get(chunkSizeKey);
+
+            for (var node : urlsArray) {
                 data.downLoadStatus.put(node.get(0).asText(),
                         new DownLoadInfo(node.get(0).asText(),
                                 node.get(1).asText(), DownLoadInfo.Status.notStarted));
             }
 
+            // Set as active download
+            activeDownload = data;
+
             // Save initial metadata
             data.saveMetadata();
-            System.out.println(String.format("Starting download of %d chunks...",
-                    data.downLoadStatus.size()));
-            downLoadParts(data, 3);
+            System.out.println(String.format("Starting download of %d chunks with concurrency %d...",
+                    data.downLoadStatus.size(), concurrency));
+            downLoadParts(data, concurrency);
             return;
         }
 
         // Non-chunked download (small file)
         System.out.println("Downloading complete file...");
+        long downloadStartTime = System.currentTimeMillis();
         get(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id), filename, false);
+        long downloadEndTime = System.currentTimeMillis();
+        long downloadDuration = downloadEndTime - downloadStartTime;
+
+        System.out.println(String.format("\n✓ Dump offload completed in %.2f seconds", downloadDuration / 1000.0));
+
         String absPath = new File(filename).getAbsolutePath();
         Thread script = new Thread(() -> {
             try {
@@ -309,9 +375,19 @@ public class DumpCommands extends CommonCommands {
     }
 
     private void downLoadParts(DownloadData data, int max) {
+        // Check if stop was requested
+        if (stopRequested.get()) {
+            System.out.println("\n⚠ Download stopped by user");
+            return;
+        }
+
         data.downLoadStatus.keySet().stream()
                 .filter(a -> data.downLoadStatus.get(a).status == DownLoadInfo.Status.notStarted).limit(max)
                 .forEach(a -> {
+                    // Check stop flag before starting each download
+                    if (stopRequested.get()) {
+                        return;
+                    }
                     var info = data.downLoadStatus.get(a);
                     try {
                         info.status = DownLoadInfo.Status.inprogress;
@@ -413,11 +489,38 @@ public class DumpCommands extends CommonCommands {
                 System.out.println("Combining chunks into final file...");
                 collateData(data);
 
+                long offloadEndTime = System.currentTimeMillis();
+                long totalOffloadDuration = offloadEndTime - data.startTimeMillis;
+
+                // Calculate total bytes
+                long totalBytes = data.downLoadStatus.values().stream()
+                        .mapToLong(dlInfo -> dlInfo.size)
+                        .sum();
+
+                // Display summary table
+                System.out.println("\n╔════════════════════════════════════════════════════════════════════╗");
+                System.out.println("║              DUMP OFFLOAD COMPLETED SUCCESSFULLY                   ║");
+                System.out.println("╠════════════════════════════════════════════════════════════════════╣");
+                System.out.println(String.format("║ Total Chunks:      %-47d ║", data.downLoadStatus.size()));
+                System.out.println(String.format("║ Chunk Size:        %-44s MB ║",
+                        data.chunkSizeMB == 0 ? "Single chunk" : String.valueOf(data.chunkSizeMB)));
+                System.out.println(String.format("║ Concurrency:       %-47d ║", data.concurrency));
+                System.out.println(String.format("║ Total Size:        %-40s MB ║",
+                        String.format("%.2f", totalBytes / (1024.0 * 1024.0))));
+                System.out.println(String.format("║ Total Time:        %-40s sec ║",
+                        String.format("%.2f", totalOffloadDuration / 1000.0)));
+                System.out.println(String.format("║ Throughput:        %-40s MB/s ║",
+                        String.format("%.2f", (totalBytes / (1024.0 * 1024.0)) / (totalOffloadDuration / 1000.0))));
+                System.out.println("╚════════════════════════════════════════════════════════════════════╝");
+
                 // Clean up metadata file after successful completion
                 File metaFile = new File(data.metadataFile);
                 if (metaFile.exists()) {
                     metaFile.delete();
                 }
+
+                // Clear active download
+                activeDownload = null;
             }
             return;
         }
@@ -584,6 +687,38 @@ public class DumpCommands extends CommonCommands {
         script.setName("Dump Extractor");
         script.setDaemon(true);
         script.start();
+    }
+
+    @ShellMethod(key = "dump.offload.stop", value = "Stop the current dump offload operation")
+    @ShellMethodAvailability("availabilityCheck")
+    public void stop_dump_offload() throws IOException {
+        if (activeDownload == null) {
+            System.out.println("No active dump offload to stop");
+            return;
+        }
+
+        System.out.println("Stopping dump offload...");
+        stopRequested.set(true);
+
+        // Save current state to metadata for potential resume
+        if (activeDownload != null) {
+            try {
+                activeDownload.saveMetadata();
+                System.out.println("✓ Download state saved. You can resume with --resume flag");
+                System.out.println("  Metadata file: " + activeDownload.metadataFile);
+
+                long completed = activeDownload.downLoadStatus.values().stream()
+                        .filter(info -> info.status == DownLoadInfo.Status.done)
+                        .count();
+                long total = activeDownload.downLoadStatus.size();
+                System.out.println(String.format("  Progress: %d/%d chunks completed (%.1f%%)",
+                        completed, total, (completed * 100.0 / total)));
+            } catch (IOException e) {
+                System.err.println("Warning: Failed to save metadata: " + e.getMessage());
+            }
+        }
+
+        activeDownload = null;
     }
 
 }

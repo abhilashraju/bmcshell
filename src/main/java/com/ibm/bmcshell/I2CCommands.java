@@ -274,12 +274,26 @@ public class I2CCommands extends CommonCommands {
 
     // ==================== Advanced Operations ====================
 
-    @ShellMethod(key = "i2c.transfer", value = "Perform raw I2C transfer. eg: i2c.transfer 0 0x50 w 0x00 0x01 r 16")
-    void i2cTransfer(@ShellOption int busNumber,
-            @ShellOption String deviceAddress,
-            @ShellOption(arity = ShellOption.ARITY_USE_HEURISTICS) String[] operations) throws IOException {
-        String opsStr = String.join(" ", operations);
-        scmd(String.format("i2ctransfer -y %d %s %s", busNumber, deviceAddress, opsStr));
+    @ShellMethod(key = "i2c.transferWrite", value = "Write bytes using i2ctransfer. Use quotes for multiple bytes. eg: i2c.transferWrite 3 0x5a \"0xFF 0x80 0x80\"")
+    void i2cTransferWrite(@ShellOption int busNumber,
+            @ShellOption String slaveAddress,
+            @ShellOption String bytes) throws IOException {
+        if (bytes == null || bytes.trim().isEmpty()) {
+            System.out.println("Error: No bytes provided to write");
+            return;
+        }
+        String[] byteArray = bytes.trim().split("\\s+");
+        int count = byteArray.length;
+        String command = String.format("i2ctransfer -y %d w%d@%s %s", busNumber, count, slaveAddress, bytes);
+        System.out.println("Executing: " + command);
+        scmd(command);
+    }
+
+    @ShellMethod(key = "i2c.transferRead", value = "Read bytes using i2ctransfer. eg: i2c.transferRead 3 0x5a 16")
+    void i2cTransferRead(@ShellOption int busNumber,
+            @ShellOption String slaveAddress,
+            @ShellOption int count) throws IOException {
+        scmd(String.format("i2ctransfer -y %d r%d@%s", busNumber, count, slaveAddress));
     }
 
     @ShellMethod(key = "i2c.scan", value = "Quick scan for devices on bus. eg: i2c.scan 0")
@@ -444,8 +458,10 @@ public class I2CCommands extends CommonCommands {
         System.out.println("  i2c.vpdRead <bus> <dev>    - Read VPD from EEPROM");
         System.out.println("  i2c.fruRead <bus> <dev>    - Read FRU data from EEPROM");
 
-        System.out.println("\nAdvanced:");
-        System.out.println("  i2c.transfer <bus> <dev> <ops...> - Perform raw I2C transfer");
+        System.out.println("\nAdvanced I2C Transfer:");
+        System.out.println(
+                "  i2c.transferWrite <bus> <addr> \"<bytes>\" - Write bytes using i2ctransfer (use quotes for multiple bytes)");
+        System.out.println("  i2c.transferRead <bus> <addr> <count> - Read bytes using i2ctransfer");
 
         System.out.println("\nExamples:");
         System.out.println("  # Discovery");
@@ -466,6 +482,11 @@ public class I2CCommands extends CommonCommands {
         System.out.println();
         System.out.println("  # Monitoring");
         System.out.println("  i2c.watch 0 0x50 0x00      - Watch register continuously");
+        System.out.println();
+        System.out.println("  # I2C Transfer Operations");
+        System.out.println("  i2c.transferWrite 3 0x5a 0xFF        - Write 1 byte to device");
+        System.out.println("  i2c.transferWrite 3 0x5a \"0xFF 0x80 0x80\" - Write 3 bytes (use quotes for multiple)");
+        System.out.println("  i2c.transferRead 3 0x5a 16           - Read 16 bytes from device");
         System.out.println();
         System.out.println("  # Driver Management");
         System.out.println("  i2c.bind at24 0-0050       - Bind device to driver");
