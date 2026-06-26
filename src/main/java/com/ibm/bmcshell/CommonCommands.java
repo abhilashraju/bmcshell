@@ -85,6 +85,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class CommonCommands implements ApplicationContextAware {
+    protected static volatile java.util.function.Consumer<String> outputConsumerOverride = null;
     WebClient client;
 
     static String token;
@@ -830,14 +831,14 @@ public class CommonCommands implements ApplicationContextAware {
             if (file.exists()) {
                 data = new String(Files.readAllBytes(file.toPath()));
             } else {
-                System.out.println("File not found");
+                defaultOutputConsumer().accept("File not found");
                 return;
             }
         }
         if (encode == true) {
             data = Util.encodeBase64(data);
         }
-        System.out.println(goTo(ep, data, false, ""));
+        defaultOutputConsumer().accept(goTo(ep, data, false, ""));
     }
 
     @ShellMethod(key = "postFile", value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
@@ -856,10 +857,10 @@ public class CommonCommands implements ApplicationContextAware {
                     "--content-type" }, help = "Content Type", defaultValue = "application/json") String contentType)
             throws URISyntaxException, IOException {
         if (contentType.equals("multipart/form-data") || contentType.equals("f")) {
-            System.out.println(makePostRequestWithFormData(target, data));
+            defaultOutputConsumer().accept(makePostRequestWithFormData(target, data));
             return;
         }
-        makePostRequest(target, data, contentType);
+        defaultOutputConsumer().accept(makePostRequest(target, data, contentType));
     }
 
     @ShellMethod(key = "setdebuglevel", value = "eg setDebugLevel debug")
@@ -872,7 +873,7 @@ public class CommonCommands implements ApplicationContextAware {
 
     public void delete(String endPoint) throws URISyntaxException, IOException {
         var ep = new Util.EndPoints(endPoint, "Delete");
-        System.out.println(goTo(ep, "", false, ""));
+        defaultOutputConsumer().accept(goTo(ep, "", false, ""));
     }
 
     @ShellMethod(key = "get", value = "eg get Systems/hypervisor/EthernetInterfaces/eth0 or get Systems/hypervisor/EthernetInterfaces/eth0 output-filename")
@@ -902,18 +903,18 @@ public class CommonCommands implements ApplicationContextAware {
         }
         lastCurlRequest = String.format("curl -k -H \"X-Auth-Token: %s\" -X GET https://%s%s", token,
                 Util.fullMachineName(machine), Util.normalise(ep.url));
-        System.out.println(lastCurlRequest);
+        defaultOutputConsumer().accept(lastCurlRequest);
         String url = Util.normalise(ep.url);
         try {
             if (ep.action.equals("Post")) {
-                System.out.println(data);
+                defaultOutputConsumer().accept(data);
                 return lastCurlResponse = makePostRequest(url, data, "application/json");
             }
             if (ep.action.equals("Delete")) {
                 return lastCurlResponse = makeDeleteRequest(url);
             }
             if (p) {
-                System.out.println(data);
+                defaultOutputConsumer().accept(data);
                 return lastCurlResponse = makePatchRequest(url, data);
             }
             return lastCurlResponse = applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o));
@@ -922,10 +923,10 @@ public class CommonCommands implements ApplicationContextAware {
                 | WebClientResponseException.Forbidden
                 | WebClientResponseException.MethodNotAllowed
                 | WebClientResponseException.InternalServerError ex) {
-            System.out.println(ex);
+            defaultOutputConsumer().accept(ex.toString());
             return ex.getResponseBodyAsString();
         } catch (Exception exception) {
-            System.out.println(exception);
+            defaultOutputConsumer().accept(exception.toString());
             return exception.getMessage();
         }
 
@@ -991,7 +992,7 @@ public class CommonCommands implements ApplicationContextAware {
             throws URISyntaxException, IOException {
         var resp = goTo(endp, d, p, o);
         if (resp != null && !resp.isEmpty()) {
-            System.out.println(resp);
+            defaultOutputConsumer().accept(resp);
             if (showMenu) {
                 if (endp.action.equals("Get")) {
                     endPoints.push(Util.sorted(Util.buildLinksAndTargets(new ObjectMapper().readTree(resp))));
@@ -1000,7 +1001,7 @@ public class CommonCommands implements ApplicationContextAware {
                 displayCurrent();
             }
         } else {
-            System.out.println("No response");
+            defaultOutputConsumer().accept("No response");
         }
 
     }
@@ -1273,15 +1274,24 @@ public class CommonCommands implements ApplicationContextAware {
 
     @ShellMethod(key = "scmd", value = "eg: scmd 'ls /tmp/' .The specified command will be executed in machine with super user privilege")
     @ShellMethodAvailability("availabilityCheck")
+    protected java.util.function.Consumer<String> defaultOutputConsumer() {
+        java.util.function.Consumer<String> override = outputConsumerOverride;
+        return override != null ? override : line -> System.out.println(line);
+    }
+
     public void scmd(String command) {
+        scmd(command, defaultOutputConsumer());
+    }
+
+    public void scmd(String command, java.util.function.Consumer<String> consumer) {
         String name = userName.equals("root") ? userName : "service";
         // Add sudo to each command in a chain if not already present
         String commandWithSudo = addSudoToCommands(command);
         var newCmd = Optional.of(commandWithSudo);
         newCmd.ifPresentOrElse(a -> {
-            runCommand(Util.fullMachineName(machine), name, passwd, a);
+            runCommand(Util.fullMachineName(machine), name, passwd, a, consumer);
         }, () -> {
-            System.out.println(command + " is invalid");
+            consumer.accept(command + " is invalid");
         });
     }
 
@@ -1317,7 +1327,7 @@ public class CommonCommands implements ApplicationContextAware {
         }
     }
 
-    private String addSudoToCommands(String command) {
+    protected String addSudoToCommands(String command) {
         String trimmedCommand = command.trim();
 
         // If command already starts with sudo, return as is

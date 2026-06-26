@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public class SSHShellClient {
     static {
@@ -164,39 +165,61 @@ public class SSHShellClient {
     }
 
     public static void runCommand(String host, String user, String password, String command) {
+        runCommand(host, user, password, command, line -> System.out.println(line));
+    }
+
+    public static void runCommand(String host, String user, String password, String command,
+            Consumer<String> consumer) {
+        runCommand(host, user, password, command, 0, consumer);
+    }
+
+    public static void runCommand(String host, String user, String password, String command, int tryCount) {
+        runCommand(host, user, password, command, tryCount, line -> System.out.println(line));
+    }
+
+    public static void runCommand(String host, String user, String password, String command, int tryCount,
+            Consumer<String> consumer) {
+
         try {
 
             Session session = getSession(host, user, password, port);
             if (session == null) {
-                System.out.println("session is null");
+                consumer.accept("session is null");
                 return;
             }
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
 
             channel.setCommand(command);
             // channel.setInputStream(System.in,true);
-            channel.setOutputStream(System.out);
+            channel.setOutputStream(new OutputStream() {
+                @Override
+                public void write(int b) throws IOException {
+                }
+            });
             InputStream in = channel.getInputStream();
+            InputStream err = channel.getErrStream();
 
             channel.connect();
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(in));
-            BufferedReader errorReader = new BufferedReader(new InputStreamReader(channel.getErrStream()));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(err));
             String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println(ColorPrinter.addColor(line, "green"));
+                consumer.accept(ColorPrinter.addColor(line, "green"));
             }
             if ((line = errorReader.readLine()) != null) {
-                System.out.println("\nStandard Error: ");
-                System.out.println(ColorPrinter.red(line));
+                consumer.accept("");
+                consumer.accept("Standard Error: ");
+                consumer.accept(ColorPrinter.red(line));
                 while ((line = errorReader.readLine()) != null) {
-                    System.out.println(ColorPrinter.red(line));
+                    consumer.accept(ColorPrinter.red(line));
                 }
             }
             channel.setInputStream(null);
             channel.disconnect();
+            tryCount = 0;
         } catch (Exception e) {
-            System.out.println(ColorPrinter.red("Error executing command: " + e.getMessage()));
+            consumer.accept(ColorPrinter.red("Error executing command: " + e.getMessage()));
             // Clear the cached session if it's a connection issue
             String cacheKey = getCacheKey(host, user, port);
             Session cachedSession = sessionCache.get(cacheKey);
@@ -207,7 +230,10 @@ public class SSHShellClient {
                     // Ignore disconnect errors
                 }
                 sessionCache.remove(cacheKey);
-                System.out.println("Session cache cleared due to connection error. Please retry the command.");
+                consumer.accept("Session cache cleared due to connection error.Retrying the command " + command);
+                if (tryCount < 3) {
+                    runCommand(host, user, password, command, tryCount + 1, consumer);
+                }
             }
         }
     }
