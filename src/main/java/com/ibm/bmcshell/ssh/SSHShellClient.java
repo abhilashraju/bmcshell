@@ -217,7 +217,6 @@ public class SSHShellClient {
             }
             channel.setInputStream(null);
             channel.disconnect();
-            tryCount = 0;
         } catch (Exception e) {
             consumer.accept(ColorPrinter.red("Error executing command: " + e.getMessage()));
             // Clear the cached session if it's a connection issue
@@ -231,7 +230,7 @@ public class SSHShellClient {
                 }
                 sessionCache.remove(cacheKey);
                 consumer.accept("Session cache cleared due to connection error.Retrying the command " + command);
-                if (tryCount < 3) {
+                if (tryCount < 2) {
                     runCommand(host, user, password, command, tryCount + 1, consumer);
                 }
             }

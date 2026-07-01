@@ -403,7 +403,7 @@ public class OpenSslCommands extends CommonCommands {
         String command = String.format(
                 "openssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %d",
                 csrFile, caCertFile, caKeyFile, certFile, days);
-        scmd(command);
+        scmd(command, defaultOutputConsumer());
     }
 
     /**
@@ -554,7 +554,7 @@ public class OpenSslCommands extends CommonCommands {
         }
         command.append(" > ").append(outputFile);
 
-        scmd(command.toString());
+        scmd(command.toString(), defaultOutputConsumer());
     }
 
     // ==================== SERVER CERTIFICATE INSPECTION ====================
@@ -576,7 +576,7 @@ public class OpenSslCommands extends CommonCommands {
         String command = String.format(
                 "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -text -noout", host,
                 port);
-        scmd(command);
+        scmd(command, defaultOutputConsumer());
     }
 
     /**
@@ -594,7 +594,7 @@ public class OpenSslCommands extends CommonCommands {
             @ShellOption(value = { "--host" }) String host,
             @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port) {
         String command = String.format("openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null", host, port);
-        scmd(command);
+        scmd(command, defaultOutputConsumer());
     }
 
     /**
@@ -617,7 +617,7 @@ public class OpenSslCommands extends CommonCommands {
         String command = String.format(
                 "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -outform PEM > %s",
                 host, port, outputFile);
-        scmd(command);
+        scmd(command, defaultOutputConsumer());
     }
 
     /**
@@ -637,7 +637,7 @@ public class OpenSslCommands extends CommonCommands {
         String command = String.format(
                 "openssl s_client -connect %s:%d -showcerts </dev/null 2>/dev/null | openssl x509 -noout -dates", host,
                 port);
-        scmd(command);
+        scmd(command, defaultOutputConsumer());
     }
 
     /**

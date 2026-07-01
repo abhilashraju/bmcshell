@@ -1273,11 +1273,71 @@ public class CommonCommands implements ApplicationContextAware {
         setupSSHKey(userName, Util.fullMachineName(machine), passwd);
     }
 
-    @ShellMethod(key = "scmd", value = "eg: scmd 'ls /tmp/' .The specified command will be executed in machine with super user privilege")
-    @ShellMethodAvailability("availabilityCheck")
     protected java.util.function.Consumer<String> defaultOutputConsumer() {
         java.util.function.Consumer<String> override = outputConsumerOverride;
         return override != null ? override : line -> System.out.println(line);
+    }
+
+    @Component
+    public static class ShellCommandProvider implements ValueProvider {
+
+        private static final List<String> SHELL_COMMANDS = List.of(
+                // filesystem
+                "ls", "ls -la", "ls -lh", "ls /tmp", "ls /var", "ls /etc",
+                "find / -name", "find /tmp -type f",
+                "cat", "cat /etc/os-release", "cat /etc/timestamp",
+                "tail -f", "tail -n 50", "head -n 20",
+                "grep -r", "grep -i",
+                "cp", "mv", "rm", "mkdir", "chmod", "chown",
+                // processes / system
+                "ps aux", "ps -ef", "top -b -n1",
+                "df -h", "du -sh", "free -h",
+                "dmesg | tail -50", "dmesg --level=err",
+                "uname -a",
+                "uptime",
+                // network
+                "ip addr show", "ip link show", "ip route show",
+                "ifconfig", "netstat -tulpn",
+                "ping -c 4", "traceroute",
+                "ss -tulpn",
+                // services / systemd
+                "systemctl status", "systemctl list-units", "systemctl list-units --failed",
+                "systemctl restart", "systemctl stop", "systemctl start",
+                "journalctl -xe", "journalctl -u", "journalctl --since today",
+                // BMC / OpenBMC specific
+                "busctl list", "busctl introspect",
+                "obmcutil state", "obmcutil chassison", "obmcutil chassisoff",
+                "ipmitool sdr list", "ipmitool fru list", "ipmitool sel list",
+                "phosphor-ipmi-host",
+                "cat /var/lib/phosphor-software-manager/activations",
+                // misc
+                "echo", "date", "whoami", "hostname", "env", "printenv",
+                "which", "whereis"
+        );
+
+        @Override
+        public List<CompletionProposal> complete(CompletionContext context) {
+            // getWords() = [commandKey, arg1, arg2, ...]; skip index 0 (the command key)
+            // join everything the user has typed after the command key to form the partial command
+            List<String> words = context.getWords();
+            String partial = "";
+            if (words != null && words.size() > 1) {
+                partial = String.join(" ", words.subList(1, words.size()));
+            }
+            final String filter = partial.strip();
+            return SHELL_COMMANDS.stream()
+                    .filter(cmd -> filter.isBlank() || cmd.startsWith(filter))
+                    .map(cmd -> new CompletionProposal(cmd).complete(true))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @ShellMethod(key = { "cmd",
+            "c" }, value = "eg: c ip addr show  OR  c 'ls /tmp/' . Executes command on BMC with super user privilege")
+    @ShellMethodAvailability("availabilityCheck")
+    public void exec_command(@ShellOption(arity = Integer.MAX_VALUE, valueProvider = ShellCommandProvider.class) String[] args) {
+        String command = String.join(" ", args);
+        scmd(command, defaultOutputConsumer());
     }
 
     public void scmd(String command) {
@@ -1348,12 +1408,6 @@ public class CommonCommands implements ApplicationContextAware {
 
         // For simple commands, just prepend sudo -i
         return "sudo -i " + trimmedCommand;
-    }
-
-    @ShellMethod(key = "cmd", value = "eg cmd 'ls /tmp/' . Will execute the specified command in machine")
-    @ShellMethodAvailability("availabilityCheck")
-    void cmd(String command) {
-        runCommand(Util.fullMachineName(machine), userName, passwd, command);
     }
 
     @ShellMethod(key = "os", value = "Displays fw version details")
