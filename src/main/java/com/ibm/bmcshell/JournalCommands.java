@@ -141,6 +141,17 @@ public class JournalCommands extends CommonCommands {
         runJournalCommand(String.format("journalctl | grep -E '%s' | tail -n %d", pattern, n));
     }
 
+    @ShellMethod(key = "journal.prevboot", value = "Show first N lines of a previous boot log. eg: journal.prevboot or journal.prevboot 2 200")
+    void journalPrevBoot(
+            @ShellOption(defaultValue = "1") int bootOffset,
+            @ShellOption(value = { "-n" }, defaultValue = "100") int n) throws IOException {
+        if (bootOffset <= 0) {
+            System.out.println("Boot offset must be a positive number (e.g., 1 for last boot, 2 for two boots ago).");
+            return;
+        }
+        runJournalCommand(String.format("journalctl -b -%d | head -n %d", bootOffset, n));
+    }
+
     @ShellMethod(key = "journal.stop", value = "eg: journal.stop")
     void journalctlStop() {
         if (journalThread != null && journalThread.isAlive()) {
@@ -210,6 +221,9 @@ public class JournalCommands extends CommonCommands {
         System.out.println("\njournal.search <terms>    - Search journal logs (default: last 100 lines)");
         System.out.println("                            Use '*' to show all logs");
         System.out.println("journal.searchN <terms> -n <num> - Search with custom limit");
+        System.out.println("\njournal.prevboot          - Show logs from the previous boot (default: last 100 lines)");
+        System.out.println("journal.prevboot 2        - Show logs from two boots ago");
+        System.out.println("journal.prevboot 1 -n 200 - Show last 200 lines from previous boot");
         System.out.println("\njournal.show              - Show captured journal logs");
         System.out.println("journal.clear             - Clear journal logs (rotate and vacuum)");
         System.out.println("\n=== SSE Streaming Commands ===");
@@ -223,6 +237,8 @@ public class JournalCommands extends CommonCommands {
         System.out.println("  journal.search error warning");
         System.out.println("  journal.searchN certificate -n 50");
         System.out.println("  journal.search '*'");
+        System.out.println("  journal.prevboot");
+        System.out.println("  journal.prevboot 2 -n 500");
         System.out.println("  journal.show");
         System.out.println("  journal.clear");
         System.out.println("  journal.ws.enable");

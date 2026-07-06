@@ -47,21 +47,12 @@ public class ConsoleCommands extends CommonCommands {
     }
 
     /**
-     * Connect to the default BMC console (console0)
-     * Uses the current machine, username, and token from CommonCommands
-     */
-    @ShellMethod(value = "Connect to BMC console (default console0)", key = "console-connect")
-    public String consoleConnect() {
-        return consoleConnectWithId("default");
-    }
-
-    /**
-     * Connect to a specific BMC console
-     * 
+     * Connect to BMC console. Without an argument connects to the default console (console0).
+     *
      * @param consoleId Console identifier (default, or specific console name)
      */
-    @ShellMethod(value = "Connect to specific BMC console", key = "console-connect-id")
-    public String consoleConnectWithId(
+    @ShellMethod(value = "Connect to BMC console (default: console0)", key = "console-connect")
+    public String consoleConnect(
             @ShellOption(help = "Console ID (default for console0)", defaultValue = "default") String consoleId) {
 
         try {
@@ -224,8 +215,9 @@ public class ConsoleCommands extends CommonCommands {
                     if (line == null || line.equals("exit")) {
                         break;
                     }
-                    // Send the command with newline
-                    activeConsoleClient.sendText(line + "\n");
+                    // Send the command with CR+LF — serial consoles expect \r (CR) as Enter;
+                    // \n alone is a bare line-feed and most remote shells ignore it.
+                    activeConsoleClient.sendText(line + "\r\n");
                     // Give time for response
                     Thread.sleep(100);
                 } catch (org.jline.reader.UserInterruptException e) {

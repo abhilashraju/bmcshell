@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
 import org.springframework.shell.command.CommandExceptionResolver;
 import org.springframework.shell.command.CommandHandlingResult;
+import org.springframework.shell.result.CommandNotFoundMessageProvider;
 import org.springframework.shell.standard.commands.Script;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -118,6 +119,11 @@ public class BmcshellApplication {
 	@Bean
 	CustomExceptionResolver customExceptionResolver() {
 		return new CustomExceptionResolver();
+	}
+
+	@Bean
+	CommandNotFoundMessageProvider commandNotFoundMessageProvider() {
+		return ctx -> ColorPrinter.yellow("Command not found: " + String.join(" ", ctx.commands()));
 	}
 
 }
