@@ -2,6 +2,7 @@ package com.ibm.bmcshell;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,7 @@ import com.ibm.bmcshell.ColorPrinter;
 import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.ssh.SSHShellClient;
 import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.Session;
 import static com.ibm.bmcshell.ssh.SSHShellClient.port;
@@ -344,23 +346,115 @@ public class RemoteCommands extends CommonCommands {
         }
     }
 
-    @ShellMethod(key = "cert.exchange", value = "Exchange CA certificate: SCP /etc/ssl/certs/self_ca.pem from this BMC to destination and create hash symlink. eg: cert.exchange --ip 192.168.1.10 --port 22 --user root --password pass")
+    @ShellMethod(key = "cert.exchange", value = "Exchange CA certificate: copy /etc/ssl/certs/self_ca.pem from this BMC to destination and create hash symlink. eg: cert.exchange --ip 192.168.1.10 --port 22 --user root --password pass")
     @ShellMethodAvailability("availabilityCheck")
     void certExchange(
             @ShellOption(value = { "--ip", "-i" }) String destIp,
-            @ShellOption(value = { "--port", "-p" }, defaultValue = "22") String destPort,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "22") int destPort,
             @ShellOption(value = { "--user", "-u" }, defaultValue = "root") String destUser,
             @ShellOption(value = { "--password", "-pw" }) String destPassword) {
+        final String SRC_CERT = "/etc/ssl/certs/self_ca.pem";
+        final String DEST_CERT = "/etc/ssl/certs/authority/ca.pem";
+        final String DEST_DIR  = "/etc/ssl/certs/authority";
+
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.cyan("  Certificate Exchange"));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+        System.out.println(ColorPrinter.yellow("Source:      " + machine + ":" + SRC_CERT));
+        System.out.println(ColorPrinter.yellow("Destination: " + destUser + "@" + destIp + ":" + destPort + ":" + DEST_CERT));
+        System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+        String srcName  = userName.equals("root") ? userName : "service";
+        String srcHost  = com.ibm.bmcshell.Utils.Util.fullMachineName(machine);
+
+        // ── Step 1: download cert from source BMC into memory ──────────────
+        System.out.println(ColorPrinter.cyan("\nStep 1: Downloading certificate from source BMC..."));
+        byte[] certBytes;
         try {
-            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            System.out.println(ColorPrinter.cyan("  Certificate Exchange"));
-            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
-            System.out.println(ColorPrinter.yellow("Source:      " + machine + ":/etc/ssl/certs/self_ca.pem"));
-            System.out.println(ColorPrinter.yellow("Destination: " + destUser + "@" + destIp + ":" + destPort + ":/etc/ssl/certs/authority/ca.pem"));
-            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            Session srcSession = SSHShellClient.getSession(srcHost, srcName, passwd, port);
+            if (srcSession == null) {
+                System.out.println(ColorPrinter.red("✗ Cannot open SSH session to source BMC"));
+                return;
+            }
+            ChannelSftp srcSftp = (ChannelSftp) srcSession.openChannel("sftp");
+            srcSftp.connect();
+            try (ByteArrayOutputStream buf = new ByteArrayOutputStream()) {
+                srcSftp.get(SRC_CERT, buf);
+                certBytes = buf.toByteArray();
+            } finally {
+                srcSftp.disconnect();
+            }
+            System.out.println(ColorPrinter.green("✓ Downloaded " + certBytes.length + " bytes"));
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("✗ Download failed: " + e.getMessage()));
+            return;
+        }
 
-            executeResourceScript("cert_exchange.sh", destIp, destPort, destUser, destPassword);
+        // ── Step 2: upload cert to destination BMC ──────────────────────────
+        System.out.println(ColorPrinter.cyan("\nStep 2: Uploading certificate to destination BMC..."));
+        try {
+            Session dstSession = SSHShellClient.getSession(destIp, destUser, destPassword, destPort);
+            if (dstSession == null) {
+                System.out.println(ColorPrinter.red("✗ Cannot open SSH session to destination BMC"));
+                return;
+            }
 
+            // Ensure the target directory exists
+            ChannelExec mkdirChannel = (ChannelExec) dstSession.openChannel("exec");
+            mkdirChannel.setCommand("mkdir -p " + DEST_DIR);
+            mkdirChannel.connect();
+            while (!mkdirChannel.isClosed()) Thread.sleep(100);
+            mkdirChannel.disconnect();
+
+            // Upload via SFTP
+            ChannelSftp dstSftp = (ChannelSftp) dstSession.openChannel("sftp");
+            dstSftp.connect();
+            try (java.io.InputStream in = new java.io.ByteArrayInputStream(certBytes)) {
+                dstSftp.put(in, DEST_CERT);
+            } finally {
+                dstSftp.disconnect();
+            }
+            System.out.println(ColorPrinter.green("✓ Uploaded certificate to " + DEST_CERT));
+
+            // ── Step 3: create hash symlink on destination ──────────────────
+            System.out.println(ColorPrinter.cyan("\nStep 3: Creating certificate hash symlink..."));
+            // Compute subject-name hash locally from the downloaded bytes
+            java.security.cert.CertificateFactory cf =
+                    java.security.cert.CertificateFactory.getInstance("X.509");
+            java.security.cert.X509Certificate x509 =
+                    (java.security.cert.X509Certificate) cf.generateCertificate(
+                            new java.io.ByteArrayInputStream(certBytes));
+            // OpenSSL subject_hash = first 4 bytes of MD5 of the canonical subject DN
+            java.security.MessageDigest md5 = java.security.MessageDigest.getInstance("MD5");
+            byte[] dnHash = md5.digest(x509.getSubjectX500Principal().getEncoded());
+            long hashVal = ((dnHash[0] & 0xFFL))
+                         | ((dnHash[1] & 0xFFL) << 8)
+                         | ((dnHash[2] & 0xFFL) << 16)
+                         | ((dnHash[3] & 0xFFL) << 24);
+            String hash = String.format("%08x", hashVal);
+            System.out.println(ColorPrinter.yellow("  Hash: " + hash));
+
+            // Find the next free index slot on the destination and create symlink
+            String symlinkCmd = String.format(
+                "cd %s && IDX=0 && " +
+                "while [ -e \"%s.${IDX}\" ] && [ $IDX -lt 100 ]; do IDX=$((IDX+1)); done && " +
+                "ln -sf ca.pem \"%s.${IDX}\" && " +
+                "echo \"Created: %s.${IDX} -> ca.pem\"",
+                DEST_DIR, hash, hash, hash);
+
+            ChannelExec symlinkChannel = (ChannelExec) dstSession.openChannel("exec");
+            symlinkChannel.setCommand(symlinkCmd);
+            InputStream symlinkOut = symlinkChannel.getInputStream();
+            InputStream symlinkErr = symlinkChannel.getErrStream();
+            symlinkChannel.connect();
+            new java.io.BufferedReader(new java.io.InputStreamReader(symlinkOut))
+                    .lines().forEach(l -> System.out.println(ColorPrinter.green("  " + l)));
+            new java.io.BufferedReader(new java.io.InputStreamReader(symlinkErr))
+                    .lines().forEach(l -> System.out.println(ColorPrinter.red("  " + l)));
+            while (!symlinkChannel.isClosed()) Thread.sleep(100);
+            symlinkChannel.disconnect();
+
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
             System.out.println(ColorPrinter.green("✓ Certificate exchange completed successfully"));
         } catch (Exception e) {
             System.out.println(ColorPrinter.red("✗ Certificate exchange failed: " + e.getMessage()));
