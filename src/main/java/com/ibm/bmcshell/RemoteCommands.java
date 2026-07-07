@@ -344,6 +344,30 @@ public class RemoteCommands extends CommonCommands {
         }
     }
 
+    @ShellMethod(key = "cert.exchange", value = "Exchange CA certificate: SCP /etc/ssl/certs/self_ca.pem from this BMC to destination and create hash symlink. eg: cert.exchange --ip 192.168.1.10 --port 22 --user root --password pass")
+    @ShellMethodAvailability("availabilityCheck")
+    void certExchange(
+            @ShellOption(value = { "--ip", "-i" }) String destIp,
+            @ShellOption(value = { "--port", "-p" }, defaultValue = "22") String destPort,
+            @ShellOption(value = { "--user", "-u" }, defaultValue = "root") String destUser,
+            @ShellOption(value = { "--password", "-pw" }) String destPassword) {
+        try {
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.cyan("  Certificate Exchange"));
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+            System.out.println(ColorPrinter.yellow("Source:      " + machine + ":/etc/ssl/certs/self_ca.pem"));
+            System.out.println(ColorPrinter.yellow("Destination: " + destUser + "@" + destIp + ":" + destPort + ":/etc/ssl/certs/authority/ca.pem"));
+            System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
+
+            executeResourceScript("cert_exchange.sh", destIp, destPort, destUser, destPassword);
+
+            System.out.println(ColorPrinter.green("✓ Certificate exchange completed successfully"));
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("✗ Certificate exchange failed: " + e.getMessage()));
+            e.printStackTrace();
+        }
+    }
+
     @ShellMethod(key = "mem.start", value = "eg: mem.start servicename [--exe exename] [--interval 2] - Start live memory monitoring")
     @ShellMethodAvailability("availabilityCheck")
     void mem_stat(
