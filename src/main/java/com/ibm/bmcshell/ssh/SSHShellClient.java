@@ -252,21 +252,35 @@ public class SSHShellClient {
             ChannelExec channel = (ChannelExec) session.openChannel("exec");
 
             channel.setCommand(command);
-            // channel.setInputStream(System.in,true);
-            channel.setOutputStream(out);
+            channel.setInputStream(null);
+            // Read stdout manually so we drain all bytes before returning
+            InputStream in = channel.getInputStream();
             // Set error stream to a separate stream to capture errors
             ByteArrayOutputStream errStream = new ByteArrayOutputStream();
             channel.setErrStream(errStream);
             channel.connect();
 
-            while (channel.isConnected()) {
-                Thread.sleep(100);
+            byte[] buf = new byte[4096];
+            int len;
+            while (true) {
+                while (in.available() > 0) {
+                    len = in.read(buf);
+                    if (len > 0) out.write(buf, 0, len);
+                }
+                if (channel.isClosed()) {
+                    // drain any final bytes after channel closes
+                    while (in.available() > 0) {
+                        len = in.read(buf);
+                        if (len > 0) out.write(buf, 0, len);
+                    }
+                    break;
+                }
+                Thread.sleep(50);
             }
             if (errStream.size() > 0) {
                 System.out.println("\nStandard Error: ");
                 System.out.println(ColorPrinter.red(errStream.toString()));
             }
-            channel.setInputStream(null);
             channel.disconnect();
         } catch (Exception e) {
             System.out.println(ColorPrinter.red("Error executing command: " + e.getMessage()));

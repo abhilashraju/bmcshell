@@ -25,6 +25,20 @@ public class RemoteFileCompleter implements ValueProvider {
     public List<CompletionProposal> complete(CompletionContext completionContext) {
         String userInput = completionContext.currentWordUpToCursor();
 
+        // When the user types a path ending with '/', Spring Shell's tokenizer treats
+        // the trailing '/' as a word boundary, so currentWordUpToCursor() returns "".
+        // Fall back to the last word in the token list (which will be the full path).
+        if (userInput.isEmpty()) {
+            java.util.List<String> words = completionContext.getWords();
+            if (words != null && !words.isEmpty()) {
+                String lastWord = words.get(words.size() - 1);
+                // Only use it if it looks like a path (contains /)
+                if (lastWord.contains("/")) {
+                    userInput = lastWord;
+                }
+            }
+        }
+
         // Get connection details from CommonCommands
         String machine = CommonCommands.machine;
         String userName = CommonCommands.getUserName();
@@ -119,9 +133,8 @@ public class RemoteFileCompleter implements ValueProvider {
         try {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 
-            // Use ls with -1 (one file per line) and -p (append / to directories)
-            // Also use -A to show hidden files but not . and ..
-            String command = String.format("ls -1Ap %s 2>/dev/null", escapePath(remotePath));
+            // Use sudo to handle directories that require elevated permissions
+            String command = String.format("sudo ls -1Ap %s 2>&1", escapePath(remotePath));
 
             runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, command);
 
@@ -136,7 +149,7 @@ public class RemoteFileCompleter implements ValueProvider {
                 }
             }
         } catch (Exception e) {
-            // Silently fail and return empty list
+            // silently fail and return empty list
         }
 
         return files;

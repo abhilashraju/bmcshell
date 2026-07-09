@@ -4,12 +4,18 @@ JAR_PATH="/root/bmcshell/target/bmcshell-0.0.1-SNAPSHOT.jar"
 PORT1=${PORT1:-8443}
 PORT2=${PORT2:-}
 
+# Resolve the container's own routable IP (avoids host iptables rules that block loopback).
+# Falls back to 127.0.0.1 if no eth0/eth1 address is found.
+SELF_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+SELF_IP=${SELF_IP:-127.0.0.1}
+
 # journal_cmd PORT  — inline script sent to each journal pane
 # Probes /machines (lightweight, no SSE side-effects) to wait for readiness,
 # then streams /sse/journal in a reconnect loop.
 journal_cmd() {
     local p=$1
-    echo "echo 'Waiting for bmcshell on port $p...'; until curl -sk --max-time 2 https://localhost:$p/machines >/dev/null 2>&1; do sleep 2; done; echo 'Streaming...'; while true; do curl -k -N https://localhost:$p/sse/journal; echo '[disconnected - retrying in 3s]'; sleep 3; done"
+    local ip=$SELF_IP
+    echo "echo 'Waiting for bmcshell on port $p...'; until curl -sk --max-time 2 https://$ip:$p/machines >/dev/null 2>&1; do sleep 2; done; echo 'Streaming...'; while true; do curl -k -N https://$ip:$p/sse/journal; echo '[disconnected - retrying in 3s]'; sleep 3; done"
 }
 
 # Ensure shared working directory exists
