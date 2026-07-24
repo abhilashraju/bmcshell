@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RestController
@@ -16,6 +17,9 @@ public class JournalSseController {
     // Many-unicast: backpressure-buffered, multiple subscribers each see all events
     private final Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer(1024, false);
     private final AtomicInteger activeConnections = new AtomicInteger(0);
+
+    /** Active filters — default "*" passes everything through. */
+    private volatile String[] filters = { "*" };
 
     /**
      * SSE endpoint for journal log streaming.
@@ -48,12 +52,43 @@ public class JournalSseController {
     }
 
     /**
+     * Set the filters for SSE event broadcasting.
+     * Only lines that contain at least one filter string (case-insensitive) are forwarded.
+     * Use {@code ["*"]} to pass everything through (default).
+     *
+     * @param filters one or more substrings to match; use {@code ["*"]} to pass everything
+     */
+    public void setFilters(String[] filters) {
+        this.filters = filters.clone();
+        System.out.println("SSE filter set to: " + Arrays.toString(this.filters));
+    }
+
+    /** Return a copy of the currently active filter strings. */
+    public String[] getFilters() {
+        return filters.clone();
+    }
+
+    /**
      * Broadcast a journal line to all connected SSE clients.
+     * The line is only emitted when it matches at least one of the active filters.
      *
      * @param line The journal line to broadcast
      */
     public void broadcastJournalLine(String line) {
-        sink.tryEmitNext(line);
+        if (matchesAnyFilter(line)) {
+            sink.tryEmitNext(line);
+        }
+    }
+
+    /** Returns true when {@code line} contains at least one filter string (case-insensitive). */
+    private boolean matchesAnyFilter(String line) {
+        String lower = line.toLowerCase();
+        for (String f : filters) {
+            if ("*".equals(f) || lower.contains(f.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

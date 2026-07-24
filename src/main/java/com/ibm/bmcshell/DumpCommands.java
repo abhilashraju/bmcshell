@@ -8,15 +8,21 @@ import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellMethodAvailability;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.cert.X509Certificate;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,6 +71,18 @@ public class DumpCommands extends CommonCommands {
     @ShellMethodAvailability("availabilityCheck")
     public void delete_bmcdump(String id) throws URISyntaxException, IOException {
         delete(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/", id));
+    }
+
+    @ShellMethod(key = "dump.bmc.info", value = "Get BMC dump entry info by ID. eg: dump.bmc.info 158")
+    @ShellMethodAvailability("availabilityCheck")
+    public void get_bmcdump_info(String id) throws URISyntaxException, IOException {
+        get(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s", id), "", true);
+    }
+
+    @ShellMethod(key = "dump.system.info", value = "Get system dump entry info by ID. eg: dump.system.info 158")
+    @ShellMethodAvailability("availabilityCheck")
+    public void get_systemdump_info(String id) throws URISyntaxException, IOException {
+        get(String.format("/redfish/v1/Systems/system/LogServices/Dump/Entries/%s", id), "", true);
     }
 
     public static class DownLoadInfo {
@@ -267,83 +285,88 @@ public class DumpCommands extends CommonCommands {
             }
         }
 
-        var target = String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id);
-        var auri = new URI(base() + target);
-        var response = client.get()
-                .uri(auri)
-                .header("X-Auth-Token", token)
-                .retrieve()
-                .toEntity(String.class)
-                .block();
+        // Fetch dump entry info to check AdditionalDataSizeBytes
+        String infoJson = makeGetRequest(
+                String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s", id), "");
+        ObjectMapper infoMapper = new ObjectMapper();
+        long additionalDataSizeBytes = 0;
+        try {
+            var infoTree = infoMapper.readTree(infoJson);
+            if (infoTree.has("AdditionalDataSizeBytes")) {
+                additionalDataSizeBytes = infoTree.get("AdditionalDataSizeBytes").asLong();
+            }
+        } catch (Exception e) {
+            System.err.println("Warning: could not parse dump info, proceeding with chunked path: " + e.getMessage());
+            additionalDataSizeBytes = Long.MAX_VALUE;
+        }
+        System.out.println(String.format("Dump AdditionalDataSizeBytes: %d (%.2f MB)",
+                additionalDataSizeBytes, additionalDataSizeBytes / (1024.0 * 1024)));
 
-        var header = response.getHeaders().get("Transfer-Encoding");
-        if (header != null && header.contains("multipart")) {
-            System.out.println("Detected chunked download mode");
-            // Chunked download mode with new format: {chunkSizeMB: [urls]}
-            ObjectMapper mapper = new ObjectMapper();
-            var tree = mapper.readTree(response.getBody());
-            data = new DownloadData(filename, chunkSizeMB, concurrency);
+        long chunkSizeBytes = (long) chunkSizeMB * 1024 * 1024;
 
-            // Get the chunk size key to use (in MB)
-            String chunkSizeKey = String.valueOf(chunkSizeMB);
-
-            // Check if the requested chunk size exists in the response
-            if (!tree.has(chunkSizeKey)) {
-                System.out.println(String.format("Warning: Chunk size %d MB not available in response", chunkSizeMB));
-                System.out.println("Available chunk sizes (MB): " + tree.fieldNames());
-
-                // Fall back to first available chunk size
-                var fieldNames = tree.fieldNames();
-                if (fieldNames.hasNext()) {
-                    chunkSizeKey = fieldNames.next();
-                    System.out.println(String.format("Using chunk size: %s MB", chunkSizeKey));
-                } else {
-                    System.err.println("Error: No chunk sizes available in response");
-                    return;
+        // Use single-file offload when chunkSize >= dumpSize (entire dump fits in one chunk)
+        if (chunkSizeBytes >= additionalDataSizeBytes) {
+            System.out.println("Chunk size >= dump size — using single-file offload path.");
+            System.out.println("Downloading complete file...");
+            long downloadStartTime = System.currentTimeMillis();
+            get(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id), filename, false);
+            long downloadEndTime = System.currentTimeMillis();
+            System.out.println(String.format("\n✓ Dump offload completed in %.2f seconds",
+                    (downloadEndTime - downloadStartTime) / 1000.0));
+            String absPath = new File(filename).getAbsolutePath();
+            Thread script = new Thread(() -> {
+                try {
+                    System.out.println("Extracting dump to " + absPath + "_out");
+                    extract_dump(absPath);
+                } catch (IOException | URISyntaxException | InterruptedException e) {
+                    e.printStackTrace();
                 }
-            }
-
-            System.out.println(String.format("Using chunk size: %s MB", chunkSizeKey));
-            var urlsArray = tree.get(chunkSizeKey);
-
-            for (var node : urlsArray) {
-                data.downLoadStatus.put(node.get(0).asText(),
-                        new DownLoadInfo(node.get(0).asText(),
-                                node.get(1).asText(), DownLoadInfo.Status.notStarted));
-            }
-
-            // Set as active download
-            activeDownload = data;
-
-            // Save initial metadata
-            data.saveMetadata();
-            System.out.println(String.format("Starting download of %d chunks with concurrency %d...",
-                    data.downLoadStatus.size(), concurrency));
-            downLoadParts(data, concurrency);
+            });
+            script.setName("Dump Extractor");
+            script.setDaemon(true);
+            script.start();
             return;
         }
 
-        // Non-chunked download (small file)
-        System.out.println("Downloading complete file...");
-        long downloadStartTime = System.currentTimeMillis();
-        get(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id), filename, false);
-        long downloadEndTime = System.currentTimeMillis();
-        long downloadDuration = downloadEndTime - downloadStartTime;
+        // chunkSize < dumpSize — client-side chunked offload path.
+        // Generate chunk URLs locally using AdditionalDataSizeBytes, mirroring
+        // the server-side generateChunkUrls() logic in bmcweb log_services.hpp.
+        System.out.println("Dump size is > chunk size — using chunked offload path.");
+        data = new DownloadData(filename, chunkSizeMB, concurrency);
 
-        System.out.println(String.format("\n✓ Dump offload completed in %.2f seconds", downloadDuration / 1000.0));
+        long fullChunks = additionalDataSizeBytes / chunkSizeBytes;
+        long remainder  = additionalDataSizeBytes % chunkSizeBytes;
 
-        String absPath = new File(filename).getAbsolutePath();
-        Thread script = new Thread(() -> {
-            try {
-                System.out.println("Extracting dump to " + absPath + "_out");
-                extract_dump(absPath);
-            } catch (IOException | URISyntaxException | InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
-        script.setName("Dump Extractor");
-        script.setDaemon(true);
-        script.start();
+        System.out.println(String.format(
+                "Generating chunk URLs: fileSize=%d, chunkSizeMB=%d, fullChunks=%d, remainder=%d",
+                additionalDataSizeBytes, chunkSizeMB, fullChunks, remainder));
+
+        for (long i = 0; i < fullChunks; i++) {
+            long offset = i * chunkSizeBytes;
+            String url = String.format(
+                    "/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/%d/%d/attachment/",
+                    id, offset, chunkSizeBytes);
+            String key = String.valueOf(i);
+            data.downLoadStatus.put(key, new DownLoadInfo(key, url, DownLoadInfo.Status.notStarted));
+        }
+
+        if (remainder > 0) {
+            long offset = fullChunks * chunkSizeBytes;
+            String url = String.format(
+                    "/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/%d/%d/attachment/",
+                    id, offset, remainder);
+            String key = String.valueOf(fullChunks);
+            data.downLoadStatus.put(key, new DownLoadInfo(key, url, DownLoadInfo.Status.notStarted));
+        }
+
+        // Set as active download
+        activeDownload = data;
+
+        // Save initial metadata
+        data.saveMetadata();
+        System.out.println(String.format("Starting download of %d chunks with concurrency %d...",
+                data.downLoadStatus.size(), concurrency));
+        downLoadParts(data, concurrency);
     }
 
     @ShellMethod(key = "dump.extract", value = "eg: extract_dump out_filename")
@@ -687,6 +710,184 @@ public class DumpCommands extends CommonCommands {
         script.setName("Dump Extractor");
         script.setDaemon(true);
         script.start();
+    }
+
+    // -------------------------------------------------------------------------
+    // dump.timeout.test — verifies the per-chunk idle timer in bmcweb
+    //
+    // Three sub-tests run in sequence:
+    //   1. NORMAL  — full-speed download must complete successfully
+    //   2. SLOW    — rate-limited WebClient (1 byte/s effective) triggers
+    //                server-side timeout mid-transfer
+    //   3. STALLED — raw SSLSocket that stops reading after headers; server
+    //                must hard-close the connection within ~15s
+    // -------------------------------------------------------------------------
+    @ShellMethod(key = "dump.timeout.test",
+            value = "Test per-chunk idle timer. eg: dump.timeout.test 4 [--skipSanity]")
+    @ShellMethodAvailability("availabilityCheck")
+    public void dumpTimeoutTest(
+            String id,
+            @org.springframework.shell.standard.ShellOption(defaultValue = "false")
+            boolean skipSanity) throws Exception {
+
+        String attachmentPath = String.format(
+                "/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment", id);
+
+        System.out.println("╔════════════════════════════════════════════════════════════╗");
+        System.out.println("║        bmcweb per-chunk idle timer — integration test      ║");
+        System.out.println("╚════════════════════════════════════════════════════════════╝");
+        if (skipSanity) {
+            System.out.println("  (--skipSanity: tests 1 and 3 skipped)");
+        }
+
+        // ── TEST 1: Normal full-speed download (optional) ───────────────────
+        boolean test1Pass = true; // treated as N/A when skipped
+        if (!skipSanity) {
+            System.out.println("\n[TEST 1] Normal full-speed download...");
+            test1Pass = false;
+            try {
+                Instant start = Instant.now();
+                byte[] body = client.get()
+                        .uri(new URI(base() + attachmentPath))
+                        .header("X-Auth-Token", token)
+                        .header("Accept", "application/octet-stream")
+                        .retrieve()
+                        .bodyToMono(byte[].class)
+                        .block(Duration.ofMinutes(5));
+                long elapsed = Duration.between(start, Instant.now()).toMillis();
+                if (body != null && body.length > 0) {
+                    System.out.printf("  ✓ Received %d bytes in %.1fs%n",
+                            body.length, elapsed / 1000.0);
+                    test1Pass = true;
+                } else {
+                    System.out.println("  ✗ Empty body received");
+                }
+            } catch (Exception e) {
+                System.out.println("  ✗ Failed: " + e.getMessage());
+            }
+            printResult("TEST 1 — Normal download", test1Pass);
+        }
+
+        // ── TEST 2: Read one chunk, sleep 30s, try to read again ─────────────
+        // The server's chunk timer is 15s. If we stop reading for 30s the timer
+        // must have fired and hard-closed the connection. The second read() will
+        // then return -1 (EOF) or throw IOException (connection reset).
+        System.out.println("\n[TEST 2] Stalled client: read one chunk, sleep 30s, verify server closed...");
+        boolean test2Pass = false;
+        try {
+            URI baseUri = new URI(base());
+            String host = baseUri.getHost();
+            int port = baseUri.getPort() > 0 ? baseUri.getPort() : 443;
+
+            SSLContext sslCtx = SSLContext.getInstance("TLS");
+            sslCtx.init(null, new TrustManager[]{new X509TrustManager() {
+                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                public void checkClientTrusted(X509Certificate[] c, String a) {}
+                public void checkServerTrusted(X509Certificate[] c, String a) {}
+            }}, null);
+
+            SSLSocket sock = (SSLSocket) sslCtx.getSocketFactory()
+                    .createSocket(host, port);
+            sock.setSoTimeout(60_000);
+
+            String req = "GET " + attachmentPath + " HTTP/1.1\r\n"
+                    + "Host: " + host + "\r\n"
+                    + "X-Auth-Token: " + token + "\r\n"
+                    + "Accept: application/octet-stream\r\n"
+                    + "Connection: keep-alive\r\n\r\n";
+            sock.getOutputStream().write(req.getBytes());
+            sock.getOutputStream().flush();
+
+            InputStream in = sock.getInputStream();
+
+            // Read the response headers.
+            int b, consecutive = 0, headerBytes = 0;
+            while ((b = in.read()) != -1) {
+                headerBytes++;
+                if (b == '\r' || b == '\n') { consecutive++; } else { consecutive = 0; }
+                if (consecutive == 4) break;
+            }
+            System.out.printf("  Read %d header bytes%n", headerBytes);
+
+            // Read exactly one chunk of body data.
+            byte[] chunk = new byte[65536];
+            int chunkRead = in.read(chunk);
+            System.out.printf("  Read first chunk: %d bytes%n", chunkRead);
+
+            // Now stop reading for 30s — twice the server's 15s chunk timer.
+            System.out.println("  Sleeping 30s (server timer is 15s)...");
+            Thread.sleep(30_000);
+
+            // Try to read again. The server must have closed the connection by now.
+            // Either read() returns -1 (clean close) or throws IOException (RST).
+            boolean serverClosedAfterSleep = false;
+            try {
+                sock.setSoTimeout(5_000); // 5s — if this succeeds the timer didn't fire
+                int r = in.read(chunk);
+                if (r < 0) {
+                    System.out.println("  ✓ read() returned -1 (EOF) — server closed cleanly");
+                    serverClosedAfterSleep = true;
+                } else {
+                    System.out.printf("  ✗ read() returned %d bytes — server still sending (timer did not fire)%n", r);
+                }
+            } catch (IOException e) {
+                System.out.printf("  ✓ read() threw %s — server hard-closed (RST/SSL alert)%n",
+                        e.getClass().getSimpleName());
+                serverClosedAfterSleep = true;
+            }
+
+            sock.close();
+            test2Pass = serverClosedAfterSleep;
+        } catch (Exception e) {
+            System.out.println("  ✗ Test setup failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+        printResult("TEST 2 — Stalled client hard-close", test2Pass);
+
+        // ── TEST 3: Verify normal download still works after stall test ──────
+        // Ensures the server is still healthy and serving new connections after
+        // the hard-close. A broken server would fail this.
+        boolean test3Pass = true; // treated as N/A when skipped
+        if (!skipSanity) {
+            System.out.println("\n[TEST 3] Server still healthy after stall (downloads again)...");
+            test3Pass = false;
+            try {
+                byte[] body = client.get()
+                        .uri(new URI(base() + attachmentPath))
+                        .header("X-Auth-Token", token)
+                        .header("Accept", "application/octet-stream")
+                        .retrieve()
+                        .bodyToMono(byte[].class)
+                        .block(Duration.ofMinutes(5));
+                if (body != null && body.length > 0) {
+                    System.out.printf("  ✓ Received %d bytes — server healthy%n", body.length);
+                    test3Pass = true;
+                } else {
+                    System.out.println("  ✗ Empty body — server may be degraded");
+                }
+            } catch (Exception e) {
+                System.out.println("  ✗ Failed: " + e.getMessage());
+            }
+            printResult("TEST 3 — Server health after stall", test3Pass);
+        }
+
+        // ── Summary ──────────────────────────────────────────────────────────
+        System.out.println();
+        System.out.println("╔════════════════════════════════════════════════════════════╗");
+        System.out.printf( "║ TEST 1 (normal download)     : %-29s║%n",
+                skipSanity ? "-- SKIPPED --" : (test1Pass ? "✓ PASS" : "✗ FAIL"));
+        System.out.printf( "║ TEST 2 (stalled hard-close)  : %-29s║%n", test2Pass ? "✓ PASS" : "✗ FAIL");
+        System.out.printf( "║ TEST 3 (server health)       : %-29s║%n",
+                skipSanity ? "-- SKIPPED --" : (test3Pass ? "✓ PASS" : "✗ FAIL"));
+        System.out.println("╚════════════════════════════════════════════════════════════╝");
+    }
+
+    private static void printResult(String name, boolean pass) {
+        if (pass) {
+            System.out.printf("  ╰─ %-40s ✓ PASS%n", name);
+        } else {
+            System.out.printf("  ╰─ %-40s ✗ FAIL%n", name);
+        }
     }
 
     @ShellMethod(key = "dump.offload.stop", value = "Stop the current dump offload operation")

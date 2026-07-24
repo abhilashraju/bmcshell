@@ -204,6 +204,68 @@ public class RemoteCommands extends CommonCommands {
         }
     }
 
+    @ShellMethod(key = { "ro.download", "download" }, value = "Download a file from BMC to local machine - eg: ro.download /remote/path/file.txt [--local ./localname.txt]")
+    @ShellMethodAvailability("availabilityCheck")
+    void download(
+            @ShellOption(valueProvider = RemoteFileCompleter.class) String remotePath,
+            @ShellOption(value = { "--local", "-l" }, defaultValue = "") String localPath) {
+        try {
+            String name = userName.equals("root") ? userName : "service";
+            String fullMachine = Util.fullMachineName(machine);
+
+            // Default local path: use the remote file's basename in the current directory
+            if (localPath.isEmpty()) {
+                String remoteName = new java.io.File(remotePath).getName();
+                localPath = System.getProperty("user.dir") + java.io.File.separator + remoteName;
+            }
+
+            System.out.println(ColorPrinter.cyan("Downloading: " + remotePath));
+            System.out.println(ColorPrinter.yellow("       → " + localPath));
+
+            // Step 1: Try direct SFTP download
+            boolean downloaded = false;
+            Session session = SSHShellClient.getSession(fullMachine, name, passwd, port);
+            if (session == null) {
+                System.out.println(ColorPrinter.red("Failed to establish SSH session"));
+                return;
+            }
+
+            ChannelSftp sftpChannel = (ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+            try {
+                sftpChannel.get(remotePath, localPath);
+                downloaded = true;
+            } catch (Exception sftpEx) {
+                System.out.println(ColorPrinter.yellow("SFTP failed (" + sftpEx.getMessage() + "), retrying with sudo cat..."));
+            } finally {
+                sftpChannel.disconnect();
+            }
+
+            // Step 2: Fall back to sudo cat for privileged files
+            if (!downloaded) {
+                String catCommand = name.equals("root")
+                        ? String.format("cat %s", remotePath)
+                        : String.format("sudo -i cat %s", remotePath);
+
+                ByteArrayOutputStream contentStream = new ByteArrayOutputStream();
+                runCommandShort(contentStream, fullMachine, name, passwd, catCommand);
+                byte[] bytes = contentStream.toByteArray();
+
+                if (bytes.length == 0) {
+                    System.out.println(ColorPrinter.red("✗ File is empty or could not be read (check path and permissions)"));
+                    return;
+                }
+
+                java.nio.file.Files.write(java.nio.file.Paths.get(localPath), bytes);
+            }
+
+            System.out.println(ColorPrinter.green("✓ Downloaded to: " + localPath));
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+        }
+    }
+
     @ShellMethod(key = { "ro.find", "find" }, value = "eg: ro.find filename [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void findFile(String filename,

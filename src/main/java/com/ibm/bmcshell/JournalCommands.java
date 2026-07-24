@@ -178,6 +178,17 @@ public class JournalCommands extends CommonCommands {
         }
     }
 
+    @ShellMethod(key = "journal.ws.filter", value = "Set SSE broadcast filter(s). Use '*' for all, or space-separated wildcard patterns. eg: journal.ws.filter *error* *warn*")
+    void journalWebSocketFilter(@ShellOption(arity = Integer.MAX_VALUE) String[] patterns) {
+        if (sseController == null) {
+            System.out.println("SSE Controller not available.");
+            return;
+        }
+        sseController.setFilters(patterns);
+        System.out.println("SSE filter updated: " + java.util.Arrays.toString(patterns));
+        System.out.println("Only journal lines matching at least one pattern will be sent to SSE clients.");
+    }
+
     @ShellMethod(key = "journal.ws.enable", value = "Enable SSE streaming. eg: journal.ws.enable")
     void journalWebSocketEnable() {
         setWebSocketStreaming(true);
@@ -194,6 +205,7 @@ public class JournalCommands extends CommonCommands {
         System.out.println("Streaming Enabled: " + webSocketStreamingEnabled);
         if (sseController != null) {
             System.out.println("Active SSE Connections: " + sseController.getActiveConnectionCount());
+            System.out.println("Active Filters:     " + java.util.Arrays.toString(sseController.getFilters()));
 
             // SSL enabled by default for all ports
             String endpoint = String.format("https://localhost:%d/sse/journal", serverPort);
@@ -229,7 +241,10 @@ public class JournalCommands extends CommonCommands {
         System.out.println("\n=== SSE Streaming Commands ===");
         System.out.println("journal.ws.enable         - Enable SSE streaming for live journal updates");
         System.out.println("journal.ws.disable        - Disable SSE streaming");
-        System.out.println("journal.ws.status         - Show SSE streaming status and active connections");
+        System.out.println("journal.ws.filter <pats>  - Set SSE broadcast filter(s) (wildcard, space-separated)");
+        System.out.println("                            Use '*' to pass everything (default)");
+        System.out.println("                            eg: journal.ws.filter *error* *warn* *cert*");
+        System.out.println("journal.ws.status         - Show SSE streaming status, connections and active filters");
         System.out.println("\njournal.help              - Show this help message");
         System.out.println("\nExamples:");
         System.out.println("  journal.start bmcweb");

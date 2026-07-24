@@ -68,9 +68,9 @@ public class SystemCommands extends CommonCommands {
         system(String.format("wget %s", url));
     }
 
-    @ShellMethod(key = "sys.cmd", value = "eg: sy.cmd command")
-    void cmd(String cmd) {
-        system(cmd);
+    @ShellMethod(key = { "sys.cmd", "sc" }, value = "eg: sys.cmd command [args...]")
+    void cmd(@ShellOption(arity = Integer.MAX_VALUE) String[] args) {
+        system(String.join(" ", args));
     }
 
     @ShellMethod(key = "ts.send")
