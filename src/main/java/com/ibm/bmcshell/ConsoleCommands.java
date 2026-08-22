@@ -416,6 +416,75 @@ public class ConsoleCommands extends CommonCommands {
     }
 
     /**
+     * Show a quick reference of discovered PHYP console commands.
+     */
+    @ShellMethod(value = "Show PHYP console command help", key = "console-phyp-help")
+    public String consolePhypHelp() {
+        return String.join("\n",
+                "PHYP command quick reference",
+                "",
+                "| Command | Purpose | Safety |",
+                "|---|---|---|",
+                "| vsp | List partitions / VSP status | Safe |",
+                "| vsp -h | Show VSP help | Safe |",
+                "| vsp -id 1001 | Show one partition | Safe |",
+                "| vsp -id 1001 -uptime | Show partition uptime | Safe |",
+                "| vsp -id 1001 -srcs | Show SRC history | Safe |",
+                "| vsp -id 1001 -mapvslot0 query | Show virtual terminal mapping | Safe |",
+                "| vsp -longname | Show extended partition names | Safe |",
+                "| vsp -powerstate | Show VSP power state | Safe |",
+                "| vsp -resumestate | Show resume state | Safe |",
+                "| lpar -GETALLLP | List all partitions | Safe |",
+                "| lpar -GETLP 1001 | Show partition details | Safe |",
+                "| lpar -GETOSVERSION 1001 | Show OS version | Safe |",
+                "| lpar -SHOWIO | Show I/O information | Safe |",
+                "| lpar -GETSIZES | Show PHYP sizing info | Safe |",
+                "| lpar -GETMEMRSRV 1001 | Show reserve memory | Safe |",
+                "| dump -q | Query dumps | Safe |",
+                "| dump -fr | Show dump flight recorder | Safe |",
+                "| dump -errorfr | Show error dump flight recorder | Safe |",
+                "| dump -msdinfo | Show MSD raw info | Safe |",
+                "| dump -v -q | Verbose dump query | Safe |",
+                "| dump -v -fr | Verbose flight recorder | Safe |",
+                "| vsp -id 1001 -on | Power on partition | Risky |",
+                "| vsp -id 1001 -off | Power off partition | Risky |",
+                "| vsp -id 1001 -hold | Set system IPL action hold | Risky |",
+                "| vsp -id 1001 -ipl | Set system IPL action IPL | Risky |",
+                "| vsp -id 1001 -bootmode sms-menu | Change boot mode | Risky |",
+                "| vsp -id 1001 -manual | Change keylock mode | Risky |",
+                "| vsp -id 1001 -fast | Change IPL speed | Risky |",
+                "| vsp -id 1001 -slow | Change IPL speed | Risky |",
+                "| vsp -func 22 -id 1001 | Force partition dump | Risky |",
+                "| lpar -SETCON ... | Change console device mapping | Risky |",
+                "| lpar -SETVIOCON ... | Change virtual console mapping | Risky |",
+                "| lpar -SETACON ... | Change alternate console mapping | Risky |",
+                "| lpar -SETMEM ... | Change memory config | Risky |",
+                "| lpar -SETPROCS ... | Change CPU config | Risky |",
+                "| lpar -ASSIGNIO ... | Assign I/O to partition | Risky |",
+                "| lpar -REMOVEIO ... | Remove I/O from partition | Risky |",
+                "| lpar -DELETE ... | Delete partition | Dangerous |",
+                "| dump -c -t hyp | Create a dump | Dangerous |",
+                "| dump -r -t hyp | Reset/invalidate dump | Dangerous |",
+                "| dump -autotest on | Start automatic dump testing | Dangerous |",
+                "| dump -testPolicy <N> | Override dump policy | Dangerous |",
+                "| dump -testLp <LP> | Override dump service partition | Dangerous |",
+                "",
+                "Best safe daily-use set:",
+                "  vsp",
+                "  vsp -id 1001",
+                "  vsp -id 1001 -uptime",
+                "  vsp -id 1001 -srcs",
+                "  vsp -id 1001 -mapvslot0 query",
+                "  lpar -GETALLLP",
+                "  lpar -GETLP 1001",
+                "  lpar -GETOSVERSION 1001",
+                "  dump -q",
+                "  dump -fr",
+                "",
+                "Discovered PHYP commands in this environment: vsp, lpar, dump");
+    }
+
+    /**
      * Connect to BMC shell (PTY-based login shell)
      * Uses /bmc-console route which provides a login shell on the BMC
      */

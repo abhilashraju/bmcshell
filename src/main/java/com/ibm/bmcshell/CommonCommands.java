@@ -409,14 +409,17 @@ public class CommonCommands implements ApplicationContextAware {
         });
     }
 
-    String makeGetRequest(String target, String o) throws URISyntaxException {
+    String makeGetRequest(String target, String o, String data) throws URISyntaxException {
         var auri = new URI(base() + target);
         if (!o.isEmpty()) {
             try {
-                client.get()
+                WebClient.RequestBodySpec bodySpec = client.method(org.springframework.http.HttpMethod.GET)
                         .uri(auri)
-                        .header("X-Auth-Token", token)
-                        .retrieve()
+                        .header("X-Auth-Token", token);
+                WebClient.RequestHeadersSpec<?> headersSpec = (data != null && !data.isEmpty())
+                        ? bodySpec.header("Content-Type", "application/json").bodyValue(data)
+                        : bodySpec;
+                headersSpec.retrieve()
                         .bodyToMono(byte[].class)
                         .flatMap(bytes -> Mono.fromRunnable(() -> {
                             try {
@@ -440,12 +443,14 @@ public class CommonCommands implements ApplicationContextAware {
         }
         return Util.tryUntil(1, () -> {
             try {
-                var response = client.get()
+                WebClient.RequestBodySpec bodySpec = client.method(org.springframework.http.HttpMethod.GET)
                         .uri(auri)
                         .header("Content-Type", "application/json")
-                        .header("X-Auth-Token", token)
-
-                        .retrieve()
+                        .header("X-Auth-Token", token);
+                WebClient.RequestHeadersSpec<?> headersSpec = (data != null && !data.isEmpty())
+                        ? bodySpec.bodyValue(data)
+                        : bodySpec;
+                var response = headersSpec.retrieve()
                         .toEntity(String.class)
                         .block();
                 return response.getBody();
@@ -456,6 +461,16 @@ public class CommonCommands implements ApplicationContextAware {
             }
 
         });
+    }
+
+    // Backward-compatible overload — callers that don't supply a body
+    String makeGetRequest(String target, String o) throws URISyntaxException {
+        return makeGetRequest(target, o, "");
+    }
+
+    // Backward-compatible overload — callers that use the old 3-arg get(endpoint, output, menu)
+    public void get(String endPoint, String o, boolean menu) throws URISyntaxException, IOException {
+        get(endPoint, "", o, menu);
     }
 
     private Map<String, String> parseFormData(String data) {
@@ -841,6 +856,32 @@ public class CommonCommands implements ApplicationContextAware {
         defaultOutputConsumer().accept(goTo(ep, data, false, ""));
     }
 
+    @ShellMethod(key = "graphql", value = "eg graphql '{ systems { id name powerState } }' or graphql 'query Q($id:ID!){system(id:$id){id}}' --var id=system0")
+    @ShellMethodAvailability("availabilityCheck")
+    public void graphql(
+            @ShellOption(value = { "-q", "--query" }, help = "GraphQL query string") String query,
+            @ShellOption(value = { "-v", "--var" }, help = "Variable in key=value form, repeatable", defaultValue = ShellOption.NULL) String[] vars,
+            @ShellOption(value = { "-e", "--endpoint" }, defaultValue = "/graphql") String endpoint)
+            throws URISyntaxException, IOException {
+        com.fasterxml.jackson.databind.node.ObjectNode body =
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        body.put("query", query);
+        if (vars != null && vars.length > 0) {
+            com.fasterxml.jackson.databind.node.ObjectNode variables =
+                    new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            for (String var : vars) {
+                int eq = var.indexOf('=');
+                if (eq > 0) {
+                    variables.put(var.substring(0, eq), var.substring(eq + 1));
+                }
+            }
+            body.set("variables", variables);
+        }
+        String jsonBody = body.toString();
+        var ep = new Util.EndPoints(endpoint, "Post");
+        defaultOutputConsumer().accept(goTo(ep, jsonBody, false, ""));
+    }
+
     @ShellMethod(key = "postFile", value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
     @ShellMethodAvailability("availabilityCheck")
     public void postFile(String target,
@@ -876,13 +917,15 @@ public class CommonCommands implements ApplicationContextAware {
         defaultOutputConsumer().accept(goTo(ep, "", false, ""));
     }
 
-    @ShellMethod(key = "get", value = "eg get Systems/hypervisor/EthernetInterfaces/eth0 or get Systems/hypervisor/EthernetInterfaces/eth0 output-filename")
+    @ShellMethod(key = "get", value = "eg get Systems/hypervisor/EthernetInterfaces/eth0 or get Systems/hypervisor/EthernetInterfaces/eth0 --data '{\"key\":\"value\"}' --output filename")
     @ShellMethodAvailability("availabilityCheck")
-    public void get(String endPoint, @ShellOption(value = { "--output", "-o" }, defaultValue = "") String o,
+    public void get(String endPoint,
+            @ShellOption(value = { "--data", "-d" }, defaultValue = "") String data,
+            @ShellOption(value = { "--output", "-o" }, defaultValue = "") String o,
             @ShellOption(value = { "--menu", "-m" }, defaultValue = "false") boolean menu)
             throws URISyntaxException, IOException {
         var ep = new Util.EndPoints(endPoint, "Get");
-        execute(ep, "", false, o, menu);
+        execute(ep, data, false, o, menu);
     }
 
     @ShellMethod(key = "lastcurl", value = "eg lastcurl")
@@ -917,7 +960,12 @@ public class CommonCommands implements ApplicationContextAware {
                 defaultOutputConsumer().accept(data);
                 return lastCurlResponse = makePatchRequest(url, data);
             }
-            return lastCurlResponse = applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o));
+            if (data != null && !data.isEmpty()) {
+                lastCurlRequest = String.format(
+                        "curl -k -H \"X-Auth-Token: %s\" -H \"Content-Type: application/json\" -X GET -d '%s' https://%s%s",
+                        token, data, Util.fullMachineName(machine), Util.normalise(ep.url));
+            }
+            return lastCurlResponse = applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o, data));
 
         } catch (WebClientResponseException.BadRequest
                 | WebClientResponseException.Forbidden
@@ -1560,11 +1608,38 @@ public class CommonCommands implements ApplicationContextAware {
         }
     }
 
-    @ShellMethod(key = "r", value = "eg: r filename. This command will run the file content as script")
+    @ShellMethod(key = "r", value = "eg: r filename [arg1] [arg2] ... This command will run the file content as script")
     @ShellMethodAvailability("availabilityCheck")
-    void runScript(@ShellOption(valueProvider = ScriptNameProvider.class, value = { "--file", "-f" }) String scrFile)
+    void runScript(
+            @ShellOption(arity = Integer.MAX_VALUE, valueProvider = ScriptNameProvider.class) String[] args)
             throws Exception {
-        script.script(new File(shellHomePath + scrFile));
+        if (args == null || args.length == 0) {
+            System.out.println(ColorPrinter.red("Error: Script name is required. Usage: r <filename> [arg1] [arg2] ..."));
+            return;
+        }
+        String scrFile = args[0];
+        File scriptFile = new File(shellHomePath + scrFile);
+        if (args.length > 1) {
+            String[] scriptArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
+            System.out.println(ColorPrinter.cyan("Executing script: " + scrFile + " with arguments: " + String.join(", ", scriptArgs)));
+            String content = Files.readString(scriptFile.toPath());
+            
+            for (int i = 0; i < scriptArgs.length; i++) {
+                content = content.replace("$" + (i + 1), scriptArgs[i]);
+            }
+            
+            Path tempScriptPath = Paths.get(shellHomePath + "." + scrFile + "_temp");
+            Files.writeString(tempScriptPath, content);
+            File tempScriptFile = tempScriptPath.toFile();
+            
+            try {
+                script.script(tempScriptFile);
+            } finally {
+                Files.deleteIfExists(tempScriptPath);
+            }
+        } else {
+            script.script(scriptFile);
+        }
     }
 
     void tell(String message) throws IOException, InterruptedException {

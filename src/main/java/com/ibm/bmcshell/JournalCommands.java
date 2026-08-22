@@ -100,8 +100,9 @@ public class JournalCommands extends CommonCommands {
         scmd(command, journalConsumer());
     }
 
-    @ShellMethod(key = "journal.start", value = "eg: journal.start arg ")
-    void journalctl(@ShellOption(arity = ShellOption.ARITY_USE_HEURISTICS) String[] filter) throws IOException {
+    @ShellMethod(key = { "journal.start", "js" }, value = "eg: journal.start arg ")
+    void journalctl(@ShellOption(arity = ShellOption.ARITY_USE_HEURISTICS, defaultValue = "*") String[] filter)
+            throws IOException {
         journalctlStop(); // Stop any existing journal thread
         StringBuffer command = new StringBuffer();
         command.append("journalctl -f");
@@ -178,7 +179,8 @@ public class JournalCommands extends CommonCommands {
         }
     }
 
-    @ShellMethod(key = "journal.ws.filter", value = "Set SSE broadcast filter(s). Use '*' for all, or space-separated wildcard patterns. eg: journal.ws.filter *error* *warn*")
+    @ShellMethod(key = { "journal.filter",
+            "jf" }, value = "Set SSE broadcast filter(s). Use '*' for all, or space-separated wildcard patterns. eg: journal.ws.filter *error* *warn*")
     void journalWebSocketFilter(@ShellOption(arity = Integer.MAX_VALUE) String[] patterns) {
         if (sseController == null) {
             System.out.println("SSE Controller not available.");

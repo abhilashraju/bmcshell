@@ -95,7 +95,9 @@ public class DumpCommands extends CommonCommands {
         @JsonProperty
         public String key;
         @JsonProperty
-        public String url;
+        public long offset;
+        @JsonProperty
+        public long length;
         @JsonProperty
         public long size;
         @JsonProperty
@@ -105,9 +107,10 @@ public class DumpCommands extends CommonCommands {
         public DownLoadInfo() {
         }
 
-        public DownLoadInfo(String k, String u, Status b) {
+        public DownLoadInfo(String k, long offset, long length, Status b) {
             key = k;
-            url = u;
+            this.offset = offset;
+            this.length = length;
             status = b;
             size = 0;
             checksum = "";
@@ -130,12 +133,20 @@ public class DumpCommands extends CommonCommands {
             this.key = key;
         }
 
-        public String getUrl() {
-            return url;
+        public long getOffset() {
+            return offset;
         }
 
-        public void setUrl(String url) {
-            this.url = url;
+        public void setOffset(long offset) {
+            this.offset = offset;
+        }
+
+        public long getLength() {
+            return length;
+        }
+
+        public void setLength(long length) {
+            this.length = length;
         }
 
         public long getSize() {
@@ -177,14 +188,18 @@ public class DumpCommands extends CommonCommands {
         @JsonProperty
         public int concurrency;
 
+        @JsonProperty
+        public String dumpId;
+
         // Default constructor for Jackson
         public DownloadData() {
             collatestarted = new AtomicBoolean(false);
             startTimeMillis = System.currentTimeMillis();
         }
 
-        public DownloadData(String s, int chunkSize, int concur) {
+        public DownloadData(String s, String dumpId, int chunkSize, int concur) {
             saveName = s;
+            this.dumpId = dumpId;
             metadataFile = s + ".metadata.json";
             collatestarted = new AtomicBoolean(false);
             startTimeMillis = System.currentTimeMillis();
@@ -332,7 +347,7 @@ public class DumpCommands extends CommonCommands {
         // Generate chunk URLs locally using AdditionalDataSizeBytes, mirroring
         // the server-side generateChunkUrls() logic in bmcweb log_services.hpp.
         System.out.println("Dump size is > chunk size — using chunked offload path.");
-        data = new DownloadData(filename, chunkSizeMB, concurrency);
+        data = new DownloadData(filename, id, chunkSizeMB, concurrency);
 
         long fullChunks = additionalDataSizeBytes / chunkSizeBytes;
         long remainder  = additionalDataSizeBytes % chunkSizeBytes;
@@ -343,20 +358,14 @@ public class DumpCommands extends CommonCommands {
 
         for (long i = 0; i < fullChunks; i++) {
             long offset = i * chunkSizeBytes;
-            String url = String.format(
-                    "/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/%d/%d/attachment/",
-                    id, offset, chunkSizeBytes);
             String key = String.valueOf(i);
-            data.downLoadStatus.put(key, new DownLoadInfo(key, url, DownLoadInfo.Status.notStarted));
+            data.downLoadStatus.put(key, new DownLoadInfo(key, offset, chunkSizeBytes, DownLoadInfo.Status.notStarted));
         }
 
         if (remainder > 0) {
             long offset = fullChunks * chunkSizeBytes;
-            String url = String.format(
-                    "/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/%d/%d/attachment/",
-                    id, offset, remainder);
             String key = String.valueOf(fullChunks);
-            data.downLoadStatus.put(key, new DownLoadInfo(key, url, DownLoadInfo.Status.notStarted));
+            data.downLoadStatus.put(key, new DownLoadInfo(key, offset, remainder, DownLoadInfo.Status.notStarted));
         }
 
         // Set as active download
@@ -414,15 +423,21 @@ public class DumpCommands extends CommonCommands {
                     var info = data.downLoadStatus.get(a);
                     try {
                         info.status = DownLoadInfo.Status.inprogress;
-                        asyncDownload(info.url, info.key, data);
+                        asyncDownload(info.offset, info.length, info.key, data);
                     } catch (URISyntaxException e) {
                         // throw new RuntimeException(e);
                     }
                 });
     }
 
-    void asyncDownload(String target, String filename, DownloadData data) throws URISyntaxException {
-        var auri = new URI(base() + target);
+    void asyncDownload(long offset, long length, String filename, DownloadData data) throws URISyntaxException {
+        // Use the standard attachment URI; the byte range is expressed via the
+        // HTTP Range header (RFC 7233) rather than a custom URI path.
+        String attachmentPath = String.format(
+                "/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/attachment/",
+                data.dumpId);
+        String rangeValue = String.format("bytes=%d-%d", offset, offset + length - 1);
+        var auri = new URI(base() + attachmentPath);
         var info = data.downLoadStatus.get(filename);
 
         // Skip if already downloaded
@@ -440,6 +455,7 @@ public class DumpCommands extends CommonCommands {
         client.get()
                 .uri(auri)
                 .header("X-Auth-Token", token)
+                .header("Range", rangeValue)
                 .retrieve()
                 .bodyToMono(byte[].class)
                 .flatMap(bytes -> Mono.fromRunnable(() -> {
@@ -484,7 +500,8 @@ public class DumpCommands extends CommonCommands {
                     }
                     downLoadParts(data, 1);
                     return Mono.empty();
-                })
+                }).onErrorResume(e -> e instanceof reactor.netty.http.client.PrematureCloseException
+                        ? Mono.error(e) : Mono.empty())
                 .subscribeOn(Schedulers.boundedElastic()).subscribe();
     }
 

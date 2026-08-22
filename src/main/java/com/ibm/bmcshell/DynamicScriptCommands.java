@@ -158,21 +158,37 @@ public class DynamicScriptCommands extends CommonCommands {
     }
 
     /**
-     * Generic method to execute any script from shellhome by name
+     * Generic method to execute any script from shellhome by name with optional arguments
      * This provides a fallback for scripts not explicitly defined above
      */
-    @ShellMethod(key = "x", value = "Execute any script from shellhome by name. Usage: x -s <scriptname> or x <scriptname>")
+    @ShellMethod(key = "x", value = "Execute any script from shellhome by name with optional arguments. Usage: x <scriptname> [arg1] [arg2] ...")
     @ShellMethodAvailability("availabilityCheck")
     public void executeAnyScript(
-            @ShellOption(value = { "-s", "--script" }, valueProvider = ShellHomeScriptProvider.class) String scriptName)
+            @ShellOption(arity = Integer.MAX_VALUE, valueProvider = ShellHomeScriptProvider.class) String[] args)
             throws Exception {
-        executeScriptByName(scriptName);
+        if (args == null || args.length == 0) {
+            System.out.println(ColorPrinter.red("Error: Script name is required. Usage: x <scriptname> [arg1] [arg2] ..."));
+            return;
+        }
+        String scriptName = args[0];
+        String[] scriptArgs = null;
+        if (args.length > 1) {
+            scriptArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
+        }
+        executeScriptByName(scriptName, scriptArgs);
     }
 
     /**
      * Core execution logic
      */
     private void executeScriptByName(String scriptName) throws Exception {
+        executeScriptByName(scriptName, null);
+    }
+
+    /**
+     * Core execution logic with arguments substitution
+     */
+    private void executeScriptByName(String scriptName, String[] args) throws Exception {
         // First check cache
         String scriptPath = scriptCache.get(scriptName);
 
@@ -191,9 +207,33 @@ public class DynamicScriptCommands extends CommonCommands {
             }
         }
 
-        System.out.println(ColorPrinter.cyan("Executing script: " + scriptName));
         File scriptFile = new File(scriptPath);
-        script.script(scriptFile);
+
+        if (args != null && args.length > 0) {
+            System.out.println(ColorPrinter.cyan("Executing script: " + scriptName + " with arguments: " + String.join(", ", args)));
+            // Read script content
+            String content = Files.readString(scriptFile.toPath());
+            
+            // Substitute placeholders $1, $2, etc.
+            for (int i = 0; i < args.length; i++) {
+                content = content.replace("$" + (i + 1), args[i]);
+            }
+            
+            // Create a temporary file to hold the substituted script
+            Path tempScriptPath = Paths.get(getScriptHome() + "." + scriptName + "_temp");
+            Files.writeString(tempScriptPath, content);
+            File tempScriptFile = tempScriptPath.toFile();
+            
+            try {
+                script.script(tempScriptFile);
+            } finally {
+                // Ensure the temp file is deleted after execution
+                Files.deleteIfExists(tempScriptPath);
+            }
+        } else {
+            System.out.println(ColorPrinter.cyan("Executing script: " + scriptName));
+            script.script(scriptFile);
+        }
     }
 
     /**
