@@ -1583,28 +1583,133 @@ public class CommonCommands implements ApplicationContextAware {
 
     }
 
-    @ShellMethod(key = "repeat", value = "eg: repeat filename count. This will rung the script specifed(count) number of times")
+    @ShellMethod(key = "repeat", value = "eg: repeat filename count [arg1] [arg2] ... This will run the script specified(count) number of times with arguments")
     @ShellMethodAvailability("availabilityCheck")
-    void repeat(String scrFile, int count) throws Exception {
-        while (count > 0) {
-            script.script(new File(scrFile));
-            count--;
+    void repeat(
+            @ShellOption(arity = Integer.MAX_VALUE) String[] args)
+            throws Exception {
+        if (args == null || args.length < 2) {
+            System.out.println(ColorPrinter.red("Error: Script name and repeat count are required. Usage: repeat <filename> <count> [arg1] [arg2] ..."));
+            return;
+        }
+        String scrFile = args[0];
+        int count;
+        try {
+            count = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            System.out.println(ColorPrinter.red("Error: Second argument must be an integer count."));
+            return;
+        }
+        
+        File scriptFile = new File(shellHomePath + scrFile);
+        if (!scriptFile.exists()) {
+            scriptFile = new File(scrFile);
+        }
+        
+        if (args.length > 2) {
+            String[] scriptArgs = java.util.Arrays.copyOfRange(args, 2, args.length);
+            String content = Files.readString(scriptFile.toPath());
+            
+            for (int i = 0; i < scriptArgs.length; i++) {
+                content = content.replace("$" + (i + 1), scriptArgs[i]);
+            }
+            
+            Path tempScriptPath = Paths.get(shellHomePath + "." + scrFile + "_repeat_temp");
+            Files.writeString(tempScriptPath, content);
+            File tempScriptFile = tempScriptPath.toFile();
+            
+            try {
+                while (count > 0) {
+                    script.script(tempScriptFile);
+                    count--;
+                }
+            } finally {
+                Files.deleteIfExists(tempScriptPath);
+            }
+        } else {
+            while (count > 0) {
+                script.script(scriptFile);
+                count--;
+            }
         }
     }
 
-    @ShellMethod(key = "repeatpar", value = "eg: repeat filename count. This will rung the script specifed(count) number of times")
+    @ShellMethod(key = "repeatpar", value = "eg: repeatpar filename count [arg1] [arg2] ... This will run the script specified(count) number of times in parallel with arguments")
     @ShellMethodAvailability("availabilityCheck")
-    void repeatpar(String scrFile, int count) throws Exception {
-        while (count > 0) {
-            Thread thread = new Thread(() -> {
+    void repeatpar(
+            @ShellOption(arity = Integer.MAX_VALUE) String[] args)
+            throws Exception {
+        if (args == null || args.length < 2) {
+            System.out.println(ColorPrinter.red("Error: Script name and repeat count are required. Usage: repeatpar <filename> <count> [arg1] [arg2] ..."));
+            return;
+        }
+        String scrFile = args[0];
+        int count;
+        try {
+            count = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            System.out.println(ColorPrinter.red("Error: Second argument must be an integer count."));
+            return;
+        }
+        
+        File scriptFile = new File(shellHomePath + scrFile);
+        if (!scriptFile.exists()) {
+            scriptFile = new File(scrFile);
+        }
+        
+        if (args.length > 2) {
+            String[] scriptArgs = java.util.Arrays.copyOfRange(args, 2, args.length);
+            String content = Files.readString(scriptFile.toPath());
+            
+            for (int i = 0; i < scriptArgs.length; i++) {
+                content = content.replace("$" + (i + 1), scriptArgs[i]);
+            }
+            
+            Path tempScriptPath = Paths.get(shellHomePath + "." + scrFile + "_" + System.nanoTime() + "_repeatpar_temp");
+            Files.writeString(tempScriptPath, content);
+            File tempScriptFile = tempScriptPath.toFile();
+            
+            java.util.List<Thread> threads = new java.util.ArrayList<>();
+            for (int j = 0; j < count; j++) {
+                Thread thread = new Thread(() -> {
+                    try {
+                        script.script(tempScriptFile);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+                threads.add(thread);
+                thread.start();
+            }
+            
+            new Thread(() -> {
+                for (Thread thread : threads) {
+                    try {
+                        thread.join();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 try {
-                    script.script(new File(scrFile));
-                } catch (Exception e) {
+                    Files.deleteIfExists(tempScriptPath);
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
-            });
-            thread.start();
-            count--;
+            }).start();
+            
+        } else {
+            File finalScriptFile = scriptFile;
+            while (count > 0) {
+                Thread thread = new Thread(() -> {
+                    try {
+                        script.script(finalScriptFile);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+                thread.start();
+                count--;
+            }
         }
     }
 

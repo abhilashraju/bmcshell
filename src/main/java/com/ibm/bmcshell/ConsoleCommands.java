@@ -47,11 +47,12 @@ public class ConsoleCommands extends CommonCommands {
     }
 
     /**
-     * Connect to BMC console. Without an argument connects to the default console (console0).
+     * Connect to BMC console. Without an argument connects to the default console
+     * (console0).
      *
      * @param consoleId Console identifier (default, or specific console name)
      */
-    @ShellMethod(value = "Connect to BMC console (default: console0)", key = "console-connect")
+    @ShellMethod(value = "Connect to BMC console (default: console0)", key = { "console-connect", "cc" })
     public String consoleConnect(
             @ShellOption(help = "Console ID (default for console0)", defaultValue = "default") String consoleId) {
 
@@ -133,7 +134,7 @@ public class ConsoleCommands extends CommonCommands {
     /**
      * Start interactive console session with special key support
      */
-    @ShellMethod(value = "Start interactive console session", key = "console-interactive")
+    @ShellMethod(value = "Start interactive console session", key = { "console-interactive", "ci" })
     public String consoleInteractive() {
         if (activeConsoleClient == null || !activeConsoleClient.isConnected()) {
             return ColorPrinter.red("✗ Not connected to console. Use 'console-connect' first.");
@@ -246,7 +247,7 @@ public class ConsoleCommands extends CommonCommands {
      * 
      * @param text Text to send
      */
-    @ShellMethod(value = "Send text to console", key = "console-send")
+    @ShellMethod(value = "Send text to console", key = { "console-send", "cs" })
     public String consoleSend(
             @ShellOption(help = "Text to send to console") String text) {
 
@@ -268,7 +269,7 @@ public class ConsoleCommands extends CommonCommands {
      * 
      * @param command Command to execute
      */
-    @ShellMethod(value = "Execute command on console", key = "console-exec")
+    @ShellMethod(value = "Execute command on console", key = { "console-exec", "ce" })
     public String consoleExec(
             @ShellOption(help = "Command to execute") String command) {
 
@@ -293,7 +294,7 @@ public class ConsoleCommands extends CommonCommands {
     /**
      * Disconnect from console
      */
-    @ShellMethod(value = "Disconnect from console", key = "console-disconnect")
+    @ShellMethod(value = "Disconnect from console", key = { "console-disconnect", "cd" })
     public String consoleDisconnect() {
         if (activeConsoleClient == null) {
             return ColorPrinter.yellow("⚠ No active console connection");
@@ -312,7 +313,7 @@ public class ConsoleCommands extends CommonCommands {
     /**
      * Check console connection status
      */
-    @ShellMethod(value = "Check console connection status", key = "console-status")
+    @ShellMethod(value = "Check console connection status", key = { "console-status", "cs" })
     public String consoleStatus() {
         if (activeConsoleClient == null) {
             return ColorPrinter.yellow("⚠ No console client initialized");
@@ -348,7 +349,7 @@ public class ConsoleCommands extends CommonCommands {
      *
      * @param key Special key (enter, tab, ctrl-c, ctrl-d, etc.)
      */
-    @ShellMethod(value = "Send special key to console", key = "console-key")
+    @ShellMethod(value = "Send special key to console", key = { "console-key", "ck" })
     public String consoleKey(
             @ShellOption(help = "Special key: enter, tab, ctrl-c, ctrl-d, esc, ctrl-z", valueProvider = ConsoleKeyValueProvider.class) String key) {
 
