@@ -43,6 +43,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedStyle;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -108,6 +111,9 @@ public class CommonCommands implements ApplicationContextAware {
     PrintStream savedStream = System.out;
     @Autowired
     Script script;
+
+    @Autowired
+    Terminal terminal;
 
     static String lastCurlRequest;
 
@@ -468,7 +474,8 @@ public class CommonCommands implements ApplicationContextAware {
         return makeGetRequest(target, o, "");
     }
 
-    // Backward-compatible overload — callers that use the old 3-arg get(endpoint, output, menu)
+    // Backward-compatible overload — callers that use the old 3-arg get(endpoint,
+    // output, menu)
     public void get(String endPoint, String o, boolean menu) throws URISyntaxException, IOException {
         get(endPoint, "", o, menu);
     }
@@ -860,15 +867,16 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethodAvailability("availabilityCheck")
     public void graphql(
             @ShellOption(value = { "-q", "--query" }, help = "GraphQL query string") String query,
-            @ShellOption(value = { "-v", "--var" }, help = "Variable in key=value form, repeatable", defaultValue = ShellOption.NULL) String[] vars,
+            @ShellOption(value = { "-v",
+                    "--var" }, help = "Variable in key=value form, repeatable", defaultValue = ShellOption.NULL) String[] vars,
             @ShellOption(value = { "-e", "--endpoint" }, defaultValue = "/graphql") String endpoint)
             throws URISyntaxException, IOException {
-        com.fasterxml.jackson.databind.node.ObjectNode body =
-                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        com.fasterxml.jackson.databind.node.ObjectNode body = new com.fasterxml.jackson.databind.ObjectMapper()
+                .createObjectNode();
         body.put("query", query);
         if (vars != null && vars.length > 0) {
-            com.fasterxml.jackson.databind.node.ObjectNode variables =
-                    new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            com.fasterxml.jackson.databind.node.ObjectNode variables = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .createObjectNode();
             for (String var : vars) {
                 int eq = var.indexOf('=');
                 if (eq > 0) {
@@ -880,6 +888,98 @@ public class CommonCommands implements ApplicationContextAware {
         String jsonBody = body.toString();
         var ep = new Util.EndPoints(endpoint, "Post");
         defaultOutputConsumer().accept(goTo(ep, jsonBody, false, ""));
+    }
+
+    @ShellMethod(key = "graphql-subscribe", value = "eg: graphql-subscribe 'subscription{systemStatus(id:\"1\"){powerState}}' [--trigger event] [--interval 5]")
+    @ShellMethodAvailability("availabilityCheck")
+    public void graphqlSubscribe(
+            @ShellOption(value = { "-q", "--query" }, help = "GraphQL subscription query string") String query,
+            @ShellOption(value = { "-t",
+                    "--trigger" }, help = "Trigger mode: 'event' (DBus-driven) or 'timer' (default, polling)", defaultValue = "timer") String trigger,
+            @ShellOption(value = { "-i",
+                    "--interval" }, help = "Poll interval in seconds for timer mode (default 5, range 5-300)", defaultValue = "5") String interval)
+            throws URISyntaxException {
+        // Build GET /graphql/subscribe?query=...&trigger=...&interval=...
+        String encodedQuery;
+        try {
+            encodedQuery = java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            encodedQuery = query;
+        }
+
+        StringBuilder urlBuilder = new StringBuilder(base() + "/graphql/subscribe?query=" + encodedQuery);
+        urlBuilder.append("&trigger=").append(trigger);
+        if ("timer".equals(trigger)) {
+            urlBuilder.append("&interval=").append(interval);
+        }
+
+        var auri = new URI(urlBuilder.toString());
+        System.out.println("Subscribing to " + auri);
+        System.out.println("Press Ctrl+C or type 'q' + Enter to stop.");
+
+        java.util.concurrent.atomic.AtomicBoolean running = new java.util.concurrent.atomic.AtomicBoolean(true);
+
+        // Build a dedicated WebClient with no read/response timeout for SSE —
+        // event-based subscriptions can be silent indefinitely between events.
+        WebClient sseClient;
+        try {
+            io.netty.handler.ssl.SslContext sslCtx = io.netty.handler.ssl.SslContextBuilder
+                    .forClient()
+                    .trustManager(io.netty.handler.ssl.util.InsecureTrustManagerFactory.INSTANCE)
+                    .build();
+            reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
+                    .secure(t -> t.sslContext(sslCtx));
+            sseClient = WebClient.builder()
+                    .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
+                    .build();
+        } catch (Exception e) {
+            System.err.println("Failed to build SSE client: " + e.getMessage());
+            return;
+        }
+
+        reactor.core.Disposable subscription = sseClient.get()
+                .uri(auri)
+                .header("X-Auth-Token", token)
+                .accept(org.springframework.http.MediaType.TEXT_EVENT_STREAM)
+                .retrieve()
+                .bodyToFlux(new org.springframework.core.ParameterizedTypeReference<
+                        org.springframework.http.codec.ServerSentEvent<String>>() {})
+                .doOnNext(event -> {
+                    String data = event.data();
+                    if (data != null && !data.isBlank()) {
+                        defaultOutputConsumer().accept(data);
+                    }
+                })
+                .doOnError(ex -> {
+                    System.err.println("Subscription error: " + ex.getMessage());
+                    running.set(false);
+                })
+                .doOnComplete(() -> {
+                    System.out.println("Subscription stream completed.");
+                    running.set(false);
+                })
+                .subscribe();
+
+        LineReader reader = LineReaderBuilder.builder().terminal(terminal).build();
+        try {
+            while (running.get()) {
+                try {
+                    String line = reader.readLine("");
+                    if (line == null || line.trim().equals("q")) {
+                        break;
+                    }
+                } catch (org.jline.reader.UserInterruptException e) {
+                    // Ctrl+C — exit streaming but keep shell alive
+                    break;
+                } catch (org.jline.reader.EndOfFileException e) {
+                    // Ctrl+D — exit streaming but keep shell alive
+                    break;
+                }
+            }
+        } finally {
+            subscription.dispose();
+            System.out.println("Unsubscribed.");
+        }
     }
 
     @ShellMethod(key = "postFile", value = "eg post Managers/bmc/LogServices/Dump/Actions/LogService.CollectDiagnosticData  '{\"DiagnosticDataType\":\"Manager\"}'")
@@ -965,7 +1065,8 @@ public class CommonCommands implements ApplicationContextAware {
                         "curl -k -H \"X-Auth-Token: %s\" -H \"Content-Type: application/json\" -X GET -d '%s' https://%s%s",
                         token, data, Util.fullMachineName(machine), Util.normalise(ep.url));
             }
-            return lastCurlResponse = applicationContext.getBean(SerializeCommands.class).save(makeGetRequest(url, o, data));
+            return lastCurlResponse = applicationContext.getBean(SerializeCommands.class)
+                    .save(makeGetRequest(url, o, data));
 
         } catch (WebClientResponseException.BadRequest
                 | WebClientResponseException.Forbidden
@@ -1360,13 +1461,13 @@ public class CommonCommands implements ApplicationContextAware {
                 "cat /var/lib/phosphor-software-manager/activations",
                 // misc
                 "echo", "date", "whoami", "hostname", "env", "printenv",
-                "which", "whereis"
-        );
+                "which", "whereis");
 
         @Override
         public List<CompletionProposal> complete(CompletionContext context) {
             // getWords() = [commandKey, arg1, arg2, ...]; skip index 0 (the command key)
-            // join everything the user has typed after the command key to form the partial command
+            // join everything the user has typed after the command key to form the partial
+            // command
             List<String> words = context.getWords();
             String partial = "";
             if (words != null && words.size() > 1) {
@@ -1383,7 +1484,8 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = { "cmd",
             "c" }, value = "eg: c ip addr show  OR  c 'ls /tmp/' . Executes command on BMC with super user privilege")
     @ShellMethodAvailability("availabilityCheck")
-    public void exec_command(@ShellOption(arity = Integer.MAX_VALUE, valueProvider = ShellCommandProvider.class) String[] args) {
+    public void exec_command(
+            @ShellOption(arity = Integer.MAX_VALUE, valueProvider = ShellCommandProvider.class) String[] args) {
         String command = String.join(" ", args);
         scmd(command, defaultOutputConsumer());
     }
@@ -1586,10 +1688,11 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "repeat", value = "eg: repeat filename count [arg1] [arg2] ... This will run the script specified(count) number of times with arguments")
     @ShellMethodAvailability("availabilityCheck")
     void repeat(
-            @ShellOption(arity = Integer.MAX_VALUE) String[] args)
+            @ShellOption(value = { "--args", "-a", "-f" }, arity = Integer.MAX_VALUE) String[] args)
             throws Exception {
         if (args == null || args.length < 2) {
-            System.out.println(ColorPrinter.red("Error: Script name and repeat count are required. Usage: repeat <filename> <count> [arg1] [arg2] ..."));
+            System.out.println(ColorPrinter.red(
+                    "Error: Script name and repeat count are required. Usage: repeat <filename> <count> [arg1] [arg2] ..."));
             return;
         }
         String scrFile = args[0];
@@ -1600,24 +1703,24 @@ public class CommonCommands implements ApplicationContextAware {
             System.out.println(ColorPrinter.red("Error: Second argument must be an integer count."));
             return;
         }
-        
+
         File scriptFile = new File(shellHomePath + scrFile);
         if (!scriptFile.exists()) {
             scriptFile = new File(scrFile);
         }
-        
+
         if (args.length > 2) {
             String[] scriptArgs = java.util.Arrays.copyOfRange(args, 2, args.length);
             String content = Files.readString(scriptFile.toPath());
-            
+
             for (int i = 0; i < scriptArgs.length; i++) {
                 content = content.replace("$" + (i + 1), scriptArgs[i]);
             }
-            
+
             Path tempScriptPath = Paths.get(shellHomePath + "." + scrFile + "_repeat_temp");
             Files.writeString(tempScriptPath, content);
             File tempScriptFile = tempScriptPath.toFile();
-            
+
             try {
                 while (count > 0) {
                     script.script(tempScriptFile);
@@ -1637,10 +1740,12 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "repeatpar", value = "eg: repeatpar filename count [arg1] [arg2] ... This will run the script specified(count) number of times in parallel with arguments")
     @ShellMethodAvailability("availabilityCheck")
     void repeatpar(
-            @ShellOption(arity = Integer.MAX_VALUE) String[] args)
+            @ShellOption(value = { "--args", "-a",
+                    "-f" }, arity = Integer.MAX_VALUE) String[] args)
             throws Exception {
         if (args == null || args.length < 2) {
-            System.out.println(ColorPrinter.red("Error: Script name and repeat count are required. Usage: repeatpar <filename> <count> [arg1] [arg2] ..."));
+            System.out.println(ColorPrinter.red(
+                    "Error: Script name and repeat count are required. Usage: repeatpar <filename> <count> [arg1] [arg2] ..."));
             return;
         }
         String scrFile = args[0];
@@ -1651,24 +1756,25 @@ public class CommonCommands implements ApplicationContextAware {
             System.out.println(ColorPrinter.red("Error: Second argument must be an integer count."));
             return;
         }
-        
+
         File scriptFile = new File(shellHomePath + scrFile);
         if (!scriptFile.exists()) {
             scriptFile = new File(scrFile);
         }
-        
+
         if (args.length > 2) {
             String[] scriptArgs = java.util.Arrays.copyOfRange(args, 2, args.length);
             String content = Files.readString(scriptFile.toPath());
-            
+
             for (int i = 0; i < scriptArgs.length; i++) {
                 content = content.replace("$" + (i + 1), scriptArgs[i]);
             }
-            
-            Path tempScriptPath = Paths.get(shellHomePath + "." + scrFile + "_" + System.nanoTime() + "_repeatpar_temp");
+
+            Path tempScriptPath = Paths
+                    .get(shellHomePath + "." + scrFile + "_" + System.nanoTime() + "_repeatpar_temp");
             Files.writeString(tempScriptPath, content);
             File tempScriptFile = tempScriptPath.toFile();
-            
+
             java.util.List<Thread> threads = new java.util.ArrayList<>();
             for (int j = 0; j < count; j++) {
                 Thread thread = new Thread(() -> {
@@ -1681,7 +1787,7 @@ public class CommonCommands implements ApplicationContextAware {
                 threads.add(thread);
                 thread.start();
             }
-            
+
             new Thread(() -> {
                 for (Thread thread : threads) {
                     try {
@@ -1696,7 +1802,7 @@ public class CommonCommands implements ApplicationContextAware {
                     e.printStackTrace();
                 }
             }).start();
-            
+
         } else {
             File finalScriptFile = scriptFile;
             while (count > 0) {
@@ -1716,27 +1822,30 @@ public class CommonCommands implements ApplicationContextAware {
     @ShellMethod(key = "r", value = "eg: r filename [arg1] [arg2] ... This command will run the file content as script")
     @ShellMethodAvailability("availabilityCheck")
     void runScript(
-            @ShellOption(arity = Integer.MAX_VALUE, valueProvider = ScriptNameProvider.class) String[] args)
+            @ShellOption(value = { "--args", "-a",
+                    "-f" }, arity = Integer.MAX_VALUE, valueProvider = ScriptNameProvider.class) String[] args)
             throws Exception {
         if (args == null || args.length == 0) {
-            System.out.println(ColorPrinter.red("Error: Script name is required. Usage: r <filename> [arg1] [arg2] ..."));
+            System.out
+                    .println(ColorPrinter.red("Error: Script name is required. Usage: r <filename> [arg1] [arg2] ..."));
             return;
         }
         String scrFile = args[0];
         File scriptFile = new File(shellHomePath + scrFile);
         if (args.length > 1) {
             String[] scriptArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
-            System.out.println(ColorPrinter.cyan("Executing script: " + scrFile + " with arguments: " + String.join(", ", scriptArgs)));
+            System.out.println(ColorPrinter
+                    .cyan("Executing script: " + scrFile + " with arguments: " + String.join(", ", scriptArgs)));
             String content = Files.readString(scriptFile.toPath());
-            
+
             for (int i = 0; i < scriptArgs.length; i++) {
                 content = content.replace("$" + (i + 1), scriptArgs[i]);
             }
-            
+
             Path tempScriptPath = Paths.get(shellHomePath + "." + scrFile + "_temp");
             Files.writeString(tempScriptPath, content);
             File tempScriptFile = tempScriptPath.toFile();
-            
+
             try {
                 script.script(tempScriptFile);
             } finally {
