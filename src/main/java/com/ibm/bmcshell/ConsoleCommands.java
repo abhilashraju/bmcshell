@@ -435,6 +435,9 @@ public class ConsoleCommands extends CommonCommands {
                 "| vsp -longname | Show extended partition names | Safe |",
                 "| vsp -powerstate | Show VSP power state | Safe |",
                 "| vsp -resumestate | Show resume state | Safe |",
+                "| serialctl -show | Show current vtty assignments | Safe |",
+                "| serialctl -hyp -assign | Enable PHYP vtty (field use) | Safe |",
+                "| serialctl -hyp -unassign | Disable PHYP vtty (field use) | Safe |",
                 "| lpar -GETALLLP | List all partitions | Safe |",
                 "| lpar -GETLP 1001 | Show partition details | Safe |",
                 "| lpar -GETOSVERSION 1001 | Show OS version | Safe |",
@@ -456,6 +459,9 @@ public class ConsoleCommands extends CommonCommands {
                 "| vsp -id 1001 -fast | Change IPL speed | Risky |",
                 "| vsp -id 1001 -slow | Change IPL speed | Risky |",
                 "| vsp -func 22 -id 1001 | Force partition dump | Risky |",
+                "| serialctl -lp <lpid> -slot <0|1> -assign | Assign LP vtty slot (lab use) | Risky |",
+                "| serialctl -lp <lpid> -slot <0|1> -assign -force | Force assign LP vtty slot | Risky |",
+                "| serialctl -lp <lpid> -slot <0|1> -unassign | Unassign LP vtty slot (lab use) | Risky |",
                 "| lpar -SETCON ... | Change console device mapping | Risky |",
                 "| lpar -SETVIOCON ... | Change virtual console mapping | Risky |",
                 "| lpar -SETACON ... | Change alternate console mapping | Risky |",
@@ -470,6 +476,17 @@ public class ConsoleCommands extends CommonCommands {
                 "| dump -testPolicy <N> | Override dump policy | Dangerous |",
                 "| dump -testLp <LP> | Override dump service partition | Dangerous |",
                 "",
+                "serialctl notes:",
+                "  -hyp options (field use):",
+                "    serialctl -hyp -assign    -- service enable the PHYP vtty",
+                "    serialctl -hyp -unassign  -- service disable the PHYP vtty",
+                "  -lp options (lab / mfg use):",
+                "    serialctl -show                              -- show current assignments",
+                "    serialctl -lp <lpid> -slot <0|1> -assign [-force]",
+                "    serialctl -lp <lpid> -slot <0|1> -unassign",
+                "    NOTE 1: lp 0 slot 0 is not valid for -lp option",
+                "    NOTE 2: Using -lp option while HMC managed will break HMC vterm",
+                "",
                 "Best safe daily-use set:",
                 "  vsp",
                 "  vsp -id 1001",
@@ -482,7 +499,7 @@ public class ConsoleCommands extends CommonCommands {
                 "  dump -q",
                 "  dump -fr",
                 "",
-                "Discovered PHYP commands in this environment: vsp, lpar, dump");
+                "Discovered PHYP commands in this environment: vsp, lpar, dump, serialctl");
     }
 
     /**
