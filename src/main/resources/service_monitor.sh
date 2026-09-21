@@ -72,6 +72,14 @@ get_process_stats_with_top() {
 }
 
 # Function to parse top output
+# Returns: mem_percent vsz_kb cpu_percent
+#
+# BusyBox top column layout (confirmed from live output):
+#   $1=PID  $2=PPID  $3=USER  $4=STAT  $5=VSZ  $6=%VSZ  $7=CPU(core#)  $8=%CPU  $9=COMMAND
+#
+# The $7 column is the CPU core number (integer 0,1,2…), NOT the percentage.
+# The $8 column is the actual %CPU shown by top (e.g. "13%").
+# Standard top (12+ fields): $5=VIRT  $9=%CPU  $10=%MEM
 parse_top_output() {
     local top_line="$1"
     
@@ -80,20 +88,14 @@ parse_top_output() {
         return
     fi
     
-    # Extract fields from top output
-    # BusyBox top format: PID PPID USER STAT VSZ %VSZ %CPU COMMAND
-    # Standard top format: PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
-    
-    # Try to detect which field contains CPU% by looking for numeric values
-    # Extract all fields and find the ones that look like percentages or the CPU field
     local field_count=$(echo "$top_line" | awk '{print NF}')
     
     # BusyBox typically has fewer fields (8-9) vs standard top (12+)
     if [ "$field_count" -lt 10 ]; then
-        # BusyBox format: PID PPID USER STAT VSZ %VSZ %CPU COMMAND
+        # BusyBox format: PID PPID USER STAT VSZ %VSZ CPU(core#) %CPU COMMAND
         local vsz=$(echo "$top_line" | awk '{print $5}')
         local mem=$(echo "$top_line" | awk '{print $6}')
-        local cpu=$(echo "$top_line" | awk '{print $7}')
+        local cpu=$(echo "$top_line" | awk '{print $8}')   # $8 = %CPU, not $7
     else
         # Standard top format: PID USER PR NI VIRT RES SHR S %CPU %MEM TIME+ COMMAND
         local vsz=$(echo "$top_line" | awk '{print $5}')
@@ -104,7 +106,7 @@ parse_top_output() {
     # Convert memory sizes (may have K/M/G suffix) to KB
     vsz=$(echo "$vsz" | sed 's/[KMG]$//')
     
-    # Remove any non-numeric characters except decimal point from percentages
+    # Strip % and any other non-numeric characters (except decimal point)
     cpu=$(echo "$cpu" | sed 's/[^0-9.]//g')
     mem=$(echo "$mem" | sed 's/[^0-9.]//g')
     

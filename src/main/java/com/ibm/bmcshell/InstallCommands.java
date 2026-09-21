@@ -71,12 +71,41 @@ public class InstallCommands extends CommonCommands {
         return version;
     }
 
-    @ShellMethod(key = "install.flash", value = "eg: install.flash . To flash images")
-    void flash() throws InterruptedException, IOException {
+    @ShellMethod(key = "install.flash", value = "eg: install.flash [--tag <imageTag>] . To flash images")
+    @ShellMethodAvailability("availabilityCheck")
+    void flash(@ShellOption(value = { "--tag", "-t" }, defaultValue = ShellOption.NULL, help = "Image ID / version tag to flash") String tag)
+            throws InterruptedException, IOException {
         String imagePath = "/tmp/images";
+        String imageid;
 
-        // Get the first available version
-        String imageid = getFirstAvailableVersion(imagePath);
+        if (tag != null && !tag.trim().isEmpty()) {
+            imageid = tag.trim();
+            System.out.println("Using specified image tag: " + imageid);
+        } else {
+            // Get the first available version
+            imageid = getFirstAvailableVersion(imagePath);
+        }
+
+        String command = String.format(
+                "busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",
+                imageid);
+        System.out.println(command);
+        scmd(command);
+    }
+
+    @ShellMethod(key = "install.image", value = "Install/flash an image by tag/ID. eg: install.image --tag <imageTag>")
+    @ShellMethodAvailability("availabilityCheck")
+    void installImage(
+            @ShellOption(value = { "--tag", "-t" }, help = "Image ID / version tag to install") String tag)
+            throws InterruptedException, IOException {
+        if (tag == null || tag.trim().isEmpty()) {
+            System.err.println("❌ Error: Image tag cannot be empty.");
+            System.err.println("Usage: install.image --tag <imageTag>");
+            return;
+        }
+
+        String imageid = tag.trim();
+        System.out.println("Activating image with tag: " + imageid);
 
         String command = String.format(
                 "busctl set-property xyz.openbmc_project.Software.BMC.Updater /xyz/openbmc_project/software/%s xyz.openbmc_project.Software.Activation RequestedActivation s xyz.openbmc_project.Software.Activation.RequestedActivations.Active",

@@ -205,7 +205,7 @@ public class ObmcConsoleClientReactor {
                         .doOnError(error -> {
                             HttpClientException httpEx = categorizeError(error);
                             lastException.set(httpEx);
-                            logger.error("Connection error: {}", httpEx.getUserMessage());
+                            logger.debug("Connection error: {}", httpEx.getUserMessage());
                             // Ensure connection state is reset on error
                             connected.set(false);
                             connectLatch.countDown();
@@ -216,7 +216,7 @@ public class ObmcConsoleClientReactor {
                                     // Handle subscription errors
                                     HttpClientException httpEx = categorizeError(error);
                                     lastException.set(httpEx);
-                                    logger.error("Subscription error: {}", httpEx.getUserMessage());
+                                    logger.debug("Subscription error: {}", httpEx.getUserMessage());
                                     connected.set(false);
                                     connectLatch.countDown();
                                 });

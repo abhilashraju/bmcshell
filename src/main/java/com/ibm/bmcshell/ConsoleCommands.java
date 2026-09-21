@@ -1,5 +1,6 @@
 package com.ibm.bmcshell;
 
+import com.ibm.bmcshell.console.Ibm5250Renderer;
 import com.ibm.bmcshell.console.ObmcConsoleClientReactor;
 import com.ibm.bmcshell.console.ObmcConsoleClientReactor.ConsoleType;
 import org.jline.terminal.Terminal;
@@ -42,206 +43,273 @@ public class ConsoleCommands extends CommonCommands {
 
     private ObmcConsoleClientReactor activeConsoleClient;
 
+    /** 5250 frame detector / renderer — one instance per connected session */
+    private Ibm5250Renderer console5250Renderer;
+
     public ConsoleCommands() throws IOException {
         super();
     }
 
     /**
-     * Connect to BMC console. Without an argument connects to the default console
-     * (console0).
+     * Connect to a BMC console and enter interactive mode using JLine line reader.
+     * Works for all console types: serial, hypervisor, bash.
+     * Type 'exit' and press Enter to disconnect, or press Ctrl+C locally.
      *
-     * @param consoleId Console identifier (default, or specific console name)
+     * For IBM i 5250 consoles use the 'ci' command instead.
+     *
+     * @param consoleId Console identifier (default for console0, or a specific name)
      */
-    @ShellMethod(value = "Connect to BMC console (default: console0)", key = { "console-connect", "cc" })
+    @ShellMethod(value = "Connect to BMC console (interactive, use 'ci' for IBM i 5250)", key = { "console-connect", "cc" })
     public String consoleConnect(
             @ShellOption(help = "Console ID (default for console0)", defaultValue = "default") String consoleId) {
 
+        // ── 1. Authenticate ──────────────────────────────────────────────────────────
         try {
-            // Ensure we have a valid token
             if (token == null || token.isEmpty()) {
                 getToken();
                 if (token == null || token.isEmpty()) {
                     return ColorPrinter.red("✗ Failed to obtain authentication token");
                 }
             }
+        } catch (Exception e) {
+            return ColorPrinter.red("✗ Failed to obtain authentication token: " + e.getMessage());
+        }
 
-            // Close existing connection if any
-            if (activeConsoleClient != null && activeConsoleClient.isConnected()) {
-                activeConsoleClient.disconnect();
-            }
+        // ── 2. Connect ───────────────────────────────────────────────────────────────
+        if (activeConsoleClient != null && activeConsoleClient.isConnected()) {
+            activeConsoleClient.disconnect();
+        }
 
-            // Get BMC URL from base()
-            String bmcUrl = base();
+        // No 5250 renderer for generic console — output goes straight to terminal
+        console5250Renderer = null;
 
-            // Create new console client using token authentication
-            activeConsoleClient = new ObmcConsoleClientReactor.Builder()
-                    .bmcUrl(bmcUrl)
-                    .username(getUserName())
-                    .password(getPasswd())
-                    .consoleId(consoleId)
-                    .token(token)
-                    .onMessage(this::handleConsoleMessage)
-                    .onError(this::handleConsoleError)
-                    .onConnected(() -> logger.info("Console connected"))
-                    .onDisconnected(() -> logger.info("Console disconnected"))
-                    .build();
+        String bmcUrl = base();
+        activeConsoleClient = new ObmcConsoleClientReactor.Builder()
+                .bmcUrl(bmcUrl)
+                .username(getUserName())
+                .password(getPasswd())
+                .consoleId(consoleId)
+                .token(token)
+                .onMessage(this::handleConsoleMessage)
+                .onError(this::handleConsoleError)
+                .onConnected(() -> logger.info("Console connected"))
+                .onDisconnected(() -> logger.info("Console disconnected"))
+                .build();
 
-            // Connect with timeout
+        try {
             CompletableFuture<Void> connectFuture = activeConsoleClient.connect();
-            try {
-                connectFuture.get(35, TimeUnit.SECONDS); // Wait for connection with timeout
-            } catch (TimeoutException te) {
-                activeConsoleClient = null;
-                return ColorPrinter.red("✗ Connection timeout: Failed to connect within 35 seconds");
-            }
-
-            String consolePath = consoleId.equals("default") ? "/console0" : "/console/" + consoleId;
-            return ColorPrinter.green("✓ Connected to BMC console: " + machine + consolePath);
-
+            connectFuture.get(35, TimeUnit.SECONDS);
+        } catch (TimeoutException te) {
+            activeConsoleClient = null;
+            return ColorPrinter.red("✗ Connection timeout: Failed to connect within 35 seconds");
         } catch (ExecutionException e) {
-            // Unwrap the exception to get the root cause
             Throwable cause = unwrapException(e);
             String errorMessage = formatErrorMessage(cause);
-            logger.error("Failed to connect to console: {}", errorMessage, cause);
-
-            // Clean up failed connection
-            if (activeConsoleClient != null) {
-                try {
-                    activeConsoleClient.disconnect();
-                } catch (Exception cleanupError) {
-                    logger.debug("Error cleaning up failed connection", cleanupError);
-                }
-                activeConsoleClient = null;
-            }
-
+            logger.debug("Failed to connect to console: {}", errorMessage, cause);
+            try { activeConsoleClient.disconnect(); } catch (Exception ignored) {}
+            activeConsoleClient = null;
             return ColorPrinter.red("✗ " + errorMessage);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.error("Connection interrupted", e);
-            if (activeConsoleClient != null) {
-                activeConsoleClient = null;
-            }
+            activeConsoleClient = null;
             return ColorPrinter.red("✗ Connection interrupted");
-        } catch (Exception e) {
-            logger.error("Unexpected error connecting to console", e);
-            if (activeConsoleClient != null) {
-                activeConsoleClient = null;
-            }
-            return ColorPrinter.red("✗ Unexpected error: " + e.getMessage());
         }
-    }
 
-    /**
-     * Start interactive console session with special key support
-     */
-    @ShellMethod(value = "Start interactive console session", key = { "console-interactive", "ci" })
-    public String consoleInteractive() {
-        if (activeConsoleClient == null || !activeConsoleClient.isConnected()) {
-            return ColorPrinter.red("✗ Not connected to console. Use 'console-connect' first.");
-        }
+        String consolePath = consoleId.equals("default") ? "/console0" : "/console/" + consoleId;
+        terminal.writer().println(ColorPrinter.green("✓ Connected to BMC console: " + machine + consolePath));
+
+        // ── 3. Interactive loop — JLine line reader ───────────────────────────────────
+        terminal.writer().println(ColorPrinter.cyan("Interactive console session started."));
+        terminal.writer().println(ColorPrinter.yellow("Type 'exit' to end session and disconnect."));
+        terminal.writer().println(ColorPrinter.yellow(
+                "Special keys: Alt+C=Ctrl-C  Alt+D=Ctrl-D  Alt+Z=Ctrl-Z  Alt+E=ESC"));
+        terminal.writer().flush();
 
         try {
-            terminal.writer().println(ColorPrinter.cyan("Starting interactive console session..."));
-            terminal.writer().println(ColorPrinter.yellow("Type 'exit' to return to BMC SHELL"));
-            terminal.writer().println(
-                    ColorPrinter.yellow(
-                            "Special keys: Alt+C (Mac: Option+C) for Ctrl-C, Alt+D for Ctrl-D, Alt+Z for Ctrl-Z, Alt+E for ESC"));
-            terminal.writer().println(ColorPrinter.yellow("Commands are sent when you press Enter"));
-            terminal.writer().flush();
-
-            // Use JLine terminal reader with custom key bindings
             org.jline.reader.LineReader reader = org.jline.reader.LineReaderBuilder.builder()
                     .terminal(terminal)
                     .build();
 
-            // Bind Alt+C to send Ctrl-C to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-ctrl-c"),
-                    org.jline.keymap.KeyMap.alt('c'));
-            // Bind Alt+D to send Ctrl-D to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-ctrl-d"),
-                    org.jline.keymap.KeyMap.alt('d'));
-            // Bind Alt+Z to send Ctrl-Z to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-ctrl-z"),
-                    org.jline.keymap.KeyMap.alt('z'));
-            // Bind Alt+E to send ESC to remote console
-            reader.getKeyMaps().get("main").bind(new org.jline.reader.Reference("send-esc"),
-                    org.jline.keymap.KeyMap.alt('e'));
+            // Alt key bindings → send control sequences to the remote console
+            reader.getKeyMaps().get("main").bind(
+                    new org.jline.reader.Reference("send-ctrl-c"), org.jline.keymap.KeyMap.alt('c'));
+            reader.getKeyMaps().get("main").bind(
+                    new org.jline.reader.Reference("send-ctrl-d"), org.jline.keymap.KeyMap.alt('d'));
+            reader.getKeyMaps().get("main").bind(
+                    new org.jline.reader.Reference("send-ctrl-z"), org.jline.keymap.KeyMap.alt('z'));
+            reader.getKeyMaps().get("main").bind(
+                    new org.jline.reader.Reference("send-esc"), org.jline.keymap.KeyMap.alt('e'));
 
-            // Add custom widgets for special keys
             reader.getWidgets().put("send-ctrl-c", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x03 });
-                    terminal.writer().println(ColorPrinter.gray("[Sent Ctrl-C]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send Ctrl-C", e);
-                }
+                try { activeConsoleClient.sendData(new byte[]{0x03}); } catch (Exception e) { logger.error("send-ctrl-c", e); }
                 return true;
             });
             reader.getWidgets().put("send-ctrl-d", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x04 });
-                    terminal.writer().println(ColorPrinter.gray("[Sent Ctrl-D]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send Ctrl-D", e);
-                }
+                try { activeConsoleClient.sendData(new byte[]{0x04}); } catch (Exception e) { logger.error("send-ctrl-d", e); }
                 return true;
             });
             reader.getWidgets().put("send-ctrl-z", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x1A });
-                    terminal.writer().println(ColorPrinter.gray("[Sent Ctrl-Z]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send Ctrl-Z", e);
-                }
+                try { activeConsoleClient.sendData(new byte[]{0x1A}); } catch (Exception e) { logger.error("send-ctrl-z", e); }
                 return true;
             });
             reader.getWidgets().put("send-esc", () -> {
-                try {
-                    activeConsoleClient.sendData(new byte[] { 0x1B });
-                    terminal.writer().println(ColorPrinter.gray("[Sent ESC]"));
-                    terminal.writer().flush();
-                } catch (Exception e) {
-                    logger.error("Failed to send ESC", e);
-                }
+                try { activeConsoleClient.sendData(new byte[]{0x1B}); } catch (Exception e) { logger.error("send-esc", e); }
                 return true;
             });
 
-            // Read and send commands line by line
             while (activeConsoleClient.isConnected()) {
                 try {
-                    String line = reader.readLine("");
-                    if (line == null || line.equals("exit")) {
-                        break;
-                    }
-                    // Send the command with CR+LF — serial consoles expect \r (CR) as Enter;
-                    // \n alone is a bare line-feed and most remote shells ignore it.
+                    String line = reader.readLine("> ");
+                    if (line == null || line.equals("exit")) break;
+                    // Serial consoles expect CR; \n alone may be ignored
                     activeConsoleClient.sendText(line + "\r\n");
-                    // Give time for response
-                    Thread.sleep(100);
                 } catch (org.jline.reader.UserInterruptException e) {
-                    // Ctrl+C pressed locally - exit interactive mode
-                    terminal.writer().println(ColorPrinter.yellow("\n[Local Ctrl+C - exiting interactive mode]"));
+                    terminal.writer().println(ColorPrinter.yellow("\n[Ctrl+C — exiting]"));
                     terminal.writer().flush();
                     break;
                 } catch (org.jline.reader.EndOfFileException e) {
-                    // Ctrl+D pressed locally - exit interactive mode
-                    terminal.writer().println(ColorPrinter.yellow("\n[Local Ctrl+D - exiting interactive mode]"));
+                    terminal.writer().println(ColorPrinter.yellow("\n[EOF — exiting]"));
                     terminal.writer().flush();
                     break;
                 }
             }
-
-            return ColorPrinter.green("✓ Console session ended");
-
         } catch (Exception e) {
             logger.error("Error in interactive console", e);
             return ColorPrinter.red("✗ Console error: " + e.getMessage());
+        } finally {
+            if (activeConsoleClient != null) {
+                try { activeConsoleClient.disconnect(); } catch (Exception ignored) {}
+                activeConsoleClient = null;
+            }
         }
+
+        return ColorPrinter.green("✓ Console session ended and disconnected");
     }
 
+    /**
+     * Connect to an IBM i console and enter interactive 5250 mode.
+     * The console data stream is rendered as a proper 5250 screen with ANSI borders.
+     * Uses raw tty mode (stty) so keystrokes go directly to the remote field.
+     * Press Ctrl+Q to disconnect.
+     *
+     * @param consoleId Console identifier (default for ibmi, or a specific name)
+     */
+    @ShellMethod(value = "Connect to IBM i 5250 console (interactive, rendered screen)", key = { "console-ibmi", "ci" })
+    public String consoleIbmi(
+            @ShellOption(help = "Console ID (e.g. ibmi)", defaultValue = "ibmi") String consoleId) {
+
+        // ── 1. Authenticate ──────────────────────────────────────────────────────────
+        try {
+            if (token == null || token.isEmpty()) {
+                getToken();
+                if (token == null || token.isEmpty()) {
+                    return ColorPrinter.red("✗ Failed to obtain authentication token");
+                }
+            }
+        } catch (Exception e) {
+            return ColorPrinter.red("✗ Failed to obtain authentication token: " + e.getMessage());
+        }
+
+        // ── 2. Connect ───────────────────────────────────────────────────────────────
+        if (activeConsoleClient != null && activeConsoleClient.isConnected()) {
+            activeConsoleClient.disconnect();
+        }
+
+        // 5250 renderer writes directly to System.out (required in raw tty mode)
+        console5250Renderer = new Ibm5250Renderer(System.out);
+
+        String bmcUrl = base();
+        activeConsoleClient = new ObmcConsoleClientReactor.Builder()
+                .bmcUrl(bmcUrl)
+                .username(getUserName())
+                .password(getPasswd())
+                .consoleId(consoleId)
+                .token(token)
+                .onMessage(this::handleConsoleMessage)
+                .onError(this::handleConsoleError)
+                .onConnected(() -> logger.info("IBM i console connected"))
+                .onDisconnected(() -> logger.info("IBM i console disconnected"))
+                .build();
+
+        try {
+            CompletableFuture<Void> connectFuture = activeConsoleClient.connect();
+            connectFuture.get(35, TimeUnit.SECONDS);
+        } catch (TimeoutException te) {
+            activeConsoleClient = null;
+            console5250Renderer = null;
+            return ColorPrinter.red("✗ Connection timeout: Failed to connect within 35 seconds");
+        } catch (ExecutionException e) {
+            Throwable cause = unwrapException(e);
+            String errorMessage = formatErrorMessage(cause);
+            logger.debug("Failed to connect to IBM i console: {}", errorMessage, cause);
+            try { activeConsoleClient.disconnect(); } catch (Exception ignored) {}
+            activeConsoleClient = null;
+            console5250Renderer = null;
+            return ColorPrinter.red("✗ " + errorMessage);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            activeConsoleClient = null;
+            console5250Renderer = null;
+            return ColorPrinter.red("✗ Connection interrupted");
+        }
+
+        System.out.println(ColorPrinter.green("✓ Connected to IBM i console: " + machine + "/console/" + consoleId));
+        System.out.println(ColorPrinter.yellow("Ctrl+Q to disconnect  |  keystrokes forwarded directly to 5250"));
+        System.out.flush();
+
+        // ── 3. Raw interactive loop ───────────────────────────────────────────────────
+        // Switch OS tty to cbreak: char-at-a-time, no echo, signals kept (isig)
+        try { new ProcessBuilder("sh", "-c", "stty -icanon -echo isig </dev/tty").inheritIO().start().waitFor(); }
+        catch (Exception ignored) {}
+
+        Thread ttyRestoreHook = new Thread(
+                () -> { try { new ProcessBuilder("sh", "-c", "stty sane </dev/tty").start().waitFor(); }
+                        catch (Exception ignored) {} }, "tty-restore-hook");
+        Runtime.getRuntime().addShutdownHook(ttyRestoreHook);
+
+        java.util.concurrent.CountDownLatch disconnectLatch = new java.util.concurrent.CountDownLatch(1);
+
+        Thread inputThread = new Thread(() -> {
+            byte[] buf = new byte[64];
+            try {
+                while (activeConsoleClient != null && activeConsoleClient.isConnected()
+                        && disconnectLatch.getCount() > 0) {
+                    if (System.in.available() == 0) { Thread.sleep(10); continue; }
+                    int n = System.in.read(buf);
+                    if (n <= 0) break;
+                    for (int i = 0; i < n; i++) {
+                        int ch = buf[i] & 0xFF;
+                        if (ch == 0x11) { disconnectLatch.countDown(); return; } // Ctrl+Q
+                        activeConsoleClient.sendData(new byte[]{(byte) ch});
+                    }
+                }
+            } catch (Exception e) {
+                logger.debug("5250 input thread ended: {}", e.getMessage());
+            } finally {
+                disconnectLatch.countDown();
+            }
+        }, "5250-input");
+        inputThread.setDaemon(true);
+        inputThread.start();
+
+        try {
+            disconnectLatch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            inputThread.interrupt();
+            try { new ProcessBuilder("sh", "-c", "stty sane </dev/tty").inheritIO().start().waitFor(); }
+            catch (Exception ignored) {}
+            try { Runtime.getRuntime().removeShutdownHook(ttyRestoreHook); } catch (Exception ignored) {}
+            if (activeConsoleClient != null) {
+                try { activeConsoleClient.disconnect(); } catch (Exception ignored) {}
+                activeConsoleClient = null;
+            }
+            console5250Renderer = null;
+        }
+
+        return ColorPrinter.green("✓ IBM i 5250 session ended and disconnected");
+    }
     /**
      * Send text to the console
      * 
@@ -313,7 +381,7 @@ public class ConsoleCommands extends CommonCommands {
     /**
      * Check console connection status
      */
-    @ShellMethod(value = "Check console connection status", key = { "console-status", "cs" })
+    @ShellMethod(value = "Check console connection status", key = { "console-status", "cst" })
     public String consoleStatus() {
         if (activeConsoleClient == null) {
             return ColorPrinter.yellow("⚠ No console client initialized");
@@ -392,25 +460,37 @@ public class ConsoleCommands extends CommonCommands {
     }
 
     /**
-     * Handle incoming console messages
+     * Handle incoming console messages.
+     * If a 5250 renderer is active (IBM i session) feed it; otherwise print verbatim.
      */
     private void handleConsoleMessage(byte[] data) {
         try {
-            String message = new String(data, StandardCharsets.UTF_8);
-            terminal.writer().print(message);
-            terminal.writer().flush();
+            if (console5250Renderer != null) {
+                // IBM i 5250 session: renderer detects frames and prints to System.out
+                console5250Renderer.feed(data);
+            } else {
+                // Generic console (bash, hypervisor, BMC shell): print straight to terminal
+                terminal.writer().print(new String(data, StandardCharsets.UTF_8));
+                terminal.writer().flush();
+            }
         } catch (Exception e) {
             logger.error("Error handling console message", e);
         }
     }
 
     /**
-     * Handle console errors
+     * Handle console errors.
+     * Route to System.out when a 5250 session (raw tty) is active, otherwise terminal.
      */
     private void handleConsoleError(String error) {
         try {
-            terminal.writer().println(ColorPrinter.red("\n✗ Console error: " + error));
-            terminal.writer().flush();
+            if (console5250Renderer != null) {
+                System.out.println(ColorPrinter.red("\n✗ Console error: " + error));
+                System.out.flush();
+            } else {
+                terminal.writer().println(ColorPrinter.red("\n✗ Console error: " + error));
+                terminal.writer().flush();
+            }
         } catch (Exception e) {
             logger.error("Error handling console error", e);
         }
@@ -554,7 +634,7 @@ public class ConsoleCommands extends CommonCommands {
             // Unwrap the exception to get the root cause
             Throwable cause = unwrapException(e);
             String errorMessage = formatErrorMessage(cause);
-            logger.error("Failed to connect to BMC shell: {}", errorMessage, cause);
+            logger.debug("Failed to connect to BMC shell: {}", errorMessage, cause);
 
             // Clean up failed connection
             if (activeConsoleClient != null) {
