@@ -36,30 +36,40 @@ import reactor.core.publisher.Mono;
  * REST controller that acts as a firmware update server for the
  * firmware_updater OpenBMC daemon.
  *
- * <p>The fw_updater daemon is configured with:
+ * <p>
+ * The fw_updater daemon is configured with:
+ * 
  * <pre>
  *   "serverHost": "&lt;bmcshell-host&gt;",
  *   "serverPort": "8443",
  *   "cataloguePath": "/firmware/catalogue.json"
  * </pre>
  *
- * <p>Endpoints:
+ * <p>
+ * Endpoints:
  * <ul>
- *   <li>{@code GET  /firmware/catalogue.json}  — JSON array of available firmware entries</li>
- *   <li>{@code GET  /firmware/images/{filename}} — stream a firmware binary</li>
- *   <li>{@code POST /firmware/images}           — upload a new firmware image (multipart)</li>
- *   <li>{@code DELETE /firmware/images/{filename}} — remove an image from the store</li>
+ * <li>{@code GET  /firmware/catalogue.json} — JSON array of available firmware
+ * entries</li>
+ * <li>{@code GET  /firmware/images/{filename}} — stream a firmware binary</li>
+ * <li>{@code POST /firmware/images} — upload a new firmware image
+ * (multipart)</li>
+ * <li>{@code DELETE /firmware/images/{filename}} — remove an image from the
+ * store</li>
  * </ul>
  *
- * <p>The firmware store directory is configured via {@code firmware.store.dir}
+ * <p>
+ * The firmware store directory is configured via {@code firmware.store.dir}
  * in {@code application.properties}. Each image file placed there is
  * automatically included in the catalogue.
  *
- * <p>Catalogue entry fields match the {@code FirmwareEntry} struct in
+ * <p>
+ * Catalogue entry fields match the {@code FirmwareEntry} struct in
  * {@code fw_updater_config.hpp}:
+ * 
  * <pre>
  *   version, imageUrl, checksum, releaseDate, description
  * </pre>
+ * 
  * The version is derived from the filename: a file named
  * {@code firmware-2.15.0.bin} → version {@code "2.15.0"}.
  */
@@ -72,7 +82,7 @@ public class FirmwareUpdateController {
     private String storeDir;
 
     /** Base HTTPS URL of this bmcshell instance (used to build imageUrl). */
-    @Value("${firmware.server.baseUrl:https://localhost:8443}")
+    @Value("${firmware.server.baseUrl:https://gfwr528.rchland.ibm.com:8443}")
     private String serverBaseUrl;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -82,7 +92,8 @@ public class FirmwareUpdateController {
     /**
      * Returns the firmware catalogue as a JSON array.
      *
-     * <p>Each object in the array has the fields expected by
+     * <p>
+     * Each object in the array has the fields expected by
      * {@code FirmwareEntry} in fw_updater_config.hpp:
      * {@code version}, {@code imageUrl}, {@code checksum},
      * {@code releaseDate}, {@code description}.
@@ -108,7 +119,8 @@ public class FirmwareUpdateController {
     /**
      * Streams a firmware binary to the caller.
      *
-     * <p>The fw_updater daemon fetches the {@code imageUrl} returned in
+     * <p>
+     * The fw_updater daemon fetches the {@code imageUrl} returned in
      * the catalogue entry here.
      *
      * @param filename Filename as returned in the catalogue {@code imageUrl}.
@@ -133,8 +145,9 @@ public class FirmwareUpdateController {
     /**
      * Upload a firmware binary into the store.
      *
-     * <p>Optionally accepts {@code version}, {@code description}, and
-     * {@code releaseDate} query parameters.  When {@code version} is omitted
+     * <p>
+     * Optionally accepts {@code version}, {@code description}, and
+     * {@code releaseDate} query parameters. When {@code version} is omitted
      * it is parsed from the filename (e.g. {@code firmware-2.15.0.bin} →
      * {@code "2.15.0"}).
      *
@@ -228,8 +241,9 @@ public class FirmwareUpdateController {
     /**
      * Build the JSON catalogue array by scanning the store directory.
      *
-     * <p>For every {@code .bin} (or non-{@code .meta.json}) file found a
-     * catalogue entry is created.  If a {@code <filename>.meta.json} sidecar
+     * <p>
+     * For every {@code .bin} (or non-{@code .meta.json}) file found a
+     * catalogue entry is created. If a {@code <filename>.meta.json} sidecar
      * exists the metadata from it is used; otherwise fields are derived from
      * the filename.
      */
@@ -244,9 +258,9 @@ public class FirmwareUpdateController {
         List<Path> imageFiles = new ArrayList<>();
         try (var stream = Files.list(store)) {
             stream.filter(p -> !p.getFileName().toString().endsWith(".meta.json"))
-                  .filter(p -> !Files.isDirectory(p))
-                  .sorted()
-                  .forEach(imageFiles::add);
+                    .filter(p -> !Files.isDirectory(p))
+                    .sorted()
+                    .forEach(imageFiles::add);
         }
 
         for (Path imagePath : imageFiles) {
@@ -257,11 +271,11 @@ public class FirmwareUpdateController {
             Path metaPath = resolveStorePath(filename + ".meta.json");
             if (Files.exists(metaPath)) {
                 ObjectNode meta = (ObjectNode) mapper.readTree(metaPath.toFile());
-                entry.put("version",     meta.path("version").asText(parseVersionFromFilename(filename)));
+                entry.put("version", meta.path("version").asText(parseVersionFromFilename(filename)));
                 entry.put("releaseDate", meta.path("releaseDate").asText(""));
                 entry.put("description", meta.path("description").asText(""));
             } else {
-                entry.put("version",     parseVersionFromFilename(filename));
+                entry.put("version", parseVersionFromFilename(filename));
                 entry.put("releaseDate", "");
                 entry.put("description", "");
             }
@@ -269,7 +283,7 @@ public class FirmwareUpdateController {
             // Checksum (SHA-256) — compute on the fly if the file is small
             // enough; for large images skip to avoid blocking.
             entry.put("checksum", computeChecksum(imagePath));
-            entry.put("imageUrl",  serverBaseUrl + "/firmware/images/" + filename);
+            entry.put("imageUrl", serverBaseUrl + "/firmware/images/" + filename);
 
             catalogue.add(entry);
         }
@@ -280,26 +294,26 @@ public class FirmwareUpdateController {
     /**
      * Parse a semantic version from a filename.
      *
-     * <p>Examples:
+     * <p>
+     * Examples:
      * <ul>
-     *   <li>{@code firmware-2.15.0.bin}  → {@code "2.15.0"}</li>
-     *   <li>{@code obmc-2.14.bin}        → {@code "2.14"}</li>
-     *   <li>{@code myimage.bin}          → {@code "0.0.0"} (fallback)</li>
+     * <li>{@code firmware-2.15.0.bin} → {@code "2.15.0"}</li>
+     * <li>{@code obmc-2.14.bin} → {@code "2.14"}</li>
+     * <li>{@code myimage.bin} → {@code "0.0.0"} (fallback)</li>
      * </ul>
      */
     static String parseVersionFromFilename(String filename) {
         // Extract the portion that matches \d+(\.\d+)+ from the filename.
-        java.util.regex.Matcher m =
-                java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)+)").matcher(filename);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)+)").matcher(filename);
         return m.find() ? m.group(1) : "0.0.0";
     }
 
     /** Write a JSON sidecar with metadata for the uploaded image. */
     private void writeMetadata(String filename, String version,
-                               String releaseDate, String description) throws IOException {
+            String releaseDate, String description) throws IOException {
         ensureStoreExists();
         ObjectNode meta = mapper.createObjectNode();
-        meta.put("version",     version);
+        meta.put("version", version);
         meta.put("releaseDate", releaseDate);
         meta.put("description", description);
         mapper.writeValue(resolveStorePath(filename + ".meta.json").toFile(), meta);
@@ -312,8 +326,7 @@ public class FirmwareUpdateController {
     private String computeChecksum(Path path) {
         try {
             byte[] bytes = Files.readAllBytes(path);
-            java.security.MessageDigest md =
-                    java.security.MessageDigest.getInstance("SHA-256");
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(bytes);
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
