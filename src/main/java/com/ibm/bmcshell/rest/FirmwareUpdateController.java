@@ -162,8 +162,10 @@ public class FirmwareUpdateController {
             return Mono.just(ResponseEntity.badRequest().body("{\"error\":\"Missing filename\"}"));
         }
 
-        Path dest = resolveStorePath(filename);
-        file.transferTo(dest.toFile());
+        // toAbsolutePath() ensures transferTo() does not resolve the path
+        // relative to Tomcat's internal working directory.
+        Path dest = resolveStorePath(filename).toAbsolutePath();
+        file.transferTo(dest);
 
         String resolvedVersion = (version != null && !version.isBlank())
                 ? version
