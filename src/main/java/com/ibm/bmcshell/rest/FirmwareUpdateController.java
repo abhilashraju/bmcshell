@@ -81,6 +81,15 @@ public class FirmwareUpdateController {
     @Value("${firmware.store.dir:./firmware-store}")
     private String storeDir;
 
+    /**
+     * BMC-reachable base URL for imageUrl entries in the catalogue.
+     * Set firmware.server.host in application.properties to the IP/hostname
+     * the BMC uses to reach this bmcshell instance.
+     * Port is taken from the actual Tomcat connector at runtime.
+     */
+    @Value("${firmware.server.host:}")
+    private String configuredHost;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     // ── Catalogue ─────────────────────────────────────────────────────────
@@ -251,9 +260,14 @@ public class FirmwareUpdateController {
      */
     private String baseUrlFromRequest(jakarta.servlet.http.HttpServletRequest request) {
         String scheme = request.getScheme();
-        String host = request.getServerName();
-        int port = request.getServerPort();
-        // Omit default ports for cleanliness.
+        // Use the operator-configured host when set; fall back to the Host
+        // header only as a last resort (useful for local testing).
+        String host = (configuredHost != null && !configuredHost.isBlank())
+                ? configuredHost
+                : request.getServerName();
+        // getLocalPort() is the actual TCP port Tomcat accepted the connection
+        // on — unaffected by any Host header the client may have sent.
+        int port = request.getLocalPort();
         boolean defaultPort = ("https".equals(scheme) && port == 443)
                 || ("http".equals(scheme) && port == 80);
         return defaultPort ? scheme + "://" + host : scheme + "://" + host + ":" + port;
