@@ -81,10 +81,6 @@ public class FirmwareUpdateController {
     @Value("${firmware.store.dir:./firmware-store}")
     private String storeDir;
 
-    /** Base HTTPS URL of this bmcshell instance (used to build imageUrl). */
-    @Value("${firmware.server.baseUrl:https://gfwr528.rchland.ibm.com:8443}")
-    private String serverBaseUrl;
-
     private final ObjectMapper mapper = new ObjectMapper();
 
     // ── Catalogue ─────────────────────────────────────────────────────────
@@ -102,9 +98,9 @@ public class FirmwareUpdateController {
      *         store directory does not exist yet.
      */
     @GetMapping(value = "/catalogue.json", produces = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<ResponseEntity<String>> getCatalogue() {
+    public Mono<ResponseEntity<String>> getCatalogue(jakarta.servlet.http.HttpServletRequest request) {
         try {
-            String json = buildCatalogueJson();
+            String json = buildCatalogueJson(baseUrlFromRequest(request));
             return Mono.just(ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(json));
@@ -158,6 +154,7 @@ public class FirmwareUpdateController {
      */
     @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<String>> uploadImage(
+            jakarta.servlet.http.HttpServletRequest request,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "version", required = false) String version,
             @RequestParam(value = "description", required = false) String description,
@@ -193,7 +190,7 @@ public class FirmwareUpdateController {
         // Write a per-image metadata sidecar so catalogue can show rich info.
         writeMetadata(filename, resolvedVersion, resolvedDate, resolvedDesc);
 
-        String imageUrl = serverBaseUrl + "/firmware/images/" + filename;
+        String imageUrl = baseUrlFromRequest(request) + "/firmware/images/" + filename;
         ObjectNode response = mapper.createObjectNode();
         response.put("status", "uploaded");
         response.put("filename", filename);
@@ -247,7 +244,22 @@ public class FirmwareUpdateController {
      * exists the metadata from it is used; otherwise fields are derived from
      * the filename.
      */
-    private String buildCatalogueJson() throws IOException {
+    /**
+     * Derive the base URL (scheme://host:port) from the incoming request so
+     * imageUrl entries in the catalogue always point back to the actual host
+     * and port the caller used — not the hardcoded application.properties value.
+     */
+    private String baseUrlFromRequest(jakarta.servlet.http.HttpServletRequest request) {
+        String scheme = request.getScheme();
+        String host = request.getServerName();
+        int port = request.getServerPort();
+        // Omit default ports for cleanliness.
+        boolean defaultPort = ("https".equals(scheme) && port == 443)
+                || ("http".equals(scheme) && port == 80);
+        return defaultPort ? scheme + "://" + host : scheme + "://" + host + ":" + port;
+    }
+
+    private String buildCatalogueJson(String baseUrl) throws IOException {
         ArrayNode catalogue = mapper.createArrayNode();
         Path store = Paths.get(storeDir);
 
@@ -280,10 +292,8 @@ public class FirmwareUpdateController {
                 entry.put("description", "");
             }
 
-            // Checksum (SHA-256) — compute on the fly if the file is small
-            // enough; for large images skip to avoid blocking.
             entry.put("checksum", computeChecksum(imagePath));
-            entry.put("imageUrl", serverBaseUrl + "/firmware/images/" + filename);
+            entry.put("imageUrl", baseUrl + "/firmware/images/" + filename);
 
             catalogue.add(entry);
         }
