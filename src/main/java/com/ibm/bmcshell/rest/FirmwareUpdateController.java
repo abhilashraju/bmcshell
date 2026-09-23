@@ -2,9 +2,12 @@ package com.ibm.bmcshell.rest;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -181,10 +184,10 @@ public class FirmwareUpdateController {
             return Mono.just(ResponseEntity.badRequest().body("{\"error\":\"Missing filename\"}"));
         }
 
-        // toAbsolutePath() ensures transferTo() does not resolve the path
-        // relative to Tomcat's internal working directory.
         Path dest = resolveStorePath(filename).toAbsolutePath();
-        file.transferTo(dest);
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, dest, StandardCopyOption.REPLACE_EXISTING);
+        }
 
         String resolvedVersion = (version != null && !version.isBlank())
                 ? version
@@ -348,10 +351,14 @@ public class FirmwareUpdateController {
      * Returns an empty string on any error (non-fatal for catalogue serving).
      */
     private String computeChecksum(Path path) {
-        try {
-            byte[] bytes = Files.readAllBytes(path);
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(bytes);
+        try (InputStream is = Files.newInputStream(path)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                md.update(buffer, 0, read);
+            }
+            byte[] digest = md.digest();
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 sb.append(String.format("%02x", b));
