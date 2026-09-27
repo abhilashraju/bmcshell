@@ -45,6 +45,10 @@ import static com.ibm.bmcshell.ssh.SSHShellClient.runCommandShort;
 public class DbusCommnads extends CommonCommands {
 
     Thread busMonitorThread = null;
+
+    // State for bs.find-interface background scan
+    private volatile Thread findInterfaceThread = null;
+    private volatile boolean findInterfaceCancelled = false;
     
     // Data structures for capturing bus communications
     private static class BusMessage {
@@ -535,6 +539,126 @@ public class DbusCommnads extends CommonCommands {
     public void GetAssociatedSubTreePaths(String obj, int depth, String iface) {
         execMapperCall(iface, "GetAssociatedSubTreePaths", obj, depth, "ooias");
           
+    }
+
+    @ShellMethod(key = "bs.find-interface", value = "Search all services and paths that implement a given interface. eg: bs.find-interface xyz.openbmc_project.Sensor.Value")
+    @ShellMethodAvailability("availabilityCheck")
+    public void findInterface(String iface) throws JsonProcessingException {
+        // Guard against a concurrent scan already running
+        if (findInterfaceThread != null && findInterfaceThread.isAlive()) {
+            System.out.println("A scan is already in progress. Use 'bs.find-interface.cancel' to stop it first.");
+            return;
+        }
+
+        String searchTerm = iface.toLowerCase();
+
+        // --- Fast path: ask the OpenBMC ObjectMapper (works for xyz.openbmc_project.* interfaces).
+        // Fetch the full subtree with no interface filter, then do a client-side contains match
+        // so that partial search strings (e.g. "Sensor") also produce results. ---
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        String commd = "sudo -i busctl --json=short call xyz.openbmc_project.ObjectMapper"
+                + " /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper"
+                + " GetSubTree sias / 0 0";
+        try {
+            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd, commd);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        // The busctl --json=short GetSubTree result is wrapped in {"type":"a{sa{sas}}","data":{...}}
+        // where data maps path -> { service -> [interfaces] }
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(outputStream.toString());
+        JsonNode data = root.has("data") ? root.get("data") : root;
+
+        // Print header and stream fast-path results immediately as we iterate the JSON.
+        System.out.println("\n" + "=".repeat(100));
+        System.out.printf("%-60s  %s%n", "PATH", "SERVICE");
+        System.out.println("=".repeat(100));
+
+        int[] count = {0};
+        for (java.util.Iterator<Map.Entry<String, JsonNode>> pathIt = data.fields(); pathIt.hasNext(); ) {
+            Map.Entry<String, JsonNode> pathEntry = pathIt.next();
+            String path = pathEntry.getKey();
+            for (java.util.Iterator<Map.Entry<String, JsonNode>> svcIt = pathEntry.getValue().fields(); svcIt.hasNext(); ) {
+                Map.Entry<String, JsonNode> svcEntry = svcIt.next();
+                // Keep if any interface name contains the search term (case-insensitive).
+                boolean matches = StreamSupport.stream(svcEntry.getValue().spliterator(), false)
+                        .anyMatch(n -> n.asText().toLowerCase().contains(searchTerm));
+                if (matches) {
+                    System.out.printf("%-60s  %s%n", path, svcEntry.getKey());
+                    count[0]++;
+                }
+            }
+        }
+
+        // --- Slow path: busctl scan (needed for built-in D-Bus interfaces like org.freedesktop.*
+        // that the ObjectMapper never indexes). Runs in a background thread so the shell stays
+        // responsive. Use 'bs.find-interface.cancel' to stop it. ---
+        if (count[0] == 0) {
+            System.out.println("ObjectMapper returned no results — scanning all services via busctl introspect...");
+            System.out.println("💡 Use 'bs.find-interface.cancel' to stop the scan at any time.");
+            findInterfaceCancelled = false;
+            findInterfaceThread = new Thread(() -> {
+                int found = findInterfaceViaBusctlScan(iface);
+                System.out.println("=".repeat(100));
+                if (findInterfaceCancelled) {
+                    System.out.printf("Scan cancelled. Found %d result(s) so far implementing [%s]%n%n", found, iface);
+                } else {
+                    System.out.printf("Total: %d result(s) implementing [%s]%n%n", found, iface);
+                }
+            });
+            findInterfaceThread.setDaemon(true);
+            findInterfaceThread.start();
+        } else {
+            System.out.println("=".repeat(100));
+            System.out.printf("Total: %d result(s) implementing [%s]%n%n", count[0], iface);
+        }
+    }
+
+    @ShellMethod(key = "bs.find-interface.cancel", value = "Cancel an in-progress bs.find-interface scan")
+    public void findInterfaceCancel() {
+        if (findInterfaceThread == null || !findInterfaceThread.isAlive()) {
+            System.out.println("No active bs.find-interface scan to cancel.");
+            return;
+        }
+        findInterfaceCancelled = true;
+        findInterfaceThread.interrupt();
+        System.out.println("Cancellation requested — scan will stop after the current service.");
+    }
+
+    /** Scans every well-known D-Bus service name by introspecting each of its paths and
+     *  prints each matching (path, service) row immediately as it is found.
+     *  Returns the total number of matches. Stops early if the thread is interrupted. */
+    private int findInterfaceViaBusctlScan(String iface) {
+        // Single shell pipeline: list all well-known names, then for each service collect
+        // every path from `busctl tree`, introspect it, and emit "PATH\tSERVICE" when matched.
+        String cmd = "for svc in $(busctl list --no-legend 2>/dev/null | awk '{print $1}' | grep -v '^:'); do"
+                + "  while IFS= read -r path; do"
+                + "    busctl introspect \"$svc\" \"$path\" 2>/dev/null | grep -qF '" + iface + "'"
+                + "      && printf '%s\\t%s\\n' \"$path\" \"$svc\";"
+                + "  done < <(busctl tree \"$svc\" 2>/dev/null | grep -oE '/[^ ]+');"
+                + " done";
+
+        int[] count = {0};
+        // runCommand streams each output line to the consumer as it arrives over SSH.
+        // The consumer checks the cancellation flag and throws to abort reading early.
+        runCommand(Util.fullMachineName(machine), userName, passwd, cmd, line -> {
+            if (findInterfaceCancelled) {
+                // Interrupt the scan thread so runCommand's read loop exits
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (line.isBlank()) return;
+            // Strip any ANSI colour codes that ColorPrinter may have added
+            String plain = line.replaceAll("\u001B\\[[;\\d]*m", "");
+            String[] parts = plain.split("\\t", 2);
+            if (parts.length == 2) {
+                System.out.printf("%-60s  %s%n", parts[0].trim(), parts[1].trim());
+                count[0]++;
+            }
+        });
+        return count[0];
     }
 
     @ShellMethod(key = "bs.object", value = "eg: bs.object /xyz/openbmc_project/sensors/power/total_power xyz.openbmc_project.Sensor.Value")
