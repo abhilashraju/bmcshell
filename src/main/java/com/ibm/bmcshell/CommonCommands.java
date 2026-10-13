@@ -69,6 +69,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibm.bmcshell.Os.Cmd;
 import com.ibm.bmcshell.Utils.ConnectivityMonitor;
+import com.ibm.bmcshell.Utils.JournalSubscription;
 import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.Utils.ZipUtils;
 import com.ibm.bmcshell.inferencing.WatsonAssistant;
@@ -103,6 +104,9 @@ public class CommonCommands implements ApplicationContextAware {
 
     @Autowired
     private ConnectivityMonitor connectivityMonitor;
+
+    @Autowired(required = false)
+    private JournalSubscription journalSubscription;
 
     static String userName = "service";
     static String passwd = "empty";
@@ -731,6 +735,11 @@ public class CommonCommands implements ApplicationContextAware {
 
         // Start connectivity monitoring
         connectivityMonitor.startMonitoring(machine, userName, Util.targetport, getPromptProvider());
+
+        // Move an active journal subscription over to the new machine
+        if (journalSubscription != null) {
+            journalSubscription.onMachineChanged(machine);
+        }
 
         return machine;
     }

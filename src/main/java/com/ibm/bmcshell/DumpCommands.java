@@ -73,6 +73,18 @@ public class DumpCommands extends CommonCommands {
         delete(String.format("/redfish/v1/Managers/bmc/LogServices/Dump/Entries/%s/", id));
     }
 
+    @ShellMethod(key = "dump.bmc.clear")
+    @ShellMethodAvailability("availabilityCheck")
+    public void clear_bmcdump() throws URISyntaxException, IOException {
+        post("/redfish/v1/Managers/bmc/LogServices/Dump/Actions/LogService.ClearLog", "{}", false);
+    }
+
+    @ShellMethod(key = "dump.system.clear")
+    @ShellMethodAvailability("availabilityCheck")
+    public void clear_systemdump() throws URISyntaxException, IOException {
+        post("/redfish/v1/Systems/system/LogServices/Dump/Actions/LogService.ClearLog", "{}", false);
+    }
+
     @ShellMethod(key = "dump.bmc.info", value = "Get BMC dump entry info by ID. eg: dump.bmc.info 158")
     @ShellMethodAvailability("availabilityCheck")
     public void get_bmcdump_info(String id) throws URISyntaxException, IOException {

@@ -116,31 +116,10 @@ public class InstallCommands extends CommonCommands {
 
     @ShellMethod(key = "install.opkg", value = "eg: install.opkg.install")
     void opkgInstall() throws InterruptedException {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-
-        try {
-            runCommandShort(outputStream, Util.fullMachineName(machine), userName, passwd,
-                    String.format("ls /tmp/*.ipk"));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        String output = outputStream.toString();
-        var lines = output.split("\n");
-        Stream.of(lines).filter(a -> a.endsWith(".ipk")).forEach(a -> {
-            System.out.println(a);
-            a.trim();
-            String[] paths = a.split("/");
-            String pkgname = paths[paths.length - 1];
-            pkgname = pkgname.split("_")[0];
-
-            String command = String.format(
-                    "sudo opkg remove --force-remove %s;sudo opkg install --force-reinstall --force-depends %s",
-                    pkgname, a);
-            System.out.println(command);
-            scmd(command);
-            scmd(String.format("rm %s", a));
-        });
-
+        // Clean any failing prerm scripts first so opkg install/reinstall doesn't abort
+        String command = "sudo rm -f /var/lib/opkg/info/*.prerm && sudo opkg install --force-reinstall --force-depends --force-overwrite /tmp/*.ipk && sudo rm -f /tmp/*.ipk";
+        System.out.println(command);
+        scmd(command);
     }
 
     @ShellMethod(key = "install.scp", value = "eg: install.scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")

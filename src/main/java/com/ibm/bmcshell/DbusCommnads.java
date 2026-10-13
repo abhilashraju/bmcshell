@@ -572,9 +572,9 @@ public class DbusCommnads extends CommonCommands {
         JsonNode data = root.has("data") ? root.get("data") : root;
 
         // Print header and stream fast-path results immediately as we iterate the JSON.
-        System.out.println("\n" + "=".repeat(100));
-        System.out.printf("%-60s  %s%n", "PATH", "SERVICE");
-        System.out.println("=".repeat(100));
+        System.out.println("\n" + "=".repeat(130));
+        System.out.printf("%-55s  %-50s  %s%n", "PATH", "SERVICE", "INTERFACE(S)");
+        System.out.println("=".repeat(130));
 
         int[] count = {0};
         for (java.util.Iterator<Map.Entry<String, JsonNode>> pathIt = data.fields(); pathIt.hasNext(); ) {
@@ -582,11 +582,13 @@ public class DbusCommnads extends CommonCommands {
             String path = pathEntry.getKey();
             for (java.util.Iterator<Map.Entry<String, JsonNode>> svcIt = pathEntry.getValue().fields(); svcIt.hasNext(); ) {
                 Map.Entry<String, JsonNode> svcEntry = svcIt.next();
-                // Keep if any interface name contains the search term (case-insensitive).
-                boolean matches = StreamSupport.stream(svcEntry.getValue().spliterator(), false)
-                        .anyMatch(n -> n.asText().toLowerCase().contains(searchTerm));
-                if (matches) {
-                    System.out.printf("%-60s  %s%n", path, svcEntry.getKey());
+                // Collect all interface names that contain the search term (case-insensitive).
+                String matchedIfaces = StreamSupport.stream(svcEntry.getValue().spliterator(), false)
+                        .map(JsonNode::asText)
+                        .filter(n -> n.toLowerCase().contains(searchTerm))
+                        .collect(Collectors.joining(", "));
+                if (!matchedIfaces.isEmpty()) {
+                    System.out.printf("%-55s  %-50s  %s%n", path, svcEntry.getKey(), matchedIfaces);
                     count[0]++;
                 }
             }
@@ -601,7 +603,7 @@ public class DbusCommnads extends CommonCommands {
             findInterfaceCancelled = false;
             findInterfaceThread = new Thread(() -> {
                 int found = findInterfaceViaBusctlScan(iface);
-                System.out.println("=".repeat(100));
+                System.out.println("=".repeat(130));
                 if (findInterfaceCancelled) {
                     System.out.printf("Scan cancelled. Found %d result(s) so far implementing [%s]%n%n", found, iface);
                 } else {
@@ -611,7 +613,7 @@ public class DbusCommnads extends CommonCommands {
             findInterfaceThread.setDaemon(true);
             findInterfaceThread.start();
         } else {
-            System.out.println("=".repeat(100));
+            System.out.println("=".repeat(130));
             System.out.printf("Total: %d result(s) implementing [%s]%n%n", count[0], iface);
         }
     }
@@ -633,16 +635,22 @@ public class DbusCommnads extends CommonCommands {
     private int findInterfaceViaBusctlScan(String iface) {
         // Single shell pipeline: list all well-known names, then for each service collect
         // every path from `busctl tree`, introspect it, and emit "PATH\tSERVICE" when matched.
+        // Emit PATH\tSERVICE\tIFACE1,IFACE2.
+        // Only consider lines where the second field is "interface" — that is the interface
+        // declaration line in busctl introspect output.  Member lines (.After, .Before, etc.)
+        // always have method/property/signal as the second field and must be excluded.
         String cmd = "for svc in $(busctl list --no-legend 2>/dev/null | awk '{print $1}' | grep -v '^:'); do"
                 + "  while IFS= read -r path; do"
-                + "    busctl introspect \"$svc\" \"$path\" 2>/dev/null | grep -qF '" + iface + "'"
-                + "      && printf '%s\\t%s\\n' \"$path\" \"$svc\";"
+                + "    matched=$(busctl introspect \"$svc\" \"$path\" 2>/dev/null"
+                + "      | awk '$2==\"interface\" && $1~/" + iface.replace(".", "\\.") + "/ {print $1}'"
+                + "      | paste -sd,);"
+                + "    [ -n \"$matched\" ] && printf '%s\\t%s\\t%s\\n' \"$path\" \"$svc\" \"$matched\";"
                 + "  done < <(busctl tree \"$svc\" 2>/dev/null | grep -oE '/[^ ]+');"
                 + " done";
 
         int[] count = {0};
         // runCommand streams each output line to the consumer as it arrives over SSH.
-        // The consumer checks the cancellation flag and throws to abort reading early.
+        // The consumer checks the cancellation flag to abort reading early.
         runCommand(Util.fullMachineName(machine), userName, passwd, cmd, line -> {
             if (findInterfaceCancelled) {
                 // Interrupt the scan thread so runCommand's read loop exits
@@ -652,9 +660,10 @@ public class DbusCommnads extends CommonCommands {
             if (line.isBlank()) return;
             // Strip any ANSI colour codes that ColorPrinter may have added
             String plain = line.replaceAll("\u001B\\[[;\\d]*m", "");
-            String[] parts = plain.split("\\t", 2);
-            if (parts.length == 2) {
-                System.out.printf("%-60s  %s%n", parts[0].trim(), parts[1].trim());
+            String[] parts = plain.split("\\t", 3);
+            if (parts.length >= 2) {
+                String matchedIfaces = parts.length == 3 ? parts[2].trim() : "";
+                System.out.printf("%-55s  %-50s  %s%n", parts[0].trim(), parts[1].trim(), matchedIfaces);
                 count[0]++;
             }
         });

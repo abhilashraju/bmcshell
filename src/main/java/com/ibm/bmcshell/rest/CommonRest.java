@@ -71,6 +71,9 @@ public class CommonRest {
     @Autowired
     private ApplicationContext applicationContext;
 
+    @Autowired(required = false)
+    private JournalSseController journalSseController;
+
     WebClient client;
     String token;
 
@@ -189,10 +192,20 @@ public class CommonRest {
         String message = "Resource created successfully!";
         return Mono.just(message);
     }
+    /**
+     * Receives journal chunks pushed by the BMC journal server and redirects
+     * them, line by line, to all connected SSE clients (/sse/journal).
+     */
     @PostMapping("/journals")
     public Mono<String> createJournal(@RequestBody String requestData) throws JsonProcessingException {
 
-        System.out.println(requestData);
+        if (journalSseController != null) {
+            for (String line : requestData.split("\\r?\\n")) {
+                if (!line.isBlank()) {
+                    journalSseController.broadcastJournalLine(line);
+                }
+            }
+        }
 
         String message = "Resource created successfully!";
         return Mono.just(message);

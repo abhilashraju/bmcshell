@@ -1832,4 +1832,535 @@ public class TPM2Commands extends CommonCommands {
 
                 System.out.println(ColorPrinter.cyan("═══════════════════════════════════════════════════════"));
         }
+
+        // ==================== CERTIFICATE VERIFICATION COMMANDS (TPM-backed) ====================
+
+        /**
+         * Verify a certificate against a CA certificate stored in TPM NV
+         * Reads the CA cert from the specified NV index and runs openssl verify.
+         *
+         * Example: tpm2.verify --cert leaf_cert.pem --ca-nv-index 0x1500001
+         *
+         * @param certFile   Path to the certificate file to verify
+         * @param caNvIndex  TPM NV index containing the CA certificate in PEM format
+         */
+        @ShellMethod(key = "tpm2.verify", value = "Verify certificate against CA stored in TPM NV - eg: tpm2.verify --cert leaf.pem --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2Verify(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate against CA stored in TPM NV with verbose output.
+         *
+         * Example: tpm2.verify-verbose --cert leaf_cert.pem --ca-nv-index 0x1500001
+         *
+         * @param certFile   Path to the certificate file to verify
+         * @param caNvIndex  TPM NV index containing the CA certificate in PEM format
+         */
+        @ShellMethod(key = "tpm2.verify-verbose", value = "Verify certificate (verbose) against CA stored in TPM NV - eg: tpm2.verify-verbose --cert leaf.pem --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyVerbose(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -verbose -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate chain using root CA from TPM NV and an intermediate CA file.
+         *
+         * Example: tpm2.verify-chain --cert leaf.pem --ca-nv-index 0x1500001 --intermediate intermediate_ca.pem
+         *
+         * @param certFile         Path to the leaf certificate file
+         * @param caNvIndex        TPM NV index containing the root CA certificate
+         * @param intermediateFile Path to the intermediate CA certificate file
+         */
+        @ShellMethod(key = "tpm2.verify-chain", value = "Verify certificate chain with root CA from TPM NV - eg: tpm2.verify-chain --cert leaf.pem --ca-nv-index 0x1500001 --intermediate intermediate.pem")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyChain(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex,
+                        @ShellOption(value = { "--intermediate", "-i" }, valueProvider = RemoteFileCompleter.class) String intermediateFile) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -CAfile %s -untrusted %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, intermediateFile, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Show complete certificate chain using root CA from TPM NV.
+         *
+         * Example: tpm2.show-chain --cert leaf.pem --ca-nv-index 0x1500001
+         *
+         * @param certFile  Path to the certificate file
+         * @param caNvIndex TPM NV index containing the root CA certificate
+         */
+        @ShellMethod(key = "tpm2.show-chain", value = "Show certificate chain using root CA from TPM NV - eg: tpm2.show-chain --cert leaf.pem --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2ShowChain(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -show_chain -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate for SSL server purpose using CA from TPM NV.
+         *
+         * Example: tpm2.verify-server --cert server.pem --ca-nv-index 0x1500001
+         *
+         * @param certFile  Path to the server certificate file
+         * @param caNvIndex TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-server", value = "Verify certificate for SSL server purpose using CA from TPM NV - eg: tpm2.verify-server --cert server.pem --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyServer(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -purpose sslserver -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate for SSL client purpose using CA from TPM NV.
+         *
+         * Example: tpm2.verify-client --cert client.pem --ca-nv-index 0x1500001
+         *
+         * @param certFile  Path to the client certificate file
+         * @param caNvIndex TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-client", value = "Verify certificate for SSL client purpose using CA from TPM NV - eg: tpm2.verify-client --cert client.pem --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyClient(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -purpose sslclient -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate at a specific Unix timestamp using CA from TPM NV.
+         *
+         * Example: tpm2.verify-at-time --cert cert.pem --ca-nv-index 0x1500001 --timestamp 0
+         *
+         * @param certFile  Path to the certificate file
+         * @param caNvIndex TPM NV index containing the CA certificate
+         * @param timestamp Unix timestamp (seconds since epoch)
+         */
+        @ShellMethod(key = "tpm2.verify-at-time", value = "Verify certificate at specific time using CA from TPM NV - eg: tpm2.verify-at-time --cert cert.pem --ca-nv-index 0x1500001 --timestamp 0")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyAtTime(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex,
+                        @ShellOption(value = { "--timestamp", "-t" }) long timestamp) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -attime %d -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, timestamp, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate at Unix epoch using CA from TPM NV.
+         * Tests that the certificate is valid from time zero.
+         *
+         * Example: tpm2.verify-at-epoch --cert cert.pem --ca-nv-index 0x1500001
+         *
+         * @param certFile  Path to the certificate file
+         * @param caNvIndex TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-at-epoch", value = "Verify certificate at Unix epoch using CA from TPM NV - eg: tpm2.verify-at-epoch --cert cert.pem --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyAtEpoch(
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl verify -attime 0 -CAfile %s %s; rm -f %s",
+                                caNvIndex, tempCa, tempCa, certFile, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a remote server's TLS certificate using CA stored in TPM NV.
+         * Reads the CA cert from the NV index then connects to the server.
+         *
+         * Example: tpm2.verify-server-cert --host example.com --port 443 --ca-nv-index 0x1500001
+         *
+         * @param host      Server hostname or IP address
+         * @param port      Server port (default: 443)
+         * @param caNvIndex TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-server-cert", value = "Verify remote server TLS certificate using CA from TPM NV - eg: tpm2.verify-server-cert --host example.com --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyServerCert(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl s_client -connect %s:%d -CAfile %s -showcerts </dev/null 2>/dev/null; rm -f %s",
+                                caNvIndex, tempCa, host, port, tempCa, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Test mTLS connection using a TPM-resident client key (via tpm2tss engine).
+         * The client private key stays inside the TPM; only the handle is referenced.
+         *
+         * Example: tpm2.test-mtls --host example.com --port 443 --cert client.pem --key-handle 0x81010002
+         *
+         * @param host      Server hostname or IP address
+         * @param port      Server port (default: 443)
+         * @param certFile  Path to the client certificate file
+         * @param keyHandle TPM persistent handle for the client private key
+         */
+        @ShellMethod(key = "tpm2.test-mtls", value = "Test mTLS using TPM-resident client key - eg: tpm2.test-mtls --host example.com --cert client.pem --key-handle 0x81010002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2TestMTLS(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--key-handle" }, defaultValue = "0x81010001") String keyHandle) {
+                String command = String.format(
+                                "openssl s_client -connect %s:%d -cert %s -engine tpm2tss -keyform engine -key %s -showcerts </dev/null 2>/dev/null",
+                                host, port, certFile, keyHandle);
+                scmd(command);
+        }
+
+        /**
+         * Test mTLS with full verification: TPM-resident client key + CA from TPM NV.
+         * Client private key is in TPM (tpm2tss engine); server CA cert is read from NV.
+         *
+         * Example: tpm2.test-mtls-verify --host example.com --port 443 --cert client.pem --key-handle 0x81010002 --ca-nv-index 0x1500001
+         *
+         * @param host      Server hostname or IP address
+         * @param port      Server port (default: 443)
+         * @param certFile  Path to the client certificate file
+         * @param keyHandle TPM persistent handle for the client private key
+         * @param caNvIndex TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.test-mtls-verify", value = "Test mTLS with TPM client key and CA from TPM NV - eg: tpm2.test-mtls-verify --host example.com --cert client.pem --key-handle 0x81010002 --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2TestMTLSVerify(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--key-handle" }, defaultValue = "0x81010001") String keyHandle,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl s_client -connect %s:%d -cert %s -engine tpm2tss -keyform engine -key %s -CAfile %s -showcerts </dev/null 2>/dev/null; rm -f %s",
+                                caNvIndex, tempCa, host, port, certFile, keyHandle, tempCa, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Test mTLS with SNI using TPM-resident client key.
+         *
+         * Example: tpm2.test-mtls-sni --host 192.168.1.100 --servername example.com --port 443 --cert client.pem --key-handle 0x81010002
+         *
+         * @param host       Server hostname or IP address
+         * @param serverName SNI server name
+         * @param port       Server port (default: 443)
+         * @param certFile   Path to the client certificate file
+         * @param keyHandle  TPM persistent handle for the client private key
+         */
+        @ShellMethod(key = "tpm2.test-mtls-sni", value = "Test mTLS with SNI using TPM-resident client key - eg: tpm2.test-mtls-sni --host 192.168.1.100 --servername example.com --cert client.pem --key-handle 0x81010002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2TestMTLSSNI(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--servername", "-s" }) String serverName,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--key-handle" }, defaultValue = "0x81010001") String keyHandle) {
+                String command = String.format(
+                                "openssl s_client -connect %s:%d -servername %s -cert %s -engine tpm2tss -keyform engine -key %s -showcerts </dev/null 2>/dev/null",
+                                host, port, serverName, certFile, keyHandle);
+                scmd(command);
+        }
+
+        /**
+         * Verify mTLS connection status using TPM-resident client key and CA from TPM NV.
+         * Runs with -state output for detailed handshake tracing.
+         *
+         * Example: tpm2.verify-mtls --host example.com --port 443 --cert client.pem --key-handle 0x81010002 --ca-nv-index 0x1500001
+         *
+         * @param host      Server hostname or IP address
+         * @param port      Server port (default: 443)
+         * @param certFile  Path to the client certificate file
+         * @param keyHandle TPM persistent handle for the client private key
+         * @param caNvIndex TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-mtls", value = "Verify mTLS connection status using TPM key and CA from TPM NV - eg: tpm2.verify-mtls --host example.com --cert client.pem --key-handle 0x81010002 --ca-nv-index 0x1500001")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyMTLS(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--cert", "-c" }, valueProvider = RemoteFileCompleter.class) String certFile,
+                        @ShellOption(value = { "--key-handle" }, defaultValue = "0x81010001") String keyHandle,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && openssl s_client -connect %s:%d -cert %s -engine tpm2tss -keyform engine -key %s -CAfile %s -state </dev/null 2>&1; rm -f %s",
+                                caNvIndex, tempCa, host, port, certFile, keyHandle, tempCa, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a certificate stored in TPM NV against a CA certificate stored in another TPM NV.
+         * Reads both the certificate and CA from their respective NV indexes and runs openssl verify.
+         *
+         * Example: tpm2.verify-nv --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param certNvIndex TPM NV index containing the certificate to verify (PEM format)
+         * @param caNvIndex   TPM NV index containing the CA certificate (PEM format)
+         */
+        @ShellMethod(key = "tpm2.verify-nv", value = "Verify certificate in NV against CA in NV - eg: tpm2.verify-nv --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNV(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a certificate stored in TPM NV against a CA certificate stored in another TPM NV with verbose output.
+         *
+         * Example: tpm2.verify-nv-verbose --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param certNvIndex TPM NV index containing the certificate to verify (PEM format)
+         * @param caNvIndex   TPM NV index containing the CA certificate (PEM format)
+         */
+        @ShellMethod(key = "tpm2.verify-nv-verbose", value = "Verify certificate in NV against CA in NV (verbose) - eg: tpm2.verify-nv-verbose --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVVerbose(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -verbose -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify certificate chain using root CA from one TPM NV and certificate from another TPM NV.
+         * Reads the leaf certificate from one NV index and the root CA from another NV index.
+         *
+         * Example: tpm2.verify-nv-chain --cert-nv-index 0x1500001 --ca-nv-index 0x1500002 --intermediate intermediate_ca.pem
+         *
+         * @param certNvIndex       TPM NV index containing the leaf certificate
+         * @param caNvIndex         TPM NV index containing the root CA certificate
+         * @param intermediateFile  Path to the intermediate CA certificate file (optional)
+         */
+        @ShellMethod(key = "tpm2.verify-nv-chain", value = "Verify certificate chain with cert and CA from TPM NV - eg: tpm2.verify-nv-chain --cert-nv-index 0x1500001 --ca-nv-index 0x1500002 --intermediate intermediate.pem")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVChain(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex,
+                        @ShellOption(value = { "--intermediate", "-i" }, valueProvider = RemoteFileCompleter.class) String intermediateFile) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command;
+                if (intermediateFile != null && !intermediateFile.isEmpty()) {
+                        command = String.format(
+                                        "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -CAfile %s -untrusted %s %s; rm -f %s %s",
+                                        certNvIndex, tempCert, caNvIndex, tempCa, tempCa, intermediateFile, tempCert, tempCert, tempCa);
+                } else {
+                        command = String.format(
+                                        "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -CAfile %s %s; rm -f %s %s",
+                                        certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                }
+                scmd(command);
+        }
+
+        /**
+         * Verify a certificate stored in TPM NV for SSL server purpose using CA from another TPM NV.
+         *
+         * Example: tpm2.verify-nv-server --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param certNvIndex TPM NV index containing the server certificate
+         * @param caNvIndex   TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-nv-server", value = "Verify SSL server cert in NV against CA in NV - eg: tpm2.verify-nv-server --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVServer(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -purpose sslserver -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a certificate stored in TPM NV for SSL client purpose using CA from another TPM NV.
+         *
+         * Example: tpm2.verify-nv-client --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param certNvIndex TPM NV index containing the client certificate
+         * @param caNvIndex   TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-nv-client", value = "Verify SSL client cert in NV against CA in NV - eg: tpm2.verify-nv-client --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVClient(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -purpose sslclient -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a certificate stored in TPM NV at a specific Unix timestamp using CA from another TPM NV.
+         *
+         * Example: tpm2.verify-nv-at-time --cert-nv-index 0x1500001 --ca-nv-index 0x1500002 --timestamp 0
+         *
+         * @param certNvIndex TPM NV index containing the certificate
+         * @param caNvIndex   TPM NV index containing the CA certificate
+         * @param timestamp   Unix timestamp (seconds since epoch)
+         */
+        @ShellMethod(key = "tpm2.verify-nv-at-time", value = "Verify cert in NV at specific time using CA in NV - eg: tpm2.verify-nv-at-time --cert-nv-index 0x1500001 --ca-nv-index 0x1500002 --timestamp 0")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVAtTime(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex,
+                        @ShellOption(value = { "--timestamp", "-t" }) long timestamp) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -attime %d -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, timestamp, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a certificate stored in TPM NV at Unix epoch using CA from another TPM NV.
+         * Tests that the certificate is valid from time zero.
+         *
+         * Example: tpm2.verify-nv-at-epoch --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param certNvIndex TPM NV index containing the certificate
+         * @param caNvIndex   TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-nv-at-epoch", value = "Verify cert in NV at Unix epoch using CA in NV - eg: tpm2.verify-nv-at-epoch --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVAtEpoch(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -attime 0 -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Verify a remote server's TLS certificate using CA stored in TPM NV, with certificate also in TPM NV.
+         * Reads both the server cert and CA cert from their respective NV indexes then verifies.
+         *
+         * Example: tpm2.verify-nv-server-cert --host example.com --port 443 --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param host        Server hostname or IP address
+         * @param port        Server port (default: 443)
+         * @param certNvIndex TPM NV index containing the expected server certificate
+         * @param caNvIndex   TPM NV index containing the CA certificate
+         */
+        @ShellMethod(key = "tpm2.verify-nv-server-cert", value = "Verify remote server TLS cert using cert and CA from TPM NV - eg: tpm2.verify-nv-server-cert --host example.com --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2VerifyNVServerCert(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl s_client -connect %s:%d -CAfile %s -servername %s -verify_return_error </dev/null 2>&1 | grep -A 5 'Verify return code'; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, host, port, tempCa, host, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Show certificate chain using certificate from one TPM NV and root CA from another TPM NV.
+         *
+         * Example: tpm2.show-nv-chain --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param certNvIndex TPM NV index containing the certificate
+         * @param caNvIndex   TPM NV index containing the root CA certificate
+         */
+        @ShellMethod(key = "tpm2.show-nv-chain", value = "Show certificate chain with cert and CA from TPM NV - eg: tpm2.show-nv-chain --cert-nv-index 0x1500001 --ca-nv-index 0x1500002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2ShowNVChain(
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl verify -show_chain -CAfile %s %s; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, tempCa, tempCert, tempCert, tempCa);
+                scmd(command);
+        }
+
+        /**
+         * Test mTLS connection using client certificate from TPM NV and CA from another TPM NV.
+         * Client certificate is read from NV index; CA for server verification from another NV index.
+         *
+         * Example: tpm2.test-nv-mtls --host example.com --port 443 --cert-nv-index 0x1500001 --ca-nv-index 0x1500002
+         *
+         * @param host        Server hostname or IP address
+         * @param port        Server port (default: 443)
+         * @param certNvIndex TPM NV index containing the client certificate
+         * @param caNvIndex   TPM NV index containing the CA certificate
+         * @param keyHandle   TPM persistent handle for the client private key (default: 0x81010001)
+         */
+        @ShellMethod(key = "tpm2.test-nv-mtls", value = "Test mTLS with client cert from NV and CA from NV - eg: tpm2.test-nv-mtls --host example.com --cert-nv-index 0x1500001 --ca-nv-index 0x1500002 --key-handle 0x81010002")
+        @ShellMethodAvailability("availabilityCheck")
+        protected void tpm2TestNVMTLS(
+                        @ShellOption(value = { "--host" }) String host,
+                        @ShellOption(value = { "--port", "-p" }, defaultValue = "443") int port,
+                        @ShellOption(value = { "--cert-nv-index" }) String certNvIndex,
+                        @ShellOption(value = { "--ca-nv-index" }) String caNvIndex,
+                        @ShellOption(value = { "--key-handle" }, defaultValue = "0x81010001") String keyHandle) {
+                String tempCert = String.format("/tmp/tpm2_cert_%d.pem", System.currentTimeMillis());
+                String tempCa = String.format("/tmp/tpm2_ca_%d.pem", System.currentTimeMillis());
+                String command = String.format(
+                                "tpm2_nvread %s -C o -o %s && tpm2_nvread %s -C o -o %s && openssl s_client -connect %s:%d -cert %s -engine tpm2tss -keyform engine -key %s -CAfile %s -showcerts </dev/null 2>/dev/null; rm -f %s %s",
+                                certNvIndex, tempCert, caNvIndex, tempCa, host, port, tempCert, keyHandle, tempCa, tempCert, tempCa);
+                scmd(command);
+        }
+
 }

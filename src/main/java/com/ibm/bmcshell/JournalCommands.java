@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
+import com.ibm.bmcshell.Utils.JournalSubscription;
 import com.ibm.bmcshell.rest.JournalSseController;
 
 @ShellComponent
@@ -23,10 +24,19 @@ public class JournalCommands extends CommonCommands {
     @Autowired(required = false)
     private JournalSseController sseController;
 
+    @Autowired
+    private JournalSubscription journalSub;
+
     @Value("${server.port:8443}")
     private int serverPort;
 
     protected JournalCommands() throws IOException {
+    }
+
+    /** Route journalserver lines into the same buffer/SSE broadcast as journal.start, and follow `machine` changes. */
+    @jakarta.annotation.PostConstruct
+    void registerJournalSubscriptionSink() {
+        journalSub.setSink(line -> appendJournalLine(line));
     }
 
     private String sanitizeLine(String line) {
@@ -153,6 +163,24 @@ public class JournalCommands extends CommonCommands {
         runJournalCommand(String.format("journalctl -b -%d | head -n %d", bootOffset, n));
     }
 
+    @ShellMethod(key = { "journal.subscribe",
+            "jsub" }, value = "Subscribe to the journalserver on the current machine (SSE). Follows machine changes. eg: journal.subscribe")
+    void journalSubscribe() {
+        activateJournalCapture();
+        journalSub.start(machine, line -> appendJournalLine(line));
+        System.out.println("Journal subscription started for " + machine + " (port " + journalSub.getPort()
+                + "). Lines are captured (journal.show) and streamed to /sse/journal."
+                + " It follows `machine` changes; use journal.unsubscribe to stop.");
+    }
+
+    @ShellMethod(key = { "journal.unsubscribe", "junsub" }, value = "Stop the journalserver subscription. eg: journal.unsubscribe")
+    void journalUnsubscribe() {
+        journalSub.stop();
+        deactivateJournalCapture("Journal subscription stopped.");
+        System.out.println("Journal subscription stopped. `machine` changes will no longer reconnect;"
+                + " run journal.subscribe to resume.");
+    }
+
     @ShellMethod(key = "journal.stop", value = "eg: journal.stop")
     void journalctlStop() {
         if (journalThread != null && journalThread.isAlive()) {
@@ -205,13 +233,18 @@ public class JournalCommands extends CommonCommands {
     void journalWebSocketStatus() {
         System.out.println("\n=== SSE Streaming Status ===");
         System.out.println("Streaming Enabled: " + webSocketStreamingEnabled);
+        System.out.println("\n--- Journal Subscription ---");
+        System.out.println("Active:    " + journalSub.isActive());
+        System.out.println("Connected: " + journalSub.isConnected());
+        if (journalSub.getMachine() != null) {
+            System.out.println("Machine:   " + journalSub.getMachine() + ":" + journalSub.getPort());
+        }
         if (sseController != null) {
+            System.out.println("\n--- /sse/journal Clients ---");
             System.out.println("Active SSE Connections: " + sseController.getActiveConnectionCount());
-            System.out.println("Active Filters:     " + java.util.Arrays.toString(sseController.getFilters()));
+            System.out.println("Active Filters:         " + java.util.Arrays.toString(sseController.getFilters()));
 
-            // SSL enabled by default for all ports
             String endpoint = String.format("https://localhost:%d/sse/journal", serverPort);
-
             System.out.println("\nSSE Endpoint: " + endpoint);
             System.out.println("\nConnect with curl:");
             System.out.println("  curl -k -N " + endpoint);
@@ -232,6 +265,9 @@ public class JournalCommands extends CommonCommands {
         System.out
                 .println("                            Journal logs are captured without interleaving into main output");
         System.out.println("journal.stop              - Stop journal log monitoring");
+        System.out.println("journal.subscribe         - Subscribe to the journalserver on the current machine");
+        System.out.println("                            Reconnects automatically when the machine changes");
+        System.out.println("journal.unsubscribe       - Stop the journalserver subscription");
         System.out.println("\njournal.search <terms>    - Search journal logs (default: last 100 lines)");
         System.out.println("                            Use '*' to show all logs");
         System.out.println("journal.searchN <terms> -n <num> - Search with custom limit");

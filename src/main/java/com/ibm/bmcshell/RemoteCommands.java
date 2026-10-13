@@ -266,6 +266,78 @@ public class RemoteCommands extends CommonCommands {
         }
     }
 
+    @ShellMethod(key = { "ro.fetch", "fetch" }, value = "Fetch a file from BMC to local machine - eg: ro.fetch /remote/path/file.txt [--dest ./local/dir/]")
+    @ShellMethodAvailability("availabilityCheck")
+    void fetch(
+            @ShellOption(valueProvider = RemoteFileCompleter.class) String remotePath,
+            @ShellOption(value = { "--dest", "-d" }, defaultValue = "") String destPath) {
+        try {
+            String name = userName.equals("root") ? userName : "service";
+            String fullMachine = Util.fullMachineName(machine);
+
+            String remoteFileName = new java.io.File(remotePath).getName();
+
+            // Resolve local destination: directory → append filename, empty → cwd + filename
+            String localPath;
+            if (destPath.isEmpty()) {
+                localPath = System.getProperty("user.dir") + java.io.File.separator + remoteFileName;
+            } else {
+                java.io.File dest = new java.io.File(destPath);
+                if (dest.isDirectory()) {
+                    localPath = destPath + java.io.File.separator + remoteFileName;
+                } else {
+                    localPath = destPath;
+                }
+            }
+
+            System.out.println(ColorPrinter.cyan("Fetching: " + remotePath));
+            System.out.println(ColorPrinter.yellow("     → " + localPath));
+
+            Session session = SSHShellClient.getSession(fullMachine, name, passwd, port);
+            if (session == null) {
+                System.out.println(ColorPrinter.red("Failed to establish SSH session"));
+                return;
+            }
+
+            // Try SFTP first
+            boolean fetched = false;
+            ChannelSftp sftpChannel = (ChannelSftp) session.openChannel("sftp");
+            sftpChannel.connect();
+            try {
+                sftpChannel.get(remotePath, localPath);
+                fetched = true;
+            } catch (Exception sftpEx) {
+                System.out.println(ColorPrinter.yellow("SFTP failed (" + sftpEx.getMessage() + "), retrying with sudo cat..."));
+            } finally {
+                sftpChannel.disconnect();
+            }
+
+            // Fall back to sudo cat for privileged files
+            if (!fetched) {
+                String catCmd = name.equals("root")
+                        ? String.format("cat %s", remotePath)
+                        : String.format("sudo -i cat %s", remotePath);
+
+                ByteArrayOutputStream contentStream = new ByteArrayOutputStream();
+                runCommandShort(contentStream, fullMachine, name, passwd, catCmd);
+                byte[] bytes = contentStream.toByteArray();
+
+                if (bytes.length == 0) {
+                    System.out.println(ColorPrinter.red("✗ File is empty or could not be read (check path and permissions)"));
+                    return;
+                }
+
+                java.nio.file.Files.write(java.nio.file.Paths.get(localPath), bytes);
+            }
+
+            long fileSize = new java.io.File(localPath).length();
+            System.out.println(ColorPrinter.green("✓ Fetched to: " + localPath + " (" + fileSize + " bytes)"));
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error: " + e.getMessage()));
+        }
+    }
+
     @ShellMethod(key = { "ro.find", "find" }, value = "eg: ro.find filename [<path>]")
     @ShellMethodAvailability("availabilityCheck")
     void findFile(String filename,
