@@ -135,6 +135,7 @@ public class InstallCommands extends CommonCommands {
             return;
         }
         var uri = new URI(base() + "/redfish/v1/UpdateService/update");
+        ensureApplyTimeImmediate();
         final long total = file.length();
         System.out.println("Uploading " + file.getName() + " (" + formatBytes(total) + ") to " + uri + " ...");
         final java.util.concurrent.atomic.AtomicLong sent = new java.util.concurrent.atomic.AtomicLong();
@@ -185,6 +186,37 @@ public class InstallCommands extends CommonCommands {
         } catch (Exception ex) {
             System.err.println("❌ Firmware update failed: " + ex);
             resetToken();
+        }
+    }
+
+    /**
+     * Same pre-step the web UI performs: HTTP push uses the stored ApplyTime, so
+     * make sure it is "Immediate" before uploading. Failures are non-fatal.
+     */
+    private void ensureApplyTimeImmediate() {
+        try {
+            String json = client.get()
+                    .uri(new URI(base() + "/redfish/v1/UpdateService"))
+                    .header("X-Auth-Token", token)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+            var applyTime = new ObjectMapper().readTree(json)
+                    .path("HttpPushUriOptions").path("HttpPushUriApplyTime").path("ApplyTime");
+            if (applyTime.isMissingNode() || "Immediate".equals(applyTime.asText())) {
+                return;
+            }
+            System.out.println("ApplyTime is '" + applyTime.asText() + "', setting to 'Immediate'...");
+            client.patch()
+                    .uri(new URI(base() + "/redfish/v1/UpdateService"))
+                    .header("X-Auth-Token", token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue("{\"HttpPushUriOptions\":{\"HttpPushUriApplyTime\":{\"ApplyTime\":\"Immediate\"}}}")
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block();
+        } catch (Exception ex) {
+            System.err.println("⚠ Could not set ApplyTime to Immediate (continuing): " + ex);
         }
     }
 
