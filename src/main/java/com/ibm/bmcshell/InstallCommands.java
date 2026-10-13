@@ -24,6 +24,11 @@ import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.ssh.SSHShellClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.http.MediaType;
+import org.springframework.core.io.FileSystemResource;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import java.net.URI;
 import reactor.core.publisher.Mono;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -112,6 +117,113 @@ public class InstallCommands extends CommonCommands {
                 imageid);
         System.out.println(command);
         scmd(command);
+    }
+
+    @ShellMethod(key = { "install.firmware_update", "fu" }, value = "Push a firmware image via Redfish UpdateService and monitor the task. eg: fu --file ~/obmc-phosphor-image.tar [--no-wait] [--timeout 1800]")
+    @ShellMethodAvailability("availabilityCheck")
+    void firmwareUpdate(
+            @ShellOption(value = { "--file", "-f" }, valueProvider = FileCompleter.class) String filePath,
+            @ShellOption(value = "--no-wait", defaultValue = "false", help = "Do not monitor the update task") boolean noWait,
+            @ShellOption(value = "--timeout", defaultValue = "1800", help = "Monitoring timeout in seconds") int timeoutSec)
+            throws URISyntaxException {
+        File file = new File(filePath);
+        if (!file.isFile()) {
+            System.err.println("❌ Error: File not found: " + filePath);
+            return;
+        }
+        var uri = new URI(base() + "/redfish/v1/UpdateService/update");
+        System.out.println("Uploading " + file.getName() + " to " + uri + " ...");
+        try {
+            var response = client.post()
+                    .uri(uri)
+                    .header("X-Auth-Token", token)
+                    .header("Content-Type", MediaType.APPLICATION_OCTET_STREAM_VALUE)
+                    .body(BodyInserters.fromResource(new FileSystemResource(file)))
+                    .retrieve()
+                    .toEntity(String.class)
+                    .block();
+            String body = response.getBody();
+            defaultOutputConsumer().accept(body);
+            if (noWait) {
+                return;
+            }
+            String taskUri = null;
+            try {
+                taskUri = new ObjectMapper().readTree(body).path("@odata.id").asText(null);
+            } catch (Exception ignored) {
+                // body is not JSON; no task to monitor
+            }
+            if (taskUri == null || taskUri.isEmpty()) {
+                System.out.println("No task returned by the BMC; nothing to monitor.");
+                return;
+            }
+            monitorTask(taskUri, timeoutSec);
+        } catch (WebClientResponseException ex) {
+            System.err.println("❌ Firmware update failed: " + ex.getStatusText());
+            defaultOutputConsumer().accept(ex.getResponseBodyAsString());
+            resetToken();
+        } catch (Exception ex) {
+            System.err.println("❌ Firmware update failed: " + ex.getMessage());
+            resetToken();
+        }
+    }
+
+    /**
+     * Polls a Redfish Task until it reaches a terminal state or the timeout
+     * expires. Tolerates BMC reboots (connection errors / expired token) by
+     * re-authenticating and retrying.
+     */
+    private void monitorTask(String taskUri, int timeoutSec) throws URISyntaxException {
+        final java.util.Set<String> terminal = java.util.Set.of("Completed", "Exception", "Killed", "Cancelled");
+        var mapper = new ObjectMapper();
+        var uri = new URI(base() + taskUri);
+        long deadline = System.currentTimeMillis() + timeoutSec * 1000L;
+        String lastLine = "";
+        System.out.println("Monitoring " + taskUri + " (timeout " + timeoutSec + "s)...");
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                System.out.println("Monitoring interrupted.");
+                return;
+            }
+            try {
+                String json = client.get()
+                        .uri(uri)
+                        .header("X-Auth-Token", token)
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+                var task = mapper.readTree(json);
+                String state = task.path("TaskState").asText("Unknown");
+                String status = task.path("TaskStatus").asText("");
+                String percent = task.has("PercentComplete") ? task.path("PercentComplete").asText() + "%" : "";
+                String line = String.format("TaskState=%s %s %s", state, percent, status).trim();
+                if (!line.equals(lastLine)) {
+                    System.out.println(line);
+                    lastLine = line;
+                }
+                if (terminal.contains(state)) {
+                    task.path("Messages").forEach(m -> System.out.println("  " + m.path("Message").asText()));
+                    if (state.equals("Completed")) {
+                        System.out.println("✅ Firmware update completed. Verify with: get UpdateService/FirmwareInventory");
+                    } else {
+                        System.err.println("❌ Firmware update ended with state: " + state);
+                    }
+                    return;
+                }
+            } catch (Exception ex) {
+                // BMC may be rebooting or the token may have expired
+                System.out.println("Waiting for BMC (" + ex.getClass().getSimpleName() + ")...");
+                try {
+                    resetToken();
+                } catch (Exception ignored) {
+                    // retry on next iteration
+                }
+            }
+        }
+        System.err.println("⚠ Timed out after " + timeoutSec + "s waiting for task " + taskUri);
     }
 
     @ShellMethod(key = "install.opkg", value = "eg: install.opkg.install")
