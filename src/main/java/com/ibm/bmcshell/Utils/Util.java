@@ -202,6 +202,31 @@ public class Util {
     public static String interfacesRoot = ".";
     public static String secretKey = "";
 
+    /**
+     * WebClient for large uploads (e.g. firmware images). Unlike the default
+     * client it has no connection max-lifetime, write timeout or short response
+     * timeout, which would otherwise abort the upload mid-transfer.
+     */
+    public static WebClient createUploadWebClient() throws SSLException {
+        ConnectionProvider connectionProvider = ConnectionProvider.builder("upload")
+                .maxConnections(2)
+                .maxIdleTime(Duration.ofSeconds(30))
+                .build();
+
+        SslContext sslContext = SslContextBuilder
+                .forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .build();
+
+        HttpClient httpClient = HttpClient.create(connectionProvider)
+                .secure(t -> t.sslContext(sslContext))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .responseTimeout(Duration.ofMinutes(10));
+
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient)).build();
+    }
+
     public static WebClient createWebClient() throws SSLException {
         ConnectionProvider connectionProvider = ConnectionProvider.builder("custom")
                 .maxConnections(100) // Maximum number of connections

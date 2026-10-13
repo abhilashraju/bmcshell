@@ -134,7 +134,7 @@ public class InstallCommands extends CommonCommands {
         var uri = new URI(base() + "/redfish/v1/UpdateService/update");
         System.out.println("Uploading " + file.getName() + " to " + uri + " ...");
         try {
-            var response = client.post()
+            var response = Util.createUploadWebClient().post()
                     .uri(uri)
                     .header("X-Auth-Token", token)
                     .header("Content-Type", MediaType.APPLICATION_OCTET_STREAM_VALUE)
@@ -163,7 +163,7 @@ public class InstallCommands extends CommonCommands {
             defaultOutputConsumer().accept(ex.getResponseBodyAsString());
             resetToken();
         } catch (Exception ex) {
-            System.err.println("❌ Firmware update failed: " + ex.getMessage());
+            System.err.println("❌ Firmware update failed: " + ex);
             resetToken();
         }
     }
