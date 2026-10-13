@@ -24,7 +24,10 @@ import com.ibm.bmcshell.Utils.Util;
 import com.ibm.bmcshell.ssh.SSHShellClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.http.MediaType;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import reactor.core.publisher.Flux;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -132,16 +135,33 @@ public class InstallCommands extends CommonCommands {
             return;
         }
         var uri = new URI(base() + "/redfish/v1/UpdateService/update");
-        System.out.println("Uploading " + file.getName() + " to " + uri + " ...");
+        final long total = file.length();
+        System.out.println("Uploading " + file.getName() + " (" + formatBytes(total) + ") to " + uri + " ...");
+        final java.util.concurrent.atomic.AtomicLong sent = new java.util.concurrent.atomic.AtomicLong();
+        final java.util.concurrent.atomic.AtomicInteger lastPercent = new java.util.concurrent.atomic.AtomicInteger(-1);
+        // Read the file in 64 KB chunks; backpressure keeps this close to bytes on the wire
+        Flux<DataBuffer> fileData = DataBufferUtils
+                .read(file.toPath(), new DefaultDataBufferFactory(), 64 * 1024)
+                .doOnNext(buf -> {
+                    long done = sent.addAndGet(buf.readableByteCount());
+                    int percent = total == 0 ? 100 : (int) (done * 100 / total);
+                    if (percent != lastPercent.getAndSet(percent)) {
+                        System.out.print(String.format("\rUpload progress: %3d%% (%s / %s)", percent,
+                                formatBytes(done), formatBytes(total)));
+                        System.out.flush();
+                    }
+                });
         try {
             var response = Util.createUploadWebClient().post()
                     .uri(uri)
                     .header("X-Auth-Token", token)
-                    .header("Content-Type", MediaType.APPLICATION_OCTET_STREAM_VALUE)
-                    .body(BodyInserters.fromResource(new FileSystemResource(file)))
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .contentLength(total)
+                    .body(BodyInserters.fromDataBuffers(fileData))
                     .retrieve()
                     .toEntity(String.class)
                     .block();
+            System.out.println("\nUpload finished, waiting for BMC response.");
             String body = response.getBody();
             defaultOutputConsumer().accept(body);
             if (noWait) {
@@ -166,6 +186,20 @@ public class InstallCommands extends CommonCommands {
             System.err.println("❌ Firmware update failed: " + ex);
             resetToken();
         }
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        double v = bytes;
+        String[] units = { "KB", "MB", "GB" };
+        int i = -1;
+        while (v >= 1024 && i < units.length - 1) {
+            v /= 1024;
+            i++;
+        }
+        return String.format("%.1f %s", v, units[i]);
     }
 
     /**
