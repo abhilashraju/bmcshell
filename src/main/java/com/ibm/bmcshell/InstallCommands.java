@@ -122,16 +122,22 @@ public class InstallCommands extends CommonCommands {
         scmd(command);
     }
 
-    @ShellMethod(key = { "install.firmware_update", "fu" }, value = "Push a firmware image via Redfish UpdateService and monitor the task. eg: fu --file ~/obmc-phosphor-image.tar [--no-wait] [--timeout 1800]")
+    @ShellMethod(key = { "install.firmware_update", "fu" }, value = "Push a firmware image via Redfish UpdateService and monitor the task. eg: fu --file ~/obmc-phosphor-image.tar [--no-wait] [--timeout 1800] [--manual [--bootside a|b]]")
     @ShellMethodAvailability("availabilityCheck")
     void firmwareUpdate(
             @ShellOption(value = { "--file", "-f" }, valueProvider = FileCompleter.class) String filePath,
             @ShellOption(value = "--no-wait", defaultValue = "false", help = "Do not monitor the update task") boolean noWait,
-            @ShellOption(value = "--timeout", defaultValue = "1800", help = "Monitoring timeout in seconds") int timeoutSec)
-            throws URISyntaxException {
+            @ShellOption(value = "--timeout", defaultValue = "1800", help = "Monitoring timeout in seconds") int timeoutSec,
+            @ShellOption(value = "--manual", defaultValue = "false", help = "Copy via SFTP, untar on the BMC and flash with update-firmware (no Redfish)") boolean manual,
+            @ShellOption(value = "--bootside", defaultValue = ShellOption.NULL, help = "Boot side to flash in --manual mode: a or b (default: opposite of current)") String bootside)
+            throws URISyntaxException, IOException {
         File file = new File(filePath);
         if (!file.isFile()) {
             System.err.println("❌ Error: File not found: " + filePath);
+            return;
+        }
+        if (manual) {
+            manualUpdate(file, bootside);
             return;
         }
         var uri = new URI(base() + "/redfish/v1/UpdateService/update");
@@ -380,9 +386,54 @@ public class InstallCommands extends CommonCommands {
         scmd(String.format("fw_setenv bootside %s", bootside));
     }
 
+    /**
+     * Copies the tar to the BMC with progress, extracts it into
+     * /tmp/images/<id> the way the updater would (id = first 8 hex chars of the
+     * SHA-512 of the MANIFEST version string), then flashes it.
+     */
+    private void manualUpdate(File file, String bootside) throws IOException {
+        if (!file.getName().matches("[A-Za-z0-9._-]+")) {
+            System.err.println("❌ Error: --manual needs a file name made of letters, digits, '.', '_' or '-': "
+                    + file.getName());
+            return;
+        }
+        if (bootside != null && !bootside.trim().matches("(?i)[ab]")) {
+            System.err.println("❌ Error: Invalid boot side '" + bootside + "'. Must be 'a' or 'b'.");
+            return;
+        }
+        scp(file.getAbsolutePath());
+
+        String script = "W=/tmp/fw_extract; rm -rf $W; mkdir -p $W && tar -xf /tmp/" + file.getName()
+                + " -C $W && V=$(sed -n \"s/^version=//p\" $W/MANIFEST) && [ -n \"$V\" ] && "
+                + "ID=$(printf \"%s\" \"$V\" | sha512sum | cut -c1-8) && rm -rf /tmp/images/$ID && "
+                + "mkdir -p /tmp/images/$ID && mv $W/* /tmp/images/$ID/ && echo FW_ID=$ID; rm -rf $W";
+        String cmd = (userName.equals("root") ? "sh -c '" : "sudo sh -c '") + script + "'";
+        System.out.println("Extracting image on the BMC...");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        runCommandShort(out, Util.fullMachineName(machine), userName, passwd, cmd);
+        String id = null;
+        for (String line : out.toString().split("\n")) {
+            if (line.startsWith("FW_ID=")) {
+                id = line.substring("FW_ID=".length()).trim();
+            }
+        }
+        if (id == null || !id.matches("[0-9a-f]{8}")) {
+            System.err.println("❌ Extraction failed. Output:\n" + out);
+            return;
+        }
+        System.out.println("Extracted to /tmp/images/" + id);
+        scmd("rm -f /tmp/" + file.getName());
+        updateFirmware(bootside, id);
+    }
+
     @ShellMethod(key = "update-firmware", value = "Update firmware automatically. eg: install.update-firmware [bootside]. Optional bootside parameter: 'a' or 'b' to specify target boot side for flashing")
     @ShellMethodAvailability("availabilityCheck")
     void updateFirmware(@ShellOption(defaultValue = ShellOption.NULL) String bootside) throws IOException {
+        updateFirmware(bootside, null);
+    }
+
+    /** @param version image directory under /tmp/images; null = first one listed */
+    private void updateFirmware(String bootside, String version) throws IOException {
 
         String imagePath = "/tmp/images";
         String label;
@@ -444,8 +495,10 @@ public class InstallCommands extends CommonCommands {
             System.out.println("Target boot side for update: " + label);
         }
 
-        // Get the first available version using the reusable method
-        String version = getFirstAvailableVersion(imagePath);
+        // Use the given version, or the first available one
+        if (version == null) {
+            version = getFirstAvailableVersion(imagePath);
+        }
 
         System.out.println("Loading firmware update script from resources...");
 

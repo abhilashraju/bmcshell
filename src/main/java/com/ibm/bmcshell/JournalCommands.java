@@ -27,13 +27,16 @@ public class JournalCommands extends CommonCommands {
     @Autowired
     private JournalSubscription journalSub;
 
-    @Value("${server.port:8443}")
+    @Value("${server.port:18080}")
     private int serverPort;
 
     protected JournalCommands() throws IOException {
     }
 
-    /** Route journalserver lines into the same buffer/SSE broadcast as journal.start, and follow `machine` changes. */
+    /**
+     * Route journalserver lines into the same buffer/SSE broadcast as
+     * journal.start, and follow `machine` changes.
+     */
     @jakarta.annotation.PostConstruct
     void registerJournalSubscriptionSink() {
         journalSub.setSink(line -> appendJournalLine(line));
@@ -164,16 +167,23 @@ public class JournalCommands extends CommonCommands {
     }
 
     @ShellMethod(key = { "journal.subscribe",
-            "jsub" }, value = "Subscribe to the journalserver on the current machine (SSE). Follows machine changes. eg: journal.subscribe")
-    void journalSubscribe() {
+            "jsub" }, value = "Subscribe to the journalserver on the current machine (SSE). Follows machine changes. eg: journal.subscribe [-p 18080]")
+    void journalSubscribe(
+            @ShellOption(value = { "-p", "--port" }, defaultValue = ShellOption.NULL,
+                    help = "Override the journalserver port (default: journal.server.port property)") Integer portArg) {
         activateJournalCapture();
-        journalSub.start(machine, line -> appendJournalLine(line));
+        if (portArg != null) {
+            journalSub.start(machine, line -> appendJournalLine(line), portArg);
+        } else {
+            journalSub.start(machine, line -> appendJournalLine(line));
+        }
         System.out.println("Journal subscription started for " + machine + " (port " + journalSub.getPort()
                 + "). Lines are captured (journal.show) and streamed to /sse/journal."
                 + " It follows `machine` changes; use journal.unsubscribe to stop.");
     }
 
-    @ShellMethod(key = { "journal.unsubscribe", "junsub" }, value = "Stop the journalserver subscription. eg: journal.unsubscribe")
+    @ShellMethod(key = { "journal.unsubscribe",
+            "junsub" }, value = "Stop the journalserver subscription. eg: journal.unsubscribe")
     void journalUnsubscribe() {
         journalSub.stop();
         deactivateJournalCapture("Journal subscription stopped.");

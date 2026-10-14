@@ -19,7 +19,8 @@ import reactor.netty.http.client.HttpClient;
 
 /**
  * Holds one SSE subscription to the journalserver running on the current BMC
- * (GET https://&lt;machine&gt;:&lt;port&gt;/subscribe). Journal lines received on
+ * (GET https://&lt;machine&gt;:&lt;port&gt;/subscribe). Journal lines received
+ * on
  * that connection are handed to a sink supplied by the caller.
  *
  * The subscription follows the selected machine: once started, a machine
@@ -28,13 +29,14 @@ import reactor.netty.http.client.HttpClient;
 @Component
 public class JournalSubscription {
 
-    @Value("${journal.server.port:8080}")
+    @Value("${journal.server.port:18080}")
     private int port;
 
     private Disposable subscription;
     private Consumer<String> sink;
     private String machine;
     private boolean active;
+    private int activePort; // port used for the current/next connection
 
     /**
      * Register where received lines go. From now on every machine change
@@ -45,10 +47,22 @@ public class JournalSubscription {
         this.active = true;
     }
 
-    /** Subscribe to the journalserver on {@code machine}, replacing any existing subscription. */
+    /**
+     * Subscribe to the journalserver on {@code machine}, replacing any existing
+     * subscription. Uses the configured default port.
+     */
     public synchronized void start(String machine, Consumer<String> sink) {
+        start(machine, sink, port);
+    }
+
+    /**
+     * Subscribe to the journalserver on {@code machine} using an explicit
+     * {@code port}, replacing any existing subscription.
+     */
+    public synchronized void start(String machine, Consumer<String> sink, int port) {
         stop();
         this.active = true;
+        this.activePort = port;
         this.sink = sink;
         connect(machine);
     }
@@ -59,7 +73,10 @@ public class JournalSubscription {
         disconnect();
     }
 
-    /** Called when the selected machine changes. Drops the old connection and connects to the new machine. */
+    /**
+     * Called when the selected machine changes. Drops the old connection and
+     * connects to the new machine.
+     */
     public synchronized void onMachineChanged(String newMachine) {
         if (!active || sink == null) {
             return;
@@ -68,7 +85,10 @@ public class JournalSubscription {
         connect(newMachine);
     }
 
-    /** True when the user asked for a subscription, even if the connection has since dropped. */
+    /**
+     * True when the user asked for a subscription, even if the connection has since
+     * dropped.
+     */
     public synchronized boolean isActive() {
         return active;
     }
@@ -83,7 +103,7 @@ public class JournalSubscription {
     }
 
     public int getPort() {
-        return port;
+        return activePort != 0 ? activePort : port;
     }
 
     private void disconnect() {
@@ -95,7 +115,8 @@ public class JournalSubscription {
 
     private void connect(String newMachine) {
         this.machine = newMachine;
-        URI uri = URI.create(String.format("https://%s:%d/subscribe", Util.fullMachineName(newMachine), port));
+        int connectPort = activePort != 0 ? activePort : port;
+        URI uri = URI.create(String.format("https://%s:%d/subscribe", Util.fullMachineName(newMachine), connectPort));
         final Consumer<String> target = sink;
 
         WebClient sseClient;
