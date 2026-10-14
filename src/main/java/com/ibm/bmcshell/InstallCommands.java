@@ -300,30 +300,70 @@ public class InstallCommands extends CommonCommands {
         scmd(command);
     }
 
-    @ShellMethod(key = "install.scp", value = "eg: install.scp filepath/filename. Will copy the file content to the /tmp/ folder in the remote machine")
+    /** Prints a single-line upload progress with throughput and ETA. */
+    private static class UploadProgress implements com.jcraft.jsch.SftpProgressMonitor {
+        private long total;
+        private long done;
+        private long startNanos;
+        private int lastPercent = -1;
+
+        @Override
+        public void init(int op, String src, String dest, long max) {
+            total = max;
+            startNanos = System.nanoTime();
+        }
+
+        @Override
+        public boolean count(long count) {
+            done += count;
+            int percent = total <= 0 ? 100 : (int) (done * 100 / total);
+            if (percent != lastPercent) {
+                lastPercent = percent;
+                double secs = Math.max((System.nanoTime() - startNanos) / 1e9, 0.001);
+                double rate = done / secs;
+                long eta = rate > 0 ? (long) ((total - done) / rate) : 0;
+                System.out.print(String.format("\rUpload progress: %3d%% (%s / %s) %s/s ETA %ds   ", percent,
+                        formatBytes(done), formatBytes(total), formatBytes((long) rate), eta));
+                System.out.flush();
+            }
+            return true;
+        }
+
+        @Override
+        public void end() {
+            System.out.println();
+        }
+    }
+
+    @ShellMethod(key = "install.scp", value = "eg: install.scp filepath/filename. Will copy the file to /tmp/ (same file name) in the remote machine")
     @ShellMethodAvailability("availabilityCheck")
     void scp(@ShellOption(value = { "--path",
-            "-p" }, defaultValue = "/", valueProvider = FileCompleter.class) String path, String dest) {
-        System.out.println(passwd);
-        StringBuilder cmdBuilder = new StringBuilder();
-
-        cmdBuilder.append("scp ");
-        cmdBuilder.append("-o StrictHostKeyChecking=no ");
-        cmdBuilder.append("-o UserKnownHostsFile=/dev/null ");
-        cmdBuilder.append(String.format("-P %d ", SSHShellClient.port));
-        cmdBuilder.append(path);
-        cmdBuilder.append(" ");
-        cmdBuilder.append(userName);
-        cmdBuilder.append("@");
-        cmdBuilder.append(Util.fullMachineName(machine));
-        cmdBuilder.append(":/tmp");
-
-        system(cmdBuilder.toString());
-        var subpaths = dest.split("/");
-        scmd(String.format("mkdir -p %s", dest.substring(0, dest.lastIndexOf('/'))));
-
-        scmd(String.format("chmod 777 /tmp/%s; mv /tmp/%s %s", subpaths[subpaths.length - 1],
-                subpaths[subpaths.length - 1], dest));
+            "-p" }, defaultValue = "/", valueProvider = FileCompleter.class) String path) {
+        File localFile = new File(path);
+        String remoteTmp = "/tmp/" + localFile.getName();
+        if (!localFile.isFile()) {
+            System.err.println("❌ Error: File not found: " + path);
+            return;
+        }
+        System.out.println("Copying " + localFile.getName() + " (" + formatBytes(localFile.length()) + ") to "
+                + remoteTmp + " ...");
+        try {
+            var session = SSHShellClient.getSession(Util.fullMachineName(machine), userName, passwd,
+                    SSHShellClient.port);
+            if (session == null) {
+                System.err.println("❌ Failed to establish SSH session");
+                return;
+            }
+            var sftp = (com.jcraft.jsch.ChannelSftp) session.openChannel("sftp");
+            sftp.connect();
+            try {
+                sftp.put(localFile.getAbsolutePath(), remoteTmp, new UploadProgress());
+            } finally {
+                sftp.disconnect();
+            }
+        } catch (Exception ex) {
+            System.err.println("\n❌ Copy failed: " + ex);
+        }
     }
 
     @ShellMethod(key = "check-bootside", value = "Check the current boot side")
@@ -430,7 +470,7 @@ public class InstallCommands extends CommonCommands {
 
         // Copy script to remote machine
         String remoteScriptPath = "/tmp/update_firmware.sh";
-        scp(localScriptPath, remoteScriptPath);
+        scp(localScriptPath);
 
         System.out.println("Making script executable...");
         scmd("chmod +x " + remoteScriptPath);
