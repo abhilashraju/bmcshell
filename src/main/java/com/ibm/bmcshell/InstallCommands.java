@@ -195,6 +195,68 @@ public class InstallCommands extends CommonCommands {
         }
     }
 
+    @ShellMethod(key = "install.fromFile", value = "Push a firmware tar that is already on the BMC via Redfish, using curl on the BMC with this shell's X-Auth-Token. eg: install.fromFile --path /tmp/foo.tar [--no-wait] [--timeout 1800]")
+    @ShellMethodAvailability("availabilityCheck")
+    void installFromFile(
+            @ShellOption(value = { "--path", "-p" }, help = "Path of the image file on the BMC, e.g. /tmp/foo.tar") String bmcPath,
+            @ShellOption(value = "--no-wait", defaultValue = "false", help = "Do not monitor the update task") boolean noWait,
+            @ShellOption(value = "--timeout", defaultValue = "1800", help = "Monitoring timeout in seconds") int timeoutSec)
+            throws URISyntaxException {
+        // The path ends up in a remote shell command, so allow only safe characters
+        if (!bmcPath.matches("/[A-Za-z0-9._/-]+")) {
+            System.err.println("❌ Error: --path must be an absolute path using letters, digits, '.', '_', '-' and '/': "
+                    + bmcPath);
+            return;
+        }
+        if (token == null || token.isEmpty()) {
+            getToken();
+        }
+        ensureApplyTimeImmediate();
+
+        // curl runs on the BMC and talks to bmcweb over loopback; -T streams the file as the POST body
+        String cmd = String.format(
+                "test -f '%1$s' || { echo 'FILE_NOT_FOUND'; exit 1; }; "
+                        + "curl -sk --max-time 600 -X POST -H 'X-Auth-Token: %2$s' "
+                        + "-H 'Content-Type: application/octet-stream' -T '%1$s' "
+                        + "-w '\\nHTTP_STATUS=%%{http_code}\\n' https://127.0.0.1:%3$d/redfish/v1/UpdateService/update",
+                bmcPath, token, Util.targetport);
+        System.out.println("Running curl on the BMC to push " + bmcPath + " ...");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        runCommandShort(out, Util.fullMachineName(machine), userName, passwd, cmd);
+        String result = out.toString();
+
+        if (result.contains("FILE_NOT_FOUND")) {
+            System.err.println("❌ File not found on the BMC: " + bmcPath);
+            return;
+        }
+        int idx = result.lastIndexOf("HTTP_STATUS=");
+        if (idx < 0) {
+            System.err.println("❌ No response from curl on the BMC. Output:\n" + result);
+            return;
+        }
+        String body = result.substring(0, idx).trim();
+        String status = result.substring(idx + "HTTP_STATUS=".length()).trim();
+        defaultOutputConsumer().accept(body);
+        if (!status.startsWith("2")) {
+            System.err.println("❌ Firmware update failed: HTTP " + status);
+            return;
+        }
+        if (noWait) {
+            return;
+        }
+        String taskUri = null;
+        try {
+            taskUri = new ObjectMapper().readTree(body).path("@odata.id").asText(null);
+        } catch (Exception ignored) {
+            // body is not JSON; no task to monitor
+        }
+        if (taskUri == null || taskUri.isEmpty()) {
+            System.out.println("No task returned by the BMC; nothing to monitor.");
+            return;
+        }
+        monitorTask(taskUri, timeoutSec);
+    }
+
     /**
      * Same pre-step the web UI performs: HTTP push uses the stored ApplyTime, so
      * make sure it is "Immediate" before uploading. Failures are non-fatal.
@@ -242,15 +304,19 @@ public class InstallCommands extends CommonCommands {
 
     /**
      * Polls a Redfish Task until it reaches a terminal state or the timeout
-     * expires. Tolerates BMC reboots (connection errors / expired token) by
-     * re-authenticating and retrying.
+     * expires. Connection errors (BMC rebooting) are retried silently without
+     * re-authenticating; a new token is requested only on 401. A 404 means the
+     * task is gone, which happens when the BMC reboots to apply the update.
      */
     private void monitorTask(String taskUri, int timeoutSec) throws URISyntaxException {
         final java.util.Set<String> terminal = java.util.Set.of("Completed", "Exception", "Killed", "Cancelled");
+        final int maxReauth = 3;
         var mapper = new ObjectMapper();
         var uri = new URI(base() + taskUri);
         long deadline = System.currentTimeMillis() + timeoutSec * 1000L;
         String lastLine = "";
+        boolean connectionLost = false;
+        int reauthCount = 0;
         System.out.println("Monitoring " + taskUri + " (timeout " + timeoutSec + "s)...");
         while (System.currentTimeMillis() < deadline) {
             try {
@@ -267,6 +333,10 @@ public class InstallCommands extends CommonCommands {
                         .retrieve()
                         .bodyToMono(String.class)
                         .block();
+                if (connectionLost) {
+                    System.out.println("BMC is reachable again.");
+                    connectionLost = false;
+                }
                 var task = mapper.readTree(json);
                 String state = task.path("TaskState").asText("Unknown");
                 String status = task.path("TaskStatus").asText("");
@@ -285,13 +355,32 @@ public class InstallCommands extends CommonCommands {
                     }
                     return;
                 }
-            } catch (Exception ex) {
-                // BMC may be rebooting or the token may have expired
-                System.out.println("Waiting for BMC (" + ex.getClass().getSimpleName() + ")...");
-                try {
+            } catch (WebClientResponseException ex) {
+                int status = ex.getStatusCode().value();
+                if (status == 401) {
+                    if (++reauthCount > maxReauth) {
+                        System.err.println("❌ Authentication keeps failing; giving up.");
+                        return;
+                    }
+                    System.out.println("Session rejected (401), re-authenticating...");
                     resetToken();
-                } catch (Exception ignored) {
-                    // retry on next iteration
+                } else if (status == 404) {
+                    System.out.println("Task " + taskUri + " no longer exists"
+                            + (connectionLost || lastLine.contains("100%")
+                                    ? " (the BMC most likely rebooted to apply the update)."
+                                    : "."));
+                    System.out.println("Verify the new version with: get UpdateService/FirmwareInventory");
+                    return;
+                } else {
+                    System.err.println("❌ Task poll failed: HTTP " + status + " " + ex.getStatusText());
+                    return;
+                }
+            } catch (Exception ex) {
+                // Connection errors: the BMC is probably rebooting. Just retry; no new token needed.
+                if (!connectionLost) {
+                    System.out.println("Lost connection to BMC (" + ex.getClass().getSimpleName()
+                            + "), waiting for it to come back...");
+                    connectionLost = true;
                 }
             }
         }

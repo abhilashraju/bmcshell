@@ -261,7 +261,7 @@ public class CommonCommands implements ApplicationContextAware {
     public static String getAuthToken(WebClient client)
             throws NoSuchAlgorithmException, InvalidKeyException, IOException, URISyntaxException {
         String totpString = "";
-        if (!Util.secretKey.isEmpty() && !Util.secretKey.equals(" ")) {
+        if (Util.secretKey != null && !Util.secretKey.trim().isEmpty()) {
             totpString = String.format(",\"Token\":\"%s\" ", new TotpService().loadSecretString(Util.secretKey).now(0));
         }
 
@@ -286,7 +286,29 @@ public class CommonCommands implements ApplicationContextAware {
 
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
         } catch (WebClientResponseException ex) {
-            System.err.println(ex.getResponseBodyAsString());
+            String errBody = ex.getResponseBodyAsString();
+            if (!totpString.isEmpty() && errBody.contains("PropertyUnknown") && errBody.contains("Token")) {
+                // BMC does not accept the TOTP Token property; retry without it
+                System.out.println("BMC does not accept Token property, retrying login without it");
+                try {
+                    var retry = client.post()
+                            .uri(new URI(Util.base(machine) + "/redfish/v1/SessionService/Sessions"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(BodyInserters.fromValue(
+                                    String.format("{\"UserName\":\"%s\", \"Password\":\"%s\"}", userName, passwd)))
+                            .retrieve()
+                            .toEntity(String.class)
+                            .block();
+                    System.out.println(retry.getBody());
+                    List<String> retryHeader = retry.getHeaders().get("X-Auth-Token");
+                    return retryHeader.stream().limit(1).reduce((a, b) -> a).orElse("");
+                } catch (WebClientResponseException retryEx) {
+                    System.err.println(retryEx.getResponseBodyAsString());
+                    List<String> retryHeader = retryEx.getHeaders().get("X-Auth-Token");
+                    return retryHeader == null ? "" : retryHeader.stream().limit(1).reduce((a, b) -> a).orElse("");
+                }
+            }
+            System.err.println(errBody);
             HttpHeaders responseHeaders = ex.getHeaders();
             List<String> headerValue = responseHeaders.get("X-Auth-Token");
             return headerValue.stream().limit(1).reduce((a, b) -> a).orElse("");
