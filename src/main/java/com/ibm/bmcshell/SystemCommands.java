@@ -1,5 +1,6 @@
 package com.ibm.bmcshell;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -68,8 +69,63 @@ public class SystemCommands extends CommonCommands {
         system(String.format("wget %s", url));
     }
 
+    @ShellMethod(key = { "sys.vi", "sc.vi" }, value = "eg: sys.vi filepath - Edit local system file with vi")
+    public void vi(
+            @ShellOption(value = { "--file", "-f" }, defaultValue = "", valueProvider = FileCompleter.class) String file) {
+        try {
+            if (file == null || file.trim().isEmpty()) {
+                System.out.println(ColorPrinter.addColor("Opening vi editor locally...", "cyan"));
+                System.out.println(ColorPrinter.addColor("Save with :wq, discard with :q!", "yellow"));
+                System.out.println(ColorPrinter.addColor("----------------------------------------", "cyan"));
+
+                ProcessBuilder pb = new ProcessBuilder("vi");
+                pb.inheritIO();
+                Process process = pb.start();
+                int exitCode = process.waitFor();
+
+                if (exitCode != 0) {
+                    System.out.println(ColorPrinter.red("Vi editor exited with error code: " + exitCode));
+                }
+                return;
+            }
+
+            File targetFile = new File(file);
+            if (!targetFile.exists()) {
+                System.out.println(ColorPrinter.addColor("File doesn't exist. Creating new file: " + file, "yellow"));
+            } else {
+                System.out.println(ColorPrinter.addColor("Editing local file: " + file, "cyan"));
+            }
+
+            System.out.println(ColorPrinter.addColor("Opening vi editor locally...", "cyan"));
+            System.out.println(ColorPrinter.addColor("Save with :wq, discard with :q!", "yellow"));
+            System.out.println(ColorPrinter.addColor("----------------------------------------", "cyan"));
+
+            ProcessBuilder pb = new ProcessBuilder("vi", targetFile.getPath());
+            pb.inheritIO();
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+
+            if (exitCode != 0) {
+                System.out.println(ColorPrinter.red("Vi editor exited with error code: " + exitCode));
+                return;
+            }
+
+            System.out.println(ColorPrinter.addColor("----------------------------------------", "cyan"));
+            System.out.println(ColorPrinter.addColor("File editing completed: " + file, "green"));
+
+        } catch (Exception e) {
+            System.out.println(ColorPrinter.red("Error editing file: " + e.getMessage()));
+            e.printStackTrace();
+        }
+    }
+
     @ShellMethod(key = { "sys.cmd", "sc" }, value = "eg: sys.cmd command [args...]")
     void cmd(@ShellOption(arity = Integer.MAX_VALUE) String[] args) {
+        if (args != null && args.length > 0 && ("vi".equals(args[0]) || "vim".equals(args[0]))) {
+            String target = args.length > 1 ? args[1] : "";
+            vi(target);
+            return;
+        }
         system(String.join(" ", args));
     }
 

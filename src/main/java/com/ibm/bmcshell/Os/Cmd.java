@@ -52,12 +52,20 @@ public class Cmd {
 
     public static void execute(String command, String passwd) {
         try {
+            String trimmed = command.trim();
+            if (!command.contains("|") && (trimmed.equals("vi") || trimmed.startsWith("vi ") || trimmed.equals("vim") || trimmed.startsWith("vim "))) {
+                ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+                if (passwd != null) {
+                    pb.environment().put("SSHPASS", passwd);
+                }
+                pb.inheritIO();
+                Process process = pb.start();
+                process.waitFor();
+                return;
+            }
             var chains = command.split("\\|");
-            // if(chains.length>1){
             handleProcessChain(chains, passwd);
             return;
-            // }
-            // handleSingelProcess(command, passwd);
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
         }
