@@ -315,4 +315,62 @@ public class RedfishValidatorTests {
 
         Files.deleteIfExists(tempSchemaPath);
     }
+
+    @Test
+    public void testHypervisorPayloadWithRelativeUriFormat() throws Exception {
+        RedfishSchemaManager manager = new RedfishSchemaManager();
+        String schemaJson = """
+            {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "#ComputerSystem.v1_6_0.ComputerSystem",
+                "type": "object",
+                "properties": {
+                    "@odata.id": { "type": "string", "format": "uri" },
+                    "@odata.type": { "type": "string" },
+                    "Id": { "type": "string" },
+                    "Name": { "type": "string" },
+                    "Actions": {
+                        "type": "object",
+                        "properties": {
+                            "#ComputerSystem.Reset": {
+                                "type": "object",
+                                "properties": {
+                                    "target": { "type": "string", "format": "uri" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            """;
+
+        Path tempSchemaPath = Paths.get(manager.getSchemaDirectory(), "ComputerSystem.v1_6_0.json");
+        Files.createDirectories(tempSchemaPath.getParent());
+        Files.writeString(tempSchemaPath, schemaJson);
+
+        var schemaOpt = manager.getSchemaForOdataType("#ComputerSystem.v1_6_0.ComputerSystem", null);
+        assertTrue(schemaOpt.isPresent());
+
+        String hypervisorPayload = """
+            {
+              "@odata.id": "/redfish/v1/Systems/hypervisor",
+              "@odata.type": "#ComputerSystem.v1_6_0.ComputerSystem",
+              "Actions": {
+                "#ComputerSystem.Reset": {
+                  "@Redfish.ActionInfo": "/redfish/v1/Systems/hypervisor/ResetActionInfo",
+                  "target": "/redfish/v1/Systems/hypervisor/Actions/ComputerSystem.Reset"
+                }
+              },
+              "Description": "Hypervisor",
+              "Id": "hypervisor",
+              "Name": "Hypervisor",
+              "PowerState": "Off"
+            }
+            """;
+
+        var issues = RedfishJsonSchemaValidator.validatePayload(mapper.readTree(hypervisorPayload), schemaOpt.get());
+        assertTrue(issues.isEmpty(), "Hypervisor payload relative URIs must pass format validation: " + issues);
+
+        Files.deleteIfExists(tempSchemaPath);
+    }
 }

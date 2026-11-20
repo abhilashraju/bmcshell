@@ -60,8 +60,14 @@ public class RedfishSchemaManager {
         this.validatorsConfig.setPreloadJsonSchema(false); // CRITICAL: prevents infinite recursive preload loops on cyclical Redfish $refs
         this.validatorsConfig.setHandleNullableField(true);
 
-        // 2. Register custom Redfish meta-schema keywords to prevent UnknownKeyword warnings
+        // 2. Register custom Redfish meta-schema keywords and URI format validators
         JsonMetaSchema v7 = JsonMetaSchema.getV7();
+
+        Format redfishUriFormat = createUriFormat("uri", "must be a valid URI or URI reference");
+        Format redfishUriRefFormat = createUriFormat("uri-reference", "must be a valid URI reference");
+        Format redfishIriFormat = createUriFormat("iri", "must be a valid IRI");
+        Format redfishIriRefFormat = createUriFormat("iri-reference", "must be a valid IRI reference");
+
         JsonMetaSchema customMeta = JsonMetaSchema.builder(v7.getIri(), v7)
                 .addKeyword(new NonValidationKeyword("urisDeprecated"))
                 .addKeyword(new NonValidationKeyword("readonly"))
@@ -76,6 +82,10 @@ public class RedfishSchemaManager {
                 .addKeyword(new NonValidationKeyword("parameterInfo"))
                 .addKeyword(new NonValidationKeyword("deprecated"))
                 .addKeyword(new NonValidationKeyword("degraded"))
+                .addFormat(redfishUriFormat)
+                .addFormat(redfishUriRefFormat)
+                .addFormat(redfishIriFormat)
+                .addFormat(redfishIriRefFormat)
                 .build();
 
         // 3. Custom SchemaLoader to resolve remote $ref (http://redfish.dmtf.org/schemas/v1/...) from local cache
@@ -148,6 +158,31 @@ public class RedfishSchemaManager {
         this.schemaFactory = factoryBuilder
                 .schemaLoaders(loaders -> loaders.add(localDiskSchemaLoader))
                 .build();
+    }
+
+    private static Format createUriFormat(String formatName, String errorDescription) {
+        return new Format() {
+            @Override
+            public String getName() {
+                return formatName;
+            }
+
+            @Override
+            public boolean matches(ExecutionContext executionContext, String value) {
+                if (value == null) return false;
+                try {
+                    URI.create(value);
+                    return true;
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+
+            @Override
+            public String getErrorMessageDescription() {
+                return errorDescription;
+            }
+        };
     }
 
     private static final Pattern REDFISH_SCHEMA_HEADER_PATTERN = Pattern.compile("\"\\$schema\"\\s*:\\s*\"https?://redfish\\.dmtf\\.org/schemas/v1/redfish-schema[^\"]*\\.json\"");
