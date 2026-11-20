@@ -92,7 +92,11 @@ public class RedfishSchemaManager {
                 if (fileName.endsWith(".json")) {
                     Path localPath = Paths.get(schemaDirectory, fileName);
                     if (Files.exists(localPath)) {
-                        return () -> new FileInputStream(localPath.toFile());
+                        try {
+                            String rawContent = Files.readString(localPath);
+                            byte[] bytes = normalizeSchemaContent(rawContent).getBytes(StandardCharsets.UTF_8);
+                            return () -> new ByteArrayInputStream(bytes);
+                        } catch (Exception ignored) {}
                     }
 
                     // Try fetching from DMTF if not present locally
@@ -107,7 +111,7 @@ public class RedfishSchemaManager {
                         if (content != null && content.contains("$schema")) {
                             Files.createDirectories(localPath.getParent());
                             Files.writeString(localPath, content);
-                            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+                            byte[] bytes = normalizeSchemaContent(content).getBytes(StandardCharsets.UTF_8);
                             return () -> new ByteArrayInputStream(bytes);
                         }
                     } catch (Exception ignored) {}
@@ -117,10 +121,41 @@ public class RedfishSchemaManager {
             }
         };
 
-        this.schemaFactory = JsonSchemaFactory.builder(JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7))
-                .addMetaSchema(customMeta)
+        var factoryBuilder = JsonSchemaFactory.builder(JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7))
+                .addMetaSchema(customMeta);
+
+        // Register all DMTF Redfish meta-schema IRIs to avoid Failed to load meta-schema warnings
+        List<String> redfishMetaIris = List.of(
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema.v1_4_0.json",
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema.v1_3_0.json",
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema.v1_2_0.json",
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema.v1_1_0.json",
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema.v1_0_0.json",
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema.json",
+                "http://redfish.dmtf.org/schemas/v1/redfish-schema-v1.json",
+                "https://redfish.dmtf.org/schemas/v1/redfish-schema.v1_4_0.json",
+                "https://redfish.dmtf.org/schemas/v1/redfish-schema.v1_3_0.json",
+                "https://redfish.dmtf.org/schemas/v1/redfish-schema.v1_2_0.json",
+                "https://redfish.dmtf.org/schemas/v1/redfish-schema.v1_1_0.json",
+                "https://redfish.dmtf.org/schemas/v1/redfish-schema.v1_0_0.json",
+                "https://redfish.dmtf.org/schemas/v1/redfish-schema.json"
+        );
+
+        for (String iri : redfishMetaIris) {
+            factoryBuilder.addMetaSchema(JsonMetaSchema.builder(iri, customMeta).build());
+        }
+
+        this.schemaFactory = factoryBuilder
                 .schemaLoaders(loaders -> loaders.add(localDiskSchemaLoader))
                 .build();
+    }
+
+    private static final Pattern REDFISH_SCHEMA_HEADER_PATTERN = Pattern.compile("\"\\$schema\"\\s*:\\s*\"https?://redfish\\.dmtf\\.org/schemas/v1/redfish-schema[^\"]*\\.json\"");
+
+    private static String normalizeSchemaContent(String content) {
+        if (content == null) return null;
+        String replacement = "\"$schema\": \"" + JsonMetaSchema.getV7().getIri() + "\"";
+        return REDFISH_SCHEMA_HEADER_PATTERN.matcher(content).replaceAll(Matcher.quoteReplacement(replacement));
     }
 
     private static InputStream emptyObjectStream() {
@@ -213,7 +248,7 @@ public class RedfishSchemaManager {
         // 1. Try reading from local schema directory
         if (Files.exists(localPath)) {
             try {
-                String content = Files.readString(localPath);
+                String content = normalizeSchemaContent(Files.readString(localPath));
                 return schemaFactory.getSchema(content, validatorsConfig);
             } catch (Exception e) {
                 System.err.println("[RedfishSchemaManager] Error compiling local schema " + schemaFileName + ": " + e.getMessage());
@@ -233,7 +268,7 @@ public class RedfishSchemaManager {
                 if (content != null && !content.isEmpty() && content.contains("$schema")) {
                     Files.createDirectories(localPath.getParent());
                     Files.writeString(localPath, content);
-                    return schemaFactory.getSchema(content, validatorsConfig);
+                    return schemaFactory.getSchema(normalizeSchemaContent(content), validatorsConfig);
                 }
             } catch (Exception ignored) {
                 // Not found on DMTF or offline

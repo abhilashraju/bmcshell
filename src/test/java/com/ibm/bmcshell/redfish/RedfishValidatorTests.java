@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -277,5 +278,41 @@ public class RedfishValidatorTests {
         var systemCandidates = manager.getCandidateSchemaFileNames("#ComputerSystem.v1_15_0.ComputerSystem");
         assertTrue(systemCandidates.contains("ComputerSystem.v1_15_0.json"));
         assertTrue(systemCandidates.contains("ComputerSystem.json"));
+    }
+
+    @Test
+    public void testRedfishMetaSchemaCompilation() throws Exception {
+        RedfishSchemaManager manager = new RedfishSchemaManager();
+        String schemaWithRedfishMeta = """
+            {
+                "$schema": "http://redfish.dmtf.org/schemas/v1/redfish-schema.v1_4_0.json",
+                "title": "#ComputerSystem.v1_6_0.ComputerSystem",
+                "type": "object",
+                "required": ["Id", "Name"],
+                "properties": {
+                    "Id": { "type": "string" },
+                    "Name": { "type": "string" }
+                }
+            }
+            """;
+
+        // Save to temp schema directory
+        Path tempSchemaPath = Paths.get(manager.getSchemaDirectory(), "ComputerSystem.v1_6_0.json");
+        Files.createDirectories(tempSchemaPath.getParent());
+        Files.writeString(tempSchemaPath, schemaWithRedfishMeta);
+
+        var schemaOpt = manager.getSchemaForOdataType("#ComputerSystem.v1_6_0.ComputerSystem", null);
+        assertTrue(schemaOpt.isPresent(), "Schema with redfish-schema.v1_4_0.json meta-schema should load successfully");
+
+        String validPayload = """
+            {
+                "Id": "hypervisor",
+                "Name": "Hypervisor System"
+            }
+            """;
+        var issues = RedfishJsonSchemaValidator.validatePayload(mapper.readTree(validPayload), schemaOpt.get());
+        assertTrue(issues.isEmpty(), "Valid payload should have no validation issues: " + issues);
+
+        Files.deleteIfExists(tempSchemaPath);
     }
 }
