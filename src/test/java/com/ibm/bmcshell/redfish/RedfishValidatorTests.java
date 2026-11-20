@@ -236,4 +236,46 @@ public class RedfishValidatorTests {
         assertTrue(htmlContent.contains("/redfish/v1/Systems/system"));
         Files.deleteIfExists(tempHtml);
     }
+
+    @Test
+    public void testChildUriExtractionForParallelCrawling() throws Exception {
+        String json = """
+            {
+                "@odata.id": "/redfish/v1/Systems",
+                "Members": [
+                    { "@odata.id": "/redfish/v1/Systems/system1" },
+                    { "@odata.id": "/redfish/v1/Systems/system2" }
+                ],
+                "Links": {
+                    "Chassis": [
+                        { "@odata.id": "/redfish/v1/Chassis/chassis1" }
+                    ]
+                }
+            }
+            """;
+        RedfishValidatorService service = new RedfishValidatorService();
+        java.util.Set<String> childUris = service.extractChildUris(mapper.readTree(json));
+        assertEquals(4, childUris.size());
+        assertTrue(childUris.contains("/redfish/v1/Systems"));
+        assertTrue(childUris.contains("/redfish/v1/Systems/system1"));
+        assertTrue(childUris.contains("/redfish/v1/Systems/system2"));
+        assertTrue(childUris.contains("/redfish/v1/Chassis/chassis1"));
+    }
+
+    @Test
+    public void testRedfishSchemaManagerInitializationAndLookup() throws Exception {
+        RedfishSchemaManager manager = new RedfishSchemaManager();
+        assertNotNull(manager.getSchemaDirectory());
+        assertNotNull(manager.getValidatorsConfig());
+        assertFalse(manager.getValidatorsConfig().isPreloadJsonSchema());
+
+        // Test candidate file name extraction
+        var candidates = manager.getCandidateSchemaFileNames("#Manager.v1_11_0.Manager");
+        assertTrue(candidates.contains("Manager.v1_11_0.json"));
+        assertTrue(candidates.contains("Manager.json"));
+
+        var systemCandidates = manager.getCandidateSchemaFileNames("#ComputerSystem.v1_15_0.ComputerSystem");
+        assertTrue(systemCandidates.contains("ComputerSystem.v1_15_0.json"));
+        assertTrue(systemCandidates.contains("ComputerSystem.json"));
+    }
 }

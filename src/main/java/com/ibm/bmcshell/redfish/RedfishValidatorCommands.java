@@ -39,25 +39,37 @@ public class RedfishValidatorCommands extends CommonCommands {
     public RedfishValidatorCommands() throws IOException {
     }
 
-    @ShellMethod(key = "rf.validate", value = "Validate a single Redfish URI against DMTF specifications and JSON schemas. eg: rf.validate --uri /redfish/v1/Systems/system")
+    @ShellMethod(key = "rf.validate", value = "Validate a Redfish URI (or tree) against DMTF specifications. eg: rf.validate --uri /redfish/v1/Systems/system --tree --concurrency 8")
     @ShellMethodAvailability("availabilityCheck")
     public String validate(
             @ShellOption(value = { "--uri", "-u" }, defaultValue = "/redfish/v1") String uri,
+            @ShellOption(value = { "--tree", "-t" }, defaultValue = "false") boolean tree,
+            @ShellOption(value = { "--concurrency", "-c" }, defaultValue = "8") int concurrency,
             @ShellOption(value = { "--html-report", "-r" }, defaultValue = "") String htmlReportPath) throws Exception {
 
         String baseUrl = base();
         String authToken = getToken();
         WebClient webClient = Util.createWebClient();
 
-        System.out.println("Validating Redfish endpoint: " + uri + " on " + machine + " ...");
+        ValidationReport report;
 
-        ResourceValidationResult result = validatorService.validateEndpoint(webClient, baseUrl, uri, authToken);
+        if (tree) {
+            System.out.println(String.format("Starting parallel Redfish tree validation starting at %s on %s (concurrency: %d)...", uri, machine, concurrency));
+            report = validatorService.validateTreeParallel(webClient, baseUrl, uri, authToken, concurrency, Collections.emptySet(),
+                    res -> {
+                        String status = res.isPassed() ? "✓" : (res.isFailed() ? "✗" : "⚠");
+                        System.out.println(String.format("[%s] %-50s (%d ms) [%d fail, %d warn]",
+                                status, res.getUri(), res.getExecutionTimeMs(), res.getFailCount(), res.getWarnCount()));
+                    });
+        } else {
+            System.out.println("Validating Redfish endpoint: " + uri + " on " + machine + " ...");
+            ResourceValidationResult result = validatorService.validateEndpoint(webClient, baseUrl, uri, authToken);
+            report = new ValidationReport(machine);
+            report.addResult(result);
+            report.setTotalDurationMs(result.getExecutionTimeMs());
+        }
 
-        ValidationReport report = new ValidationReport(machine);
-        report.addResult(result);
-        report.setTotalDurationMs(result.getExecutionTimeMs());
         this.lastReport = report;
-
         StringBuilder output = new StringBuilder(report.toConsoleSummary());
 
         if (!htmlReportPath.isEmpty()) {
@@ -68,11 +80,11 @@ public class RedfishValidatorCommands extends CommonCommands {
         return output.toString();
     }
 
-    @ShellMethod(key = "rf.validate_all", value = "Validate all discovered/cached Redfish URIs. eg: rf.validate_all --concurrency 4 --html-report ./report.html")
+    @ShellMethod(key = "rf.validate_all", value = "Validate all discovered/cached Redfish URIs in parallel. eg: rf.validate_all --concurrency 8 --html-report ./report.html")
     @ShellMethodAvailability("availabilityCheck")
     public String validateAll(
             @ShellOption(value = { "--exclude", "-e" }, defaultValue = "") String excludePattern,
-            @ShellOption(value = { "--concurrency", "-c" }, defaultValue = "4") int concurrency,
+            @ShellOption(value = { "--concurrency", "-c" }, defaultValue = "8") int concurrency,
             @ShellOption(value = { "--html-report", "-r" }, defaultValue = "./redfish_validation_report.html") String htmlReportPath) throws Exception {
 
         // Check if URI cache has endpoints, otherwise index first

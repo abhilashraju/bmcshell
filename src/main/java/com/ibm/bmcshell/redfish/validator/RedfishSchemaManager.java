@@ -2,9 +2,9 @@ package com.ibm.bmcshell.redfish.validator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.SpecVersion;
+import com.networknt.schema.*;
+import com.networknt.schema.resource.InputStreamSource;
+import com.networknt.schema.resource.SchemaLoader;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -12,8 +12,13 @@ import org.jsoup.select.Elements;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -24,7 +29,7 @@ import java.util.regex.Pattern;
 
 /**
  * Manages loading, caching, downloading, and compiling DMTF and OEM Redfish JSON schemas
- * and Message Registries.
+ * and Message Registries with cycle-safe and non-blocking reference resolution.
  */
 @Component
 public class RedfishSchemaManager {
@@ -34,7 +39,8 @@ public class RedfishSchemaManager {
     private static final String DMTF_SCHEMA_INDEX_URL = "https://redfish.dmtf.org/redfish/schema_index";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+    private final JsonSchemaFactory schemaFactory;
+    private final SchemaValidatorsConfig validatorsConfig;
 
     // Cache of compiled JsonSchema instances keyed by schema filename (e.g. "ComputerSystem.v1_15_0.json")
     private final Map<String, JsonSchema> compiledSchemaCache = new ConcurrentHashMap<>();
@@ -48,6 +54,81 @@ public class RedfishSchemaManager {
 
     public RedfishSchemaManager() {
         initSchemaDir();
+
+        // 1. Configure schema validator options
+        this.validatorsConfig = new SchemaValidatorsConfig();
+        this.validatorsConfig.setPreloadJsonSchema(false); // CRITICAL: prevents infinite recursive preload loops on cyclical Redfish $refs
+        this.validatorsConfig.setHandleNullableField(true);
+
+        // 2. Register custom Redfish meta-schema keywords to prevent UnknownKeyword warnings
+        JsonMetaSchema v7 = JsonMetaSchema.getV7();
+        JsonMetaSchema customMeta = JsonMetaSchema.builder(v7.getIri(), v7)
+                .addKeyword(new NonValidationKeyword("urisDeprecated"))
+                .addKeyword(new NonValidationKeyword("readonly"))
+                .addKeyword(new NonValidationKeyword("longDescription"))
+                .addKeyword(new NonValidationKeyword("versionAdded"))
+                .addKeyword(new NonValidationKeyword("owningEntity"))
+                .addKeyword(new NonValidationKeyword("degradedPermitted"))
+                .addKeyword(new NonValidationKeyword("excerptCopy"))
+                .addKeyword(new NonValidationKeyword("excerpt"))
+                .addKeyword(new NonValidationKeyword("subProperties"))
+                .addKeyword(new NonValidationKeyword("units"))
+                .addKeyword(new NonValidationKeyword("parameterInfo"))
+                .addKeyword(new NonValidationKeyword("deprecated"))
+                .addKeyword(new NonValidationKeyword("degraded"))
+                .build();
+
+        // 3. Custom SchemaLoader to resolve remote $ref (http://redfish.dmtf.org/schemas/v1/...) from local cache
+        SchemaLoader localDiskSchemaLoader = new SchemaLoader() {
+            @Override
+            public InputStreamSource getSchema(AbsoluteIri absoluteIri) {
+                if (absoluteIri == null) return RedfishSchemaManager::emptyObjectStream;
+                String uriStr = absoluteIri.toString();
+                String fileName = uriStr.substring(uriStr.lastIndexOf('/') + 1);
+                if (fileName.contains("#")) {
+                    fileName = fileName.substring(0, fileName.indexOf('#'));
+                }
+
+                if (fileName.endsWith(".json")) {
+                    Path localPath = Paths.get(schemaDirectory, fileName);
+                    if (Files.exists(localPath)) {
+                        return () -> new FileInputStream(localPath.toFile());
+                    }
+
+                    // Try fetching from DMTF if not present locally
+                    try {
+                        WebClient wc = WebClient.create();
+                        String content = wc.get()
+                                .uri(DMTF_SCHEMA_BASE_URL + fileName)
+                                .retrieve()
+                                .bodyToMono(String.class)
+                                .block();
+
+                        if (content != null && content.contains("$schema")) {
+                            Files.createDirectories(localPath.getParent());
+                            Files.writeString(localPath, content);
+                            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+                            return () -> new ByteArrayInputStream(bytes);
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                return RedfishSchemaManager::emptyObjectStream;
+            }
+        };
+
+        this.schemaFactory = JsonSchemaFactory.builder(JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7))
+                .addMetaSchema(customMeta)
+                .schemaLoaders(loaders -> loaders.add(localDiskSchemaLoader))
+                .build();
+    }
+
+    private static InputStream emptyObjectStream() {
+        return new ByteArrayInputStream("{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\"}".getBytes(StandardCharsets.UTF_8));
+    }
+
+    public SchemaValidatorsConfig getValidatorsConfig() {
+        return validatorsConfig;
     }
 
     private void initSchemaDir() {
@@ -133,7 +214,7 @@ public class RedfishSchemaManager {
         if (Files.exists(localPath)) {
             try {
                 String content = Files.readString(localPath);
-                return schemaFactory.getSchema(content);
+                return schemaFactory.getSchema(content, validatorsConfig);
             } catch (Exception e) {
                 System.err.println("[RedfishSchemaManager] Error compiling local schema " + schemaFileName + ": " + e.getMessage());
             }
@@ -152,7 +233,7 @@ public class RedfishSchemaManager {
                 if (content != null && !content.isEmpty() && content.contains("$schema")) {
                     Files.createDirectories(localPath.getParent());
                     Files.writeString(localPath, content);
-                    return schemaFactory.getSchema(content);
+                    return schemaFactory.getSchema(content, validatorsConfig);
                 }
             } catch (Exception ignored) {
                 // Not found on DMTF or offline
