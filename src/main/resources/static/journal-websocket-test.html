@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journal WebSocket Stream Test</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            margin: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4ec9b0;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #252526;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background-color: #1177bb;
+        }
+
+        button:disabled {
+            background-color: #3c3c3c;
+            cursor: not-allowed;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .status.connected {
+            background-color: #4ec9b0;
+            color: #1e1e1e;
+        }
+
+        .status.disconnected {
+            background-color: #f48771;
+            color: #1e1e1e;
+        }
+
+        #log-container {
+            background-color: #1e1e1e;
+            border: 1px solid #3c3c3c;
+            border-radius: 5px;
+            padding: 15px;
+            height: 600px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #2d2d2d;
+        }
+
+        .log-entry:hover {
+            background-color: #2d2d2d;
+        }
+
+        .timestamp {
+            color: #858585;
+            margin-right: 10px;
+        }
+
+        .info {
+            padding: 10px;
+            background-color: #252526;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .info code {
+            background-color: #1e1e1e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #ce9178;
+        }
+
+        input {
+            padding: 8px;
+            background-color: #3c3c3c;
+            border: 1px solid #555;
+            color: #d4d4d4;
+            border-radius: 3px;
+            width: 300px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📡 Journal WebSocket Stream Test</h1>
+
+        <div class="info">
+            <strong>Instructions:</strong>
+            <ol>
+                <li>Start the bmcshell application</li>
+                <li>Run <code>journal.start <filter></code> to start journal monitoring</li>
+                <li>Run <code>journal.ws.enable</code> to enable WebSocket streaming</li>
+                <li>Click "Connect" below to start receiving live journal updates</li>
+            </ol>
+        </div>
+
+        <div class="controls">
+            <label for="ws-url">WebSocket URL:</label>
+            <input type="text" id="ws-url" value="ws://localhost:8080/ws/journal">
+            <button id="connect-btn" onclick="connect()">Connect</button>
+            <button id="disconnect-btn" onclick="disconnect()" disabled>Disconnect</button>
+            <button onclick="clearLog()">Clear Log</button>
+            <span id="status" class="status disconnected">Disconnected</span>
+            <span id="message-count" style="margin-left: 20px;">Messages: 0</span>
+        </div>
+
+        <div id="log-container"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        const logContainer = document.getElementById('log-container');
+        const statusElement = document.getElementById('status');
+        const messageCountElement = document.getElementById('message-count');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const wsUrlInput = document.getElementById('ws-url');
+
+        function connect() {
+            const wsUrl = wsUrlInput.value;
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = function () {
+                    console.log('WebSocket connected');
+                    statusElement.textContent = 'Connected';
+                    statusElement.className = 'status connected';
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    wsUrlInput.disabled = true;
+                    addSystemMessage('Connected to ' + wsUrl);
+                };
+
+                ws.onmessage = function (event) {
+                    messageCount++;
+                    messageCountElement.textContent = 'Messages: ' + messageCount;
+                    addLogEntry(event.data);
+                };
+
+                ws.onerror = function (error) {
+                    console.error('WebSocket error:', error);
+                    addSystemMessage('Error: ' + error.message, 'error');
+                };
+
+                ws.onclose = function () {
+                    console.log('WebSocket disconnected');
+                    statusElement.textContent = 'Disconnected';
+                    statusElement.className = 'status disconnected';
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    wsUrlInput.disabled = false;
+                    addSystemMessage('Disconnected from server');
+                };
+            } catch (error) {
+                console.error('Failed to connect:', error);
+                addSystemMessage('Failed to connect: ' + error.message, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function addLogEntry(message) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span>${escapeHtml(message)}`;
+
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function addSystemMessage(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.style.color = type === 'error' ? '#f48771' : '#4ec9b0';
+            entry.style.fontWeight = 'bold';
+
+            const timestamp = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span>SYSTEM: ${escapeHtml(message)}`;
+
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function clearLog() {
+            logContainer.innerHTML = '';
+            messageCount = 0;
+            messageCountElement.textContent = 'Messages: 0';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Auto-connect on page load (optional)
+        // window.onload = connect;
+    </script>
+</body>
+
+</html>

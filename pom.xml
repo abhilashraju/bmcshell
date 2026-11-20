@@ -17,6 +17,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <spring-shell.version>3.1.3</spring-shell.version>
+        <skipTests>true</skipTests>
     </properties>
 
     <dependencies>
@@ -168,6 +169,11 @@
             <artifactId>jsoup</artifactId>
             <version>1.14.3</version> <!-- Adjust the version as needed -->
     </dependency>
+    <dependency>
+        <groupId>com.networknt</groupId>
+        <artifactId>json-schema-validator</artifactId>
+        <version>1.4.0</version>
+    </dependency>
 
     </dependencies>
     <dependencyManagement>
@@ -208,7 +214,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
                 <configuration>
-                    <skipTests>true</skipTests>
+                    <skipTests>${skipTests}</skipTests>
                 </configuration>
             </plugin>
             <plugin>

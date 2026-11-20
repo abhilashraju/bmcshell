@@ -382,11 +382,11 @@ public class CommonCommands implements ApplicationContextAware {
 
     void resetToken() {
         token = null;
-        try {
-            getToken();
-        } catch (Exception ex) {
-            System.out.println("Token generation failed");
-        }
+        // try {
+        // getToken();
+        // } catch (Exception ex) {
+        // System.out.println("Token generation failed");
+        // }
 
     }
 
@@ -961,7 +961,8 @@ public class CommonCommands implements ApplicationContextAware {
             reactor.netty.http.client.HttpClient httpClient = reactor.netty.http.client.HttpClient.create()
                     .secure(t -> t.sslContext(sslCtx));
             sseClient = WebClient.builder()
-                    .clientConnector(new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
+                    .clientConnector(
+                            new org.springframework.http.client.reactive.ReactorClientHttpConnector(httpClient))
                     .build();
         } catch (Exception e) {
             System.err.println("Failed to build SSE client: " + e.getMessage());
@@ -973,8 +974,9 @@ public class CommonCommands implements ApplicationContextAware {
                 .header("X-Auth-Token", token)
                 .accept(org.springframework.http.MediaType.TEXT_EVENT_STREAM)
                 .retrieve()
-                .bodyToFlux(new org.springframework.core.ParameterizedTypeReference<
-                        org.springframework.http.codec.ServerSentEvent<String>>() {})
+                .bodyToFlux(
+                        new org.springframework.core.ParameterizedTypeReference<org.springframework.http.codec.ServerSentEvent<String>>() {
+                        })
                 .doOnNext(event -> {
                     String data = event.data();
                     if (data != null && !data.isBlank()) {
